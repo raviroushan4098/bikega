@@ -2,7 +2,7 @@
 "use client";
 
 import type { User } from '@/types';
-import { login as apiLogin, logout as apiLogout, DUMMY_USERS_FOR_SESSION_VALIDATION } from '@/lib/auth-dummy';
+import { login as apiLogin, logout as apiLogout, getUserById } from '@/lib/user-service'; // Updated import
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -16,7 +16,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'insightStreamUser';
+const AUTH_STORAGE_KEY = 'insightStreamUser'; // Stores only the user ID now
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -24,25 +24,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
 
   useEffect(() => {
-    const storedUserJson = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (storedUserJson) {
-      try {
-        const parsedUser = JSON.parse(storedUserJson) as User;
-        // Validate if this user still exists in our user list (now potentially from localStorage)
-        // and if schema matches.
-        const currentAvailableUsers = DUMMY_USERS_FOR_SESSION_VALIDATION();
-        const isValidUser = currentAvailableUsers.some(du => du.id === parsedUser.id && du.email === parsedUser.email);
-        if (isValidUser) {
-           setUser(parsedUser);
-        } else {
-          localStorage.removeItem(AUTH_STORAGE_KEY); // User no longer valid
+    const attemptLoadUserFromStorage = async () => {
+      const storedUserId = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (storedUserId) {
+        try {
+          // Fetch the full user object from Firestore using the stored ID
+          const fetchedUser = await getUserById(storedUserId);
+          if (fetchedUser) {
+            setUser(fetchedUser);
+          } else {
+            // User ID in localStorage but not in Firestore (e.g., deleted)
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+          }
+        } catch (error) {
+          console.error("Failed to fetch stored user from Firestore:", error);
+          localStorage.removeItem(AUTH_STORAGE_KEY);
         }
-      } catch (error) {
-        console.error("Failed to parse stored user:", error);
-        localStorage.removeItem(AUTH_STORAGE_KEY);
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    };
+    attemptLoadUserFromStorage();
   }, []);
 
   const login = async (email: string, pass: string) => {
@@ -50,9 +51,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const loggedInUser = await apiLogin(email, pass);
     setUser(loggedInUser);
     if (loggedInUser) {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(loggedInUser));
+      // Store only the user ID in localStorage
+      localStorage.setItem(AUTH_STORAGE_KEY, loggedInUser.id);
     } else {
-      localStorage.removeItem(AUTH_STORAGE_KEY); // Clear if login failed
+      localStorage.removeItem(AUTH_STORAGE_KEY); 
     }
     setLoading(false);
     return loggedInUser;
@@ -60,9 +62,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     setLoading(true);
-    await apiLogout();
+    await apiLogout(); // This is a dummy apiLogout for now
     setUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    // Optionally, call Firebase Auth signOut if you integrate it later
+    // import { getAuth, signOut } from "firebase/auth";
+    // const auth = getAuth(app); // app from your firebase.ts
+    // await signOut(auth);
     router.push('/login'); 
     setLoading(false);
   };

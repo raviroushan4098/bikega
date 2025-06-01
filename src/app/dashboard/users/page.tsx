@@ -31,14 +31,14 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { getUsers, addUser, NewUserDetails } from '@/lib/auth-dummy';
+import { getUsers, addUser, NewUserDetails } from '@/lib/user-service'; // Updated import
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
 const userSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }).optional(), // Password is not directly used by Firestore in this simple setup
   role: z.enum(["admin", "user"], { required_error: "Role is required." }),
 });
 
@@ -53,6 +53,7 @@ const columns: ColumnConfig<User>[] = [
     sortable: true,
     render: (item) => <Badge variant={item.role === 'admin' ? 'default' : 'secondary'}>{item.role.charAt(0).toUpperCase() + item.role.slice(1)}</Badge>
   },
+  // Add other columns as needed, e.g., 'createdAt' if you store it
 ];
 
 export default function UserManagementPage() {
@@ -61,7 +62,7 @@ export default function UserManagementPage() {
   const { toast } = useToast();
 
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoadingPage, setIsLoadingPage] = useState(true); // Renamed to avoid conflict
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -70,7 +71,7 @@ export default function UserManagementPage() {
     defaultValues: {
       name: "",
       email: "",
-      password: "",
+      password: "", // Still collected but not used for Firestore auth in this version
       role: "user",
     },
   });
@@ -78,10 +79,10 @@ export default function UserManagementPage() {
   const fetchUsersList = useCallback(async () => {
     setIsLoadingPage(true);
     try {
-      const fetchedUsers = await getUsers();
+      const fetchedUsers = await getUsers(); // Fetches from Firestore
       setUsers(fetchedUsers);
     } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to fetch users." });
+      toast({ variant: "destructive", title: "Error", description: "Failed to fetch users from Firestore." });
     } finally {
       setIsLoadingPage(false);
     }
@@ -101,12 +102,11 @@ export default function UserManagementPage() {
   async function onSubmit(data: UserFormValues) {
     setIsSubmitting(true);
     try {
-      // Password is not stored in Firestore in this iteration, but the form collects it.
       const result = await addUser(data as NewUserDetails); 
       if ('error' in result) {
          toast({ variant: "destructive", title: "Failed to Add User", description: result.error });
-      } else if (result) {
-        toast({ title: "User Added", description: `${result.name} has been successfully added.` });
+      } else if (result && result.id) { // Check for result.id for successful Firestore add
+        toast({ title: "User Added", description: `${result.name} has been successfully added to Firestore.` });
         setIsAddUserDialogOpen(false);
         form.reset();
         await fetchUsersList(); 
@@ -139,8 +139,8 @@ export default function UserManagementPage() {
 
   return (
     <DataTableShell
-      title="User Management"
-      description="View and manage user accounts. User data is saved in your browser's local storage."
+      title="User Management (Firestore)"
+      description="View and manage user accounts stored in Firestore. Ensure your Firebase project is configured."
     >
       <div className="mb-4 flex justify-end">
         <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
@@ -151,7 +151,7 @@ export default function UserManagementPage() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Add New User</DialogTitle>
+              <DialogTitle>Add New User to Firestore</DialogTitle>
               <DialogDescription>
                 Enter the details for the new user account. Click save when you're done.
               </DialogDescription>
@@ -189,7 +189,7 @@ export default function UserManagementPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel>Password (for reference, not secure auth)</FormLabel>
                       <FormControl>
                         <Input type="password" placeholder="••••••••" {...field} disabled={isSubmitting} />
                       </FormControl>
@@ -235,7 +235,7 @@ export default function UserManagementPage() {
       <GenericDataTable<User>
         data={users}
         columns={columns}
-        caption="Registered Users"
+        caption="Registered Users (from Firestore)"
       />
     </DataTableShell>
   );

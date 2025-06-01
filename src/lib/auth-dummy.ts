@@ -1,7 +1,11 @@
 
+// This file is deprecated and replaced by user-service.ts which uses Firestore.
+// Keeping it here for reference during transition or if you need to revert,
+// but it should ideally be deleted once Firestore integration is confirmed stable.
+
 import type { User } from '@/types';
 
-const LOCAL_STORAGE_USERS_KEY = 'insightStreamAllUsers';
+const LOCAL_STORAGE_USERS_KEY = 'insightStreamAllUsers_deprecated';
 
 // Initial seed users. This will be used if localStorage is empty.
 const SEED_USERS: User[] = [
@@ -69,7 +73,7 @@ const saveStoredUsers = (users: User[]): void => {
   }
 };
 
-export const login = async (email: string, passwordInput: string): Promise<User | null> => {
+export const login_deprecated = async (email: string, passwordInput: string): Promise<User | null> => {
   const users = getStoredUsers();
   const user = users.find(u => u.email === email);
   // Password check is still dummy for this prototype
@@ -80,18 +84,18 @@ export const login = async (email: string, passwordInput: string): Promise<User 
   return null;
 };
 
-export const logout = async (): Promise<void> => {
+export const logout_deprecated = async (): Promise<void> => {
   await new Promise(resolve => setTimeout(resolve, 300));
 };
 
-export interface NewUserDetails {
+export interface NewUserDetails_deprecated {
   name: string;
   email: string;
   password?: string;
   role: 'admin' | 'user';
 }
 
-export const addUser = async (userData: NewUserDetails): Promise<User | { error: string }> => {
+export const addUser_deprecated = async (userData: NewUserDetails_deprecated): Promise<User | { error: string }> => {
   await new Promise(resolve => setTimeout(resolve, 300));
   const currentUsers = getStoredUsers();
 
@@ -115,11 +119,11 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
   return newUser;
 };
 
-export const getUsers = async (): Promise<User[]> => {
+export const getUsers_deprecated = async (): Promise<User[]> => {
   await new Promise(resolve => setTimeout(resolve, 100));
   return getStoredUsers();
 };
 
 // This export is for the auth-context to validate a stored user session.
 // It should also check against the potentially updated localStorage list.
-export const DUMMY_USERS_FOR_SESSION_VALIDATION = () => getStoredUsers();
+export const DUMMY_USERS_FOR_SESSION_VALIDATION_DEPRECATED = () => getStoredUsers();
