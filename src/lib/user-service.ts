@@ -11,11 +11,16 @@ export const login = async (email: string, passwordInput: string): Promise<User 
   // This login remains simplified: find user by email.
   // In a real app, use Firebase Authentication.
   try {
+    console.log(`Login attempt for email: ${email}`);
     const q = query(usersCollectionRef, where('email', '==', email));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.log('No user found with that email.');
+      console.warn(`Login Failed: No user found in Firestore with email '${email}'. 
+      Please check:
+      1. The email is spelled correctly.
+      2. The user exists in your Firestore 'users' collection.
+      3. If you used the seed script (src/scripts/seed-initial-users.ts), ensure it ran successfully and populated the data.`);
       return null;
     }
 
@@ -24,13 +29,16 @@ export const login = async (email: string, passwordInput: string): Promise<User 
     const user = { id: userDoc.id, ...userDoc.data() } as User;
     
     // Dummy password check placeholder - in real app, Firebase Auth handles this.
-    // For this step, if email matches, consider login successful.
-    // You might want to add a console warning here about the dummy password check.
-    
+    console.log(`Login Succeeded: User '${email}' found in Firestore.`);
     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
     return user;
   } catch (error) {
-    console.error("Error logging in user:", error);
+    console.error(`Login Failed: Error querying Firestore for email '${email}'. 
+      This could be due to:
+      1. Firestore security rules (e.g., the 'users' collection might not be readable by unauthenticated users).
+      2. Network issues.
+      3. Firebase SDK initialization problems.
+      Error Details:`, error);
     return null;
   }
 };
@@ -110,3 +118,4 @@ export const getUserById = async (userId: string): Promise<User | null> => {
     return null;
   }
 };
+
