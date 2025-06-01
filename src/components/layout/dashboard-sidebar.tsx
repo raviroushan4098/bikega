@@ -12,6 +12,7 @@ import {
   Users,
   Settings,
   LogOut,
+  ShieldCheck, // New icon for Admin Dashboard
 } from 'lucide-react';
 import { AppLogo } from './app-logo';
 import { useAuth } from '@/contexts/auth-context';
@@ -60,15 +61,19 @@ const navItems: NavItem[] = [
   { href: '/dashboard/reddit', label: 'Reddit', icon: RedditIcon },
   { href: '/dashboard/twitter', label: 'Twitter/X', icon: Twitter },
   { href: '/dashboard/mentions', label: 'Mentions', icon: Globe },
+];
+
+const adminNavItems: NavItem[] = [
+  { href: '/dashboard/admin', label: 'Admin Panel', icon: ShieldCheck, adminOnly: true },
   { href: '/dashboard/users', label: 'User Management', icon: Users, adminOnly: true },
-  // { href: '/dashboard/settings', label: 'Settings', icon: Settings, adminOnly: true },
+  // { href: '/dashboard/settings', label: 'Settings', icon: Settings, adminOnly: true }, // Can be re-added if needed
 ];
 
 export default function DashboardSidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
-  const renderNavItems = (items: NavItem[], isSubmenu = false) => {
+  const renderNavItemsRecursive = (items: NavItem[], isSubmenu = false) => {
     return items.map((item) => {
       if (item.adminOnly && user?.role !== 'admin') {
         return null;
@@ -91,7 +96,7 @@ export default function DashboardSidebar() {
           </Link>
           {item.subItems && item.subItems.length > 0 && (
             <SidebarMenuSub>
-              {renderNavItems(item.subItems, true)}
+              {renderNavItemsRecursive(item.subItems, true)}
             </SidebarMenuSub>
           )}
         </SidebarMenuItem>
@@ -109,7 +114,9 @@ export default function DashboardSidebar() {
       </SidebarHeader>
       <SidebarContent className="flex-1 p-2">
         <SidebarMenu>
-          {renderNavItems(navItems)}
+          {renderNavItemsRecursive(navItems)}
+          {user.role === 'admin' && adminNavItems.length > 0 && <SidebarSeparator className="my-2"/>}
+          {user.role === 'admin' && renderNavItemsRecursive(adminNavItems)}
         </SidebarMenu>
       </SidebarContent>
       <SidebarSeparator />
