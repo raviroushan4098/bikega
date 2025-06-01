@@ -3,17 +3,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
-import { GenericDataTable } from '@/components/analytics/generic-data-table';
-import type { ColumnConfig, RedditPost, User } from '@/types';
-import { Badge } from '@/components/ui/badge';
-import { formatDistanceToNow } from 'date-fns';
-import { Input } from '@/components/ui/input';
+import type { User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Search, Loader2 } from 'lucide-react';
-import { searchReddit, RedditSearchParams } from '@/lib/reddit-api-service';
+import { Loader2, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
-import { getUsers } from '@/lib/user-service';
+import { getUsers, updateUserKeywords } from '@/lib/user-service';
 import {
   Select,
   SelectContent,
@@ -22,87 +17,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
+import { useRouter }
+from 'next/navigation';
 
-const columns: ColumnConfig<RedditPost>[] = [
-  { key: 'title', header: 'Post Title', sortable: true, className: "min-w-[250px] font-medium" },
-  { key: 'subreddit', header: 'Subreddit', sortable: true, className: "w-[150px]" },
-  { key: 'author', header: 'Author', sortable: true, className: "w-[150px]" },
-  {
-    key: 'timestamp',
-    header: 'Timestamp',
-    sortable: true,
-    render: (item) => formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
-    className: "w-[180px]"
-  },
-  {
-    key: 'score',
-    header: 'Score',
-    sortable: true,
-    render: (item) => item.score.toLocaleString(),
-    className: "text-right w-[100px]"
-  },
-  {
-    key: 'numComments',
-    header: 'Comments',
-    sortable: true,
-    render: (item) => item.numComments.toLocaleString(),
-    className: "text-right w-[120px]"
-  },
-  {
-    key: 'flair',
-    header: 'Flair',
-    render: (item) => item.flair ? <Badge variant="secondary">{item.flair}</Badge> : '-',
-    className: "w-[120px]"
-  },
-];
+const keywordManagementSchema = z.object({
+  keywords: z.string().optional(),
+});
 
-export default function RedditAnalyticsPage() {
+type KeywordFormValues = z.infer<typeof keywordManagementSchema>;
+
+export default function ManageUserKeywordsPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
-  const [redditData, setRedditData] = useState<RedditPost[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentQuery, setCurrentQuery] = useState('');
 
-  // For admin user selection
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-  const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>(''); // 'all' or user_id
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setRedditData([]);
-      setCurrentQuery('');
-      // Optionally, show a toast if the user manually submitted an empty search
-      // For auto-clears (e.g., admin deselects user), this might be too noisy.
-      // if (currentQuery) { // only toast if there was a previous query
-      //   toast({ variant: 'default', title: 'Search Cleared', description: 'Enter a term or select a user to search Reddit.' });
-      // }
-      return;
-    }
-
-    setIsLoading(true);
-    setCurrentQuery(query);
-    try {
-      const params: RedditSearchParams = { q: query, limit: 25 };
-      const results = await searchReddit(params);
-      if (results.error) {
-        toast({ variant: "destructive", title: "API Error", description: results.error });
-        setRedditData([]);
-      } else {
-        setRedditData(results.data || []);
-        if (!results.data || results.data.length === 0) {
-          toast({ variant: 'default', title: 'No Results', description: `No Reddit posts found for "${query}".` });
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching Reddit data:", error);
-      toast({ variant: "destructive", title: "Search Error", description: "Failed to fetch data from Reddit." });
-      setRedditData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+  const form = useForm<KeywordFormValues>({
+    resolver: zodResolver(keywordManagementSchema),
+    defaultValues: {
+      keywords: "",
+    },
+  });
 
   // Fetch all users if current user is admin
   useEffect(() => {
@@ -117,65 +61,60 @@ export default function RedditAnalyticsPage() {
           toast({ variant: "destructive", title: "Error", description: "Failed to fetch users list." });
         })
         .finally(() => setIsLoadingUsers(false));
+    } else if (!authLoading && currentUser?.role !== 'admin') {
+      // If not admin, redirect them as this page is admin-only now
+      toast({ variant: "destructive", title: "Access Denied", description: "You do not have permission to view this page."});
+      router.replace('/dashboard');
     }
-  }, [currentUser?.role, toast]);
+  }, [currentUser, authLoading, toast, router]);
 
-  // Effect for initial load and when admin selects a user
-  useEffect(() => {
-    if (authLoading || !currentUser) {
-      setSearchTerm('');
-      setRedditData([]);
-      setCurrentQuery('');
+
+  const handleUserSelection = (userId: string) => {
+    if (userId === 'none') {
+      setSelectedUser(null);
+      form.reset({ keywords: "" });
       return;
     }
-
-    let queryToRun = '';
-    let prefillSearchTermValue = '';
-
-    if (currentUser.role === 'admin') {
-      if (selectedUserIdForFilter && selectedUserIdForFilter !== 'all' && allUsers.length > 0) {
-        const selectedUser = allUsers.find(u => u.id === selectedUserIdForFilter);
-        if (selectedUser?.assignedKeywords && selectedUser.assignedKeywords.length > 0) {
-          queryToRun = selectedUser.assignedKeywords.join(' ');
-          prefillSearchTermValue = queryToRun;
-        } else {
-           // Admin selected a user, but that user has no keywords
-           prefillSearchTermValue = ''; // Clear search bar
-        }
-      } else {
-        // Admin hasn't selected a user, or 'all' is selected, or users not loaded
-        prefillSearchTermValue = '';
-      }
-    } else { // User role
-      if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-        queryToRun = currentUser.assignedKeywords.join(' ');
-        prefillSearchTermValue = queryToRun;
-      } else {
-        // Regular user has no assigned keywords
-        prefillSearchTermValue = '';
-      }
-    }
-    
-    setSearchTerm(prefillSearchTermValue);
-
-    if (queryToRun) {
-      handleSearch(queryToRun);
+    const user = allUsers.find(u => u.id === userId);
+    if (user) {
+      setSelectedUser(user);
+      form.reset({ keywords: user.assignedKeywords?.join(', ') || "" });
     } else {
-      // No automatic query to run (clear data if it was from a previous state)
-      setRedditData([]);
-      setCurrentQuery('');
+      setSelectedUser(null);
+      form.reset({ keywords: "" });
     }
-  }, [currentUser, authLoading, selectedUserIdForFilter, allUsers, handleSearch]);
-
-
-  const onSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // If searchTerm is empty, handleSearch will clear results.
-    // If searchTerm is not empty, handleSearch will perform the search.
-    handleSearch(searchTerm);
   };
-  
-  if (authLoading && !currentUser) {
+
+  async function onSubmitKeywords(data: KeywordFormValues) {
+    if (!selectedUser) {
+      toast({ variant: "destructive", title: "Error", description: "No user selected." });
+      return;
+    }
+    setIsSubmitting(true);
+    const keywordsArray = data.keywords ? data.keywords.split(',').map(k => k.trim()).filter(k => k !== "") : [];
+    try {
+      const result = await updateUserKeywords(selectedUser.id, keywordsArray);
+      if (result.success) {
+        toast({ title: "Keywords Updated", description: `Keywords for ${selectedUser.name} have been updated.` });
+        // Optimistically update selectedUser state or re-fetch if necessary
+        setSelectedUser(prevUser => prevUser ? { ...prevUser, assignedKeywords: keywordsArray } : null);
+        // To ensure the form reflects the latest saved state accurately after an update,
+        // especially if there was any transformation or filtering server-side (though not in this case for keywords)
+        // one might re-fetch the user. For keywords, optimistic update is usually fine.
+        // Or, re-fetch all users if you want to be absolutely sure the list is current (though potentially overkill)
+        // await fetchUsers(); // Example if re-fetching all users
+      } else {
+        toast({ variant: "destructive", title: "Update Failed", description: result.error || "Could not update keywords." });
+      }
+    } catch (error) {
+      console.error(`Failed to update keywords for ${selectedUser.name}:`, error);
+      toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (authLoading || (currentUser?.role === 'admin' && isLoadingUsers && !selectedUser)) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -183,86 +122,86 @@ export default function RedditAnalyticsPage() {
     );
   }
 
-  const getPageDescription = () => {
-    if (currentUser?.role === 'admin') {
-      return "Monitor Reddit. Select a user to view posts based on their assigned keywords, or search manually.";
-    }
-    if (currentUser?.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-      return `Showing posts related to your assigned keywords: ${currentUser.assignedKeywords.join(', ')}. You can also search for other terms.`;
-    }
-    return "Monitor Reddit posts. Ask an admin to assign keywords for a personalized feed.";
-  };
+  if (currentUser?.role !== 'admin') {
+    // This should ideally be caught by the useEffect redirect, but as a fallback:
+    return (
+        <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
+            <p className="text-muted-foreground">Access Denied. This page is for administrators only.</p>
+        </div>
+    );
+  }
 
 
   return (
     <DataTableShell
-      title="Reddit Analytics"
-      description={getPageDescription()}
+      title="Manage User Keywords"
+      description="Assign or update keywords for users. These keywords can be used to personalize their experience on other platform features."
     >
-      {currentUser?.role === 'admin' && (
-        <div className="mb-4 flex items-center gap-2">
-            <Label htmlFor="user-select-filter-reddit" className="text-sm font-medium shrink-0">View keyword feed for:</Label>
-            {isLoadingUsers && allUsers.length === 0 ? (
-              <div className="flex items-center text-sm text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...
-              </div>
+      <div className="mb-6 space-y-4">
+        <div>
+          <Label htmlFor="user-select-keywords" className="text-sm font-medium mb-1 block">Select User to Manage Keywords:</Label>
+          {isLoadingUsers && allUsers.length === 0 ? (
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...
+            </div>
             ) : (
-              <Select
-                value={selectedUserIdForFilter}
-                onValueChange={(value) => setSelectedUserIdForFilter(value === 'all' ? '' : value)}
-              >
-                <SelectTrigger id="user-select-filter-reddit" className="w-full sm:w-[280px] bg-background shadow-sm">
-                  <SelectValue placeholder="Select a user..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Search Manually / All Posts</SelectItem>
-                  {allUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name} ({u.email})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-      )}
-
-      <form onSubmit={onSearchSubmit} className="mb-6 flex gap-2">
-        <Input
-          type="search"
-          placeholder={
-             currentUser?.role === 'admin' && searchTerm 
-                ? `Searching: "${searchTerm}" (for selected user or manual query)`
-             : currentUser?.role === 'admin' 
-                ? "Search Reddit by keyword or select a user"
-             : currentUser?.assignedKeywords && currentUser.assignedKeywords.length > 0 && searchTerm
-                ? `Searching your keywords: "${searchTerm}" (or type new query)`
-                : "Search Reddit by keyword (e.g., Next.js, AI)"
-          }
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-grow bg-background shadow-sm"
-          disabled={isLoading}
-        />
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-          Search
-        </Button>
-      </form>
-
-      {isLoading && currentQuery ? (
-        <div className="flex justify-center items-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-          <p className="text-muted-foreground">Searching Reddit for "{currentQuery}"...</p>
+            <Select
+              value={selectedUser?.id || "none"}
+              onValueChange={handleUserSelection}
+            >
+              <SelectTrigger id="user-select-keywords" className="w-full sm:w-[320px] bg-background shadow-sm">
+                <SelectValue placeholder="Select a user..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">-- Select a User --</SelectItem>
+                {allUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} ({u.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
-      ) : (
-        <GenericDataTable<RedditPost>
-          data={redditData}
-          columns={columns}
-          caption={currentQuery ? `Reddit posts for "${currentQuery}"` : "Reddit Post Data"}
-        />
-      )}
+
+        {selectedUser && (
+          <div className="p-4 border rounded-md bg-card mt-4">
+            <h3 className="text-lg font-semibold mb-1">Keywords for {selectedUser.name}</h3>
+            <p className="text-sm text-muted-foreground mb-3">Enter keywords separated by commas.</p>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmitKeywords)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="keywords"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="sr-only">Keywords</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="e.g., technology, AI, startups"
+                          {...field}
+                          rows={4}
+                          className="bg-background"
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={isSubmitting || !selectedUser}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Keywords for {selectedUser.name}
+                </Button>
+              </form>
+            </Form>
+          </div>
+        )}
+        {!selectedUser && allUsers.length > 0 && (
+            <p className="text-muted-foreground mt-4">Please select a user from the dropdown to manage their keywords.</p>
+        )}
+      </div>
     </DataTableShell>
   );
 }
-
+    
