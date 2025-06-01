@@ -63,13 +63,16 @@ export default function YouTubeAnalyticsPage() {
   });
 
   useEffect(() => {
-    console.log("[YouTubePage] Debug Info Update:");
-    console.log("  currentUser:", currentUser);
-    console.log("  selectedUserIdForFilter:", selectedUserIdForFilter);
-    console.log("  allUsers (for dropdown/display):", allUsers);
-    console.log("  videos (current state):", videos);
-    console.log("  isLoadingVideos:", isLoadingVideos);
-    console.log("  isLoadingUsers:", isLoadingUsers);
+    // This detailed log can be removed or simplified once stable
+    console.log("[YouTubePage] State Update Triggered. Current State:", {
+      currentUserEmail: currentUser?.email,
+      currentUserRole: currentUser?.role,
+      selectedUserIdForFilter,
+      allUsersCount: allUsers.length,
+      videosCount: videos.length,
+      isLoadingVideos,
+      isLoadingUsers,
+    });
   }, [currentUser, selectedUserIdForFilter, allUsers, videos, isLoadingVideos, isLoadingUsers]);
 
   const columns: ColumnConfig<YoutubeVideo>[] = useMemo(() => [
@@ -87,7 +90,7 @@ export default function YouTubeAnalyticsPage() {
       render: (item: YoutubeVideo) => {
         if (!item.assignedToUserId) return <Badge variant="outline">Unassigned</Badge>;
         const user = allUsers.find(u => u.id === item.assignedToUserId);
-        return user ? <Badge variant="secondary">{user.name}</Badge> : <Badge variant="outline" className="text-xs">{item.assignedToUserId}</Badge>;
+        return user ? <Badge variant="secondary">{user.name}</Badge> : <Badge variant="destructive" className="text-xs">ID: {item.assignedToUserId} (User not found)</Badge>;
       },
       className: "min-w-[150px]"
     },
@@ -101,7 +104,7 @@ export default function YouTubeAnalyticsPage() {
     { 
       key: 'commentCount', 
       header: 'Comments', 
-      sortable: true, 
+      sortable: true,       
       render: (item) => item.commentCount?.toLocaleString() ?? '0',
       className: "text-right w-[120px]"
     },
@@ -130,12 +133,16 @@ export default function YouTubeAnalyticsPage() {
                        ? selectedUserIdForFilter 
                        : currentUser?.role === 'user' ? currentUser.id : undefined;
       
-      console.log(`[YouTubePage] Determined filterId for Firestore query: ${filterId}`);
+      console.log(`[YouTubePage] Determined filterId for Firestore query: '${filterId === undefined ? "ALL_VIDEOS_OR_UNAUTHENTICATED" : filterId}'.`);
       const fetchedVideos = await getYoutubeVideosFromFirestore(filterId);
-      console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos from Firestore with filterId '${filterId}'.`);
-      if (fetchedVideos.length > 0) {
-        console.log("[YouTubePage] Fetched video data sample (first video):", fetchedVideos[0]);
+      
+      console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos from Firestore using filterId '${filterId === undefined ? "ALL_VIDEOS_OR_UNAUTHENTICATED" : filterId}'.`);
+      if (fetchedVideos.length > 0 && (filterId === undefined || filterId === 'all')) {
+        console.log("[YouTubePage] Sample of first fetched video (when fetching all):", fetchedVideos[0]);
+      } else if (fetchedVideos.length > 0 && filterId !== undefined && filterId !== 'all') {
+        console.log(`[YouTubePage] Sample of first video fetched for specific user ID '${filterId}':`, fetchedVideos[0]);
       }
+
       setVideos(fetchedVideos);
     } catch (error) {
       console.error("[YouTubePage] Error in fetchVideos:", error);
@@ -146,15 +153,20 @@ export default function YouTubeAnalyticsPage() {
   }, [currentUser, selectedUserIdForFilter, toast]);
 
   useEffect(() => {
-    fetchVideos();
-  }, [fetchVideos]);
+    if (currentUser) { // Only fetch videos if currentUser is available
+        fetchVideos();
+    } else {
+        console.log("[YouTubePage] currentUser not available, skipping fetchVideos.");
+        setIsLoadingVideos(false); // Ensure loading stops if no user
+    }
+  }, [fetchVideos, currentUser]); // Add currentUser to dependency array
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
       setIsLoadingUsers(true);
       getUsers()
         .then(users => {
-          console.log("[YouTubePage] Fetched users for admin dropdown:", users);
+          console.log("[YouTubePage] Fetched users for admin dropdown:", users.map(u => ({id: u.id, name: u.name, email: u.email})));
           setAllUsers(users);
         })
         .catch(error => {
@@ -194,7 +206,7 @@ export default function YouTubeAnalyticsPage() {
   }, [videos]);
 
 
-  if (isLoadingVideos && videos.length === 0 && !currentUser) { 
+  if (!currentUser && isLoadingVideos) { 
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -202,10 +214,11 @@ export default function YouTubeAnalyticsPage() {
     );
   }
   
-  if (!currentUser || (currentUser.role === 'admin' && isLoadingUsers && allUsers.length === 0 && !isAddVideoDialogOpen)) {
+  if (currentUser?.role === 'admin' && isLoadingUsers && allUsers.length === 0 && !isAddVideoDialogOpen) {
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-muted-foreground mr-2">Loading user list for admin...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -220,8 +233,10 @@ export default function YouTubeAnalyticsPage() {
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
             <Label htmlFor="user-select-filter" className="text-sm font-medium shrink-0">View videos assigned to:</Label>
-            {isLoadingUsers ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+            {isLoadingUsers && allUsers.length === 0 ? ( // Show loader only if users are loading AND list is empty
+              <div className="flex items-center text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...
+              </div>
             ) : (
               <Select value={selectedUserIdForFilter} onValueChange={setSelectedUserIdForFilter}>
                 <SelectTrigger id="user-select-filter" className="w-full sm:w-[280px] bg-background shadow-sm">
@@ -272,15 +287,15 @@ export default function YouTubeAnalyticsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Assign to User</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled={isSubmittingVideo || isLoadingUsers}>
+                        <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled={isSubmittingVideo || (isLoadingUsers && allUsers.length === 0)}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={isLoadingUsers ? "Loading users..." : "Select a user"} />
+                              <SelectValue placeholder={(isLoadingUsers && allUsers.length === 0) ? "Loading users..." : "Select a user"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {isLoadingUsers && <SelectItem value="loading" disabled>Loading...</SelectItem>}
-                            {!isLoadingUsers && allUsers.length === 0 && <SelectItem value="no-users" disabled>No users available</SelectItem>}
+                            {(isLoadingUsers && allUsers.length === 0) && <SelectItem value="loading" disabled>Loading...</SelectItem>}
+                            {(!isLoadingUsers && allUsers.length === 0) && <SelectItem value="no-users" disabled>No users available</SelectItem>}
                             {allUsers.map((u) => (
                               <SelectItem key={u.id} value={u.id}>
                                 {u.name} ({u.email})
@@ -296,7 +311,7 @@ export default function YouTubeAnalyticsPage() {
                     <Button type="button" variant="outline" onClick={() => setIsAddVideoDialogOpen(false)} disabled={isSubmittingVideo}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={isSubmittingVideo || isLoadingUsers || isSubmittingVideo}>
+                    <Button type="submit" disabled={isSubmittingVideo || (isLoadingUsers && allUsers.length === 0) || isSubmittingVideo}>
                       {isSubmittingVideo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Save Video Assignment
                     </Button>
