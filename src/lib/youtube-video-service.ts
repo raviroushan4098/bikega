@@ -2,11 +2,11 @@
 'use server';
 
 import { db } from './firebase';
-import { collection, addDoc, getDocs, query, where, Timestamp, orderBy, doc } from 'firebase/firestore';
-import type { YoutubeVideo } from '@/types';
+import { collection, addDoc, getDocs, query, Timestamp, orderBy, doc, writeBatch } from 'firebase/firestore';
+import type { YoutubeVideo, User } from '@/types';
 
-// Define the structure of the data to be stored in Firestore, omitting the client-side 'id'
-export interface NewYoutubeVideoData {
+// This interface now represents the data stored within a user's 'assigned_links' subcollection
+export interface AssignedLinkData {
   url: string;
   title: string;
   thumbnailUrl: string;
@@ -15,7 +15,6 @@ export interface NewYoutubeVideoData {
   commentCount: number;
   shareCount: number;
   channelTitle: string;
-  assignedToUserId: string;
   createdAt: Timestamp; // Stored as Firestore Timestamp
 }
 
@@ -25,8 +24,14 @@ export async function addYoutubeVideoToFirestore(
 ): Promise<YoutubeVideo> {
   try {
     console.log(`[youtube-video-service] addYoutubeVideoToFirestore called. URL: '${videoUrl}', assignedToUserId: '${assignedToUserId}'`);
+    
+    if (!assignedToUserId) {
+      throw new Error("assignedToUserId cannot be empty.");
+    }
+
     const createdAtTimestamp = Timestamp.now();
-    const newVideoData: NewYoutubeVideoData = {
+    // Data for the document in the 'assigned_links' subcollection
+    const newLinkData: AssignedLinkData = {
       url: videoUrl,
       title: `Video: ${videoUrl.substring(0, 40)}...`, // Placeholder title
       thumbnailUrl: 'https://placehold.co/320x180.png',
@@ -35,51 +40,58 @@ export async function addYoutubeVideoToFirestore(
       commentCount: 0,
       shareCount: 0,
       channelTitle: 'N/A', // Placeholder channel
-      assignedToUserId: assignedToUserId, // This is the ID being stored
       createdAt: createdAtTimestamp,
     };
 
-    const docRef = await addDoc(collection(db, 'youtube_videos'), newVideoData);
-    console.log(`[youtube-video-service] Video added to Firestore with doc ID: ${docRef.id}, assignedToUserId: '${assignedToUserId}'`);
+    // Path to the user's 'assigned_links' subcollection
+    const userAssignedLinksRef = collection(db, `youtube_videos/${assignedToUserId}/assigned_links`);
+    const docRef = await addDoc(userAssignedLinksRef, newLinkData);
 
+    console.log(`[youtube-video-service] Video added to Firestore at path: youtube_videos/${assignedToUserId}/assigned_links/${docRef.id}`);
+
+    // Return a YoutubeVideo object consistent with the client-side type
     return {
-      id: docRef.id,
-      url: newVideoData.url,
-      title: newVideoData.title,
-      thumbnailUrl: newVideoData.thumbnailUrl,
-      dataAiHint: newVideoData.dataAiHint,
-      likeCount: newVideoData.likeCount,
-      commentCount: newVideoData.commentCount,
-      shareCount: newVideoData.shareCount,
-      channelTitle: newVideoData.channelTitle,
-      assignedToUserId: newVideoData.assignedToUserId,
+      id: docRef.id, // This is the ID of the link document
+      url: newLinkData.url,
+      title: newLinkData.title,
+      thumbnailUrl: newLinkData.thumbnailUrl,
+      dataAiHint: newLinkData.dataAiHint,
+      likeCount: newLinkData.likeCount,
+      commentCount: newLinkData.commentCount,
+      shareCount: newLinkData.shareCount,
+      channelTitle: newLinkData.channelTitle,
+      assignedToUserId: assignedToUserId, // Add this back for client-side consistency
       createdAt: createdAtTimestamp.toDate().toISOString(), // Convert to ISO string for client
     };
 
   } catch (error) {
     console.error("[youtube-video-service] Error adding YouTube video to Firestore: ", error);
-    throw new Error("Failed to save video assignment.");
+    if (error instanceof Error) {
+        throw new Error(`Failed to save video assignment: ${error.message}`);
+    }
+    throw new Error("Failed to save video assignment due to an unknown error.");
   }
 }
 
 export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
   try {
-    const videosCollectionRef = collection(db, 'youtube_videos');
-    let q;
-
-    if (userIdForFilter && userIdForFilter !== 'all') {
-      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for videos assigned to user ID: '${userIdForFilter}'`);
-      q = query(videosCollectionRef, where('assignedToUserId', '==', userIdForFilter), orderBy('createdAt', 'desc'));
-    } else {
-      console.log("[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos (no specific user filter).");
-      q = query(videosCollectionRef, orderBy('createdAt', 'desc'));
+    if (!userIdForFilter || userIdForFilter === 'all') {
+      // For "All Assigned Videos", or if no user is specified, we return an empty array.
+      // Fetching all videos across all user subcollections is complex and not implemented here.
+      // Admin must select a specific user.
+      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID provided or 'all' selected. Returning empty array. Admin should select a user.`);
+      return [];
     }
+
+    console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for videos assigned to user ID: '${userIdForFilter}'`);
+    const userAssignedLinksRef = collection(db, `youtube_videos/${userIdForFilter}/assigned_links`);
+    const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc'));
 
     const querySnapshot = await getDocs(q);
     const videos = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as NewYoutubeVideoData; // Assert type based on Firestore structure
+      const data = docSnap.data() as AssignedLinkData; // Data from the link document
       return {
-        id: docSnap.id,
+        id: docSnap.id, // ID of the link document
         url: data.url,
         title: data.title,
         thumbnailUrl: data.thumbnailUrl,
@@ -88,20 +100,24 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
         commentCount: data.commentCount,
         shareCount: data.shareCount,
         channelTitle: data.channelTitle,
-        assignedToUserId: data.assignedToUserId,
+        assignedToUserId: userIdForFilter, // Add this back for client-side consistency
         createdAt: data.createdAt.toDate().toISOString(), // Convert Firestore Timestamp to ISO string
-      } as YoutubeVideo; // Ensure it matches the client-side YoutubeVideo type
+      } as YoutubeVideo;
     });
-    console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${videos.length} videos for filter '${userIdForFilter || 'all'}'.`);
-    if (videos.length > 0 && userIdForFilter && userIdForFilter !== 'all') {
-        console.log(`[youtube-video-service] First video returned for user '${userIdForFilter}': `, videos[0]);
+
+    console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${videos.length} videos for user '${userIdForFilter}'.`);
+    if (videos.length > 0) {
+        console.log(`[youtube-video-service] First video returned for user '${userIdForFilter}': `, { id: videos[0].id, title: videos[0].title, assignedTo: videos[0].assignedToUserId });
     }
     return videos;
+
   } catch (error) {
-    console.error(`[youtube-video-service] getYoutubeVideosFromFirestore: Error fetching videos for filter '${userIdForFilter || 'all'}': `, error);
-    // Check if the error message suggests creating an index
+    console.error(`[youtube-video-service] getYoutubeVideosFromFirestore: Error fetching videos for user '${userIdForFilter}': `, error);
     if (error instanceof Error && error.message && error.message.includes('composite index')) {
-      console.error("[youtube-video-service] Firestore is likely missing a composite index. Please check the Firebase console for a link to create it. The query involves filtering by 'assignedToUserId' and ordering by 'createdAt'.");
+      console.error("[youtube-video-service] Firestore is likely missing a composite index for the subcollection query. Path: youtube_videos/{userId}/assigned_links, ordered by 'createdAt'. Please check Firebase console.");
+    } else if (error instanceof Error && error.message && (error.message.includes('Fetched document to delete does not exist') || error.message.includes('No document to update'))) {
+        // This might indicate an issue with the path, e.g. userIdForFilter doesn't exist as a document in youtube_videos
+        console.warn(`[youtube-video-service] Potential issue with path for user '${userIdForFilter}'. The user document might not exist at 'youtube_videos/${userIdForFilter}'.`);
     }
     return []; // Return empty array on error
   }
