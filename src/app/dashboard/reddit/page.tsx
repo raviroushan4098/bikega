@@ -7,7 +7,7 @@ import { GenericDataTable } from '@/components/analytics/generic-data-table';
 import type { ColumnConfig, RedditPost } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Loader2, Rss } from 'lucide-react'; // Using Rss as a more generic feed icon
+import { Search, Loader2, Rss } from 'lucide-react'; 
 import { searchReddit, RedditSearchParams } from '@/lib/reddit-api-service';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
@@ -64,7 +64,11 @@ export default function RedditAnalyticsPage() {
 
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
-      toast({ variant: "destructive", title: "Search term required", description: "Please enter a keyword to search Reddit." });
+      // For users with keywords, this might not be an error, just initial state.
+      // Only toast if it's a manual search attempt with no query.
+      if(currentUser?.role === 'admin' || !currentUser?.assignedKeywords || currentUser.assignedKeywords.length === 0) {
+        toast({ variant: "destructive", title: "Search term required", description: "Please enter a keyword to search Reddit." });
+      }
       setRedditPosts([]);
       setDisplayedSearchTerm(null);
       return;
@@ -88,18 +92,23 @@ export default function RedditAnalyticsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, currentUser]); // Added currentUser to dependency array for role check in toast
   
   useEffect(() => {
     if (!authLoading && currentUser) {
       if (currentUser.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-        const userKeywordsQuery = currentUser.assignedKeywords.join(' OR '); // Using OR for broader results
-        setSearchTerm(userKeywordsQuery);
+        const userKeywordsQuery = currentUser.assignedKeywords.join(' OR ');
+        setSearchTerm(userKeywordsQuery); // Pre-fill for consistency, though input might be hidden
         handleSearch(userKeywordsQuery);
       } else {
-        // For admins, or users with no keywords, clear previous results
-        setRedditPosts([]);
-        setDisplayedSearchTerm(null);
+        // For admins, or users with no keywords, clear previous results if any.
+        // This allows admins to start with a clean slate.
+        // Users without keywords will see the search bar and can initiate search.
+        if (currentUser.role === 'admin') {
+            setRedditPosts([]);
+            setDisplayedSearchTerm(null);
+            setSearchTerm(''); // Clear admin search term on load
+        }
       }
     }
   }, [currentUser, authLoading, handleSearch]);
@@ -108,6 +117,19 @@ export default function RedditAnalyticsPage() {
     e.preventDefault();
     handleSearch(searchTerm);
   };
+
+  const canUserSearch = currentUser?.role === 'admin' || 
+                        (currentUser?.role === 'user' && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0));
+
+  let pageDescription = "Monitor Reddit posts by keyword.";
+  if (currentUser?.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
+    pageDescription = `Showing posts related to your keywords: "${currentUser.assignedKeywords.join(', ')}".`;
+  } else if (currentUser?.role === 'admin') {
+    pageDescription = "Search for Reddit posts by keyword. Results will appear below.";
+  } else if (currentUser?.role === 'user' && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0)) {
+    pageDescription = "You have no assigned keywords. Enter terms below to search Reddit.";
+  }
+
 
   if (authLoading) {
     return (
@@ -120,26 +142,25 @@ export default function RedditAnalyticsPage() {
   return (
     <DataTableShell
       title="Reddit Keyword Monitoring"
-      description={
-        currentUser?.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0
-          ? `Showing posts related to your keywords: "${currentUser.assignedKeywords.join(', ')}". You can search for other terms below.`
-          : "Search for Reddit posts by keyword. Admins can search any term; users' feeds are pre-loaded if keywords are assigned."
-      }
+      description={pageDescription}
     >
-      <form onSubmit={onSearchSubmit} className="mb-6 flex items-center gap-2">
-        <Input
-          type="search"
-          placeholder="Enter keywords to search Reddit (e.g., Next.js, AI)"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-grow bg-background shadow-sm"
-          aria-label="Search Reddit Posts"
-        />
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-          Search
-        </Button>
-      </form>
+      {canUserSearch && (
+        <form onSubmit={onSearchSubmit} className="mb-6 flex items-center gap-2">
+          <Input
+            type="search"
+            placeholder="Enter keywords to search Reddit (e.g., Next.js, AI)"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-grow bg-background shadow-sm"
+            aria-label="Search Reddit Posts"
+            disabled={isLoading}
+          />
+          <Button type="submit" disabled={isLoading || !searchTerm.trim()}>
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+            Search
+          </Button>
+        </form>
+      )}
 
       {isLoading && (
         <div className="flex justify-center items-center py-10">
@@ -157,19 +178,32 @@ export default function RedditAnalyticsPage() {
           </p>
         </div>
       )}
-
-      {!isLoading && !displayedSearchTerm && redditPosts.length === 0 && currentUser?.role === 'admin' && (
+      
+      {/* Initial state for admin or user without keywords before any search */}
+      {!isLoading && !displayedSearchTerm && redditPosts.length === 0 && canUserSearch && (
          <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-            <p className="text-lg font-semibold">Ready to Search Reddit</p>
-            <p className="text-muted-foreground">Enter keywords above to find relevant posts.</p>
+            <p className="text-lg font-semibold">
+              {currentUser?.role === 'admin' ? "Ready to Search Reddit" : "Search for Reddit Posts"}
+            </p>
+            <p className="text-muted-foreground">
+              {currentUser?.role === 'admin' 
+                ? "Enter keywords above to find relevant posts."
+                : "Enter keywords in the search bar above to find relevant posts."
+              }
+            </p>
         </div>
       )}
-       {!isLoading && !displayedSearchTerm && redditPosts.length === 0 && currentUser?.role === 'user' && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
-         <div className="text-center py-10">
-            <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-            <p className="text-lg font-semibold">No Assigned Keywords</p>
-            <p className="text-muted-foreground">You don't have any keywords assigned. Please enter terms to search or contact an admin.</p>
+
+      {/* For users with assigned keywords, if initial load yields no results (but displayedSearchTerm is set) */}
+       {!isLoading && displayedSearchTerm && redditPosts.length === 0 && 
+        currentUser?.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && (
+        <div className="text-center py-10">
+          <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+          <p className="text-lg font-semibold">No Reddit Posts Found for Your Keywords</p>
+          <p className="text-muted-foreground">
+            No posts matched your assigned keywords: "{displayedSearchTerm}".
+          </p>
         </div>
       )}
 
@@ -184,5 +218,3 @@ export default function RedditAnalyticsPage() {
     </DataTableShell>
   );
 }
-
-    
