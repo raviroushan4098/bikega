@@ -8,10 +8,10 @@ import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Edit3, Save } from 'lucide-react';
+import { Loader2, Rss, Users as UsersIcon, Save } from 'lucide-react'; // Removed: Edit3, Search (no longer used)
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
-import { searchReddit } from '@/lib/reddit-api-service'; // Needed for user view
+import { searchReddit, RedditSearchParams } from '@/lib/reddit-api-service'; // For user view
 import {
   Select,
   SelectContent,
@@ -36,7 +36,7 @@ type EditKeywordsFormValues = z.infer<typeof editKeywordsSchema>;
 
 // Columns for Reddit posts (for user view)
 const redditPostColumns: ColumnConfig<RedditPost>[] = [
-    { 
+  { 
     key: 'subreddit', 
     header: 'Subreddit', 
     sortable: true, 
@@ -81,7 +81,7 @@ export default function RedditPage() {
 
   // --- Admin View State ---
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>(''); // Admin selects a user
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
   const [isSavingKeywords, setIsSavingKeywords] = useState<boolean>(false);
   
@@ -181,6 +181,7 @@ export default function RedditPage() {
       if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
         fetchRedditPostsForUser(currentUser.assignedKeywords);
       } else {
+        // User has no assigned keywords, so don't fetch posts, set loading to false
         setIsLoadingPosts(false);
         setRedditPosts([]);
         setDisplayedSearchTerm(null);
@@ -208,7 +209,7 @@ export default function RedditPage() {
     return (
       <DataTableShell
         title="Manage User Keywords for Reddit"
-        description="Select a user to view and edit their assigned keywords. These keywords may be used for features like personalized Reddit feeds for users."
+        description="Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed."
       >
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -223,7 +224,7 @@ export default function RedditPage() {
                 <SelectValue placeholder="Select a user..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Select a user...</SelectItem>
+                {/* Removed SelectItem with value="" here */}
                 {allUsers.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.name} ({u.email})
@@ -277,6 +278,7 @@ export default function RedditPage() {
   }
 
   // User View: Display Reddit Posts based on their assigned keywords
+  // (Search bar/button are hidden for users with assigned keywords)
   if (currentUser.role === 'user') {
     let userPageDescription = "Your Reddit feed based on assigned keywords.";
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
@@ -337,3 +339,4 @@ export default function RedditPage() {
     </div>
   );
 }
+
