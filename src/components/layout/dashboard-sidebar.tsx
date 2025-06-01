@@ -12,7 +12,7 @@ import {
   Users,
   Settings,
   LogOut,
-  ShieldCheck, // New icon for Admin Dashboard
+  // ShieldCheck, // Icon for Admin Panel removed
 } from 'lucide-react';
 import { AppLogo } from './app-logo';
 import { useAuth } from '@/contexts/auth-context';
@@ -35,8 +35,8 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
+  // SidebarMenuSubButton, // Not used currently
+  // SidebarMenuSubItem, // Not used currently
   SidebarSeparator
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
@@ -64,7 +64,7 @@ const navItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
-  { href: '/dashboard/admin', label: 'Admin Panel', icon: ShieldCheck, adminOnly: true },
+  // { href: '/dashboard/admin', label: 'Admin Panel', icon: ShieldCheck, adminOnly: true }, // Removed
   { href: '/dashboard/users', label: 'User Management', icon: Users, adminOnly: true },
   // { href: '/dashboard/settings', label: 'Settings', icon: Settings, adminOnly: true }, // Can be re-added if needed
 ];
@@ -80,19 +80,19 @@ export default function DashboardSidebar() {
       }
       const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
       
-      const MenuButtonComponent = isSubmenu ? SidebarMenuSubButton : SidebarMenuButton;
+      // const MenuButtonComponent = isSubmenu ? SidebarMenuSubButton : SidebarMenuButton; // Submenus not used currently
 
       return (
         <SidebarMenuItem key={item.href}>
           <Link href={item.href} passHref legacyBehavior>
-            <MenuButtonComponent
+            <SidebarMenuButton
               className={cn(isActive && "bg-primary/10 text-primary hover:bg-primary/20")}
               isActive={isActive}
               tooltip={item.label}
             >
               <item.icon className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground group-hover/menu-button:text-primary")} />
               <span className="truncate">{item.label}</span>
-            </MenuButtonComponent>
+            </SidebarMenuButton>
           </Link>
           {item.subItems && item.subItems.length > 0 && (
             <SidebarMenuSub>

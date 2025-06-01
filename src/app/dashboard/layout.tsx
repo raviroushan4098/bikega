@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import DashboardSidebar from '@/components/layout/dashboard-sidebar';
 import DashboardHeader from '@/components/layout/dashboard-header';
@@ -17,7 +17,6 @@ export default function DashboardLayout({
 }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -25,17 +24,16 @@ export default function DashboardLayout({
     }
   }, [user, loading, isAuthenticated, router]);
 
-  const isAdminPage = pathname === '/dashboard/admin';
 
   if (loading || !isAuthenticated) {
     return (
       <div className={cn(
         "flex h-screen items-center justify-center",
-        isAdminPage ? "bg-slate-900" : "bg-background" // Dark background for admin page loading
+        "bg-background" 
       )}>
         <Loader2 className={cn(
           "h-12 w-12 animate-spin",
-          isAdminPage ? "text-blue-500" : "text-primary"
+          "text-primary"
         )} />
       </div>
     );
@@ -45,7 +43,7 @@ export default function DashboardLayout({
     <SidebarProvider defaultOpen={true}>
       <div className={cn(
         "flex min-h-screen",
-        isAdminPage ? "bg-slate-900" : "bg-background" // Dark background for admin page
+        "bg-background" 
       )}>
         <DashboardSidebar />
         <div className="flex flex-1 flex-col">
