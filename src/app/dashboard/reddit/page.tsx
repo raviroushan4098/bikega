@@ -2,20 +2,41 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/auth-context';
+import { useRouter } from 'next/navigation';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
-import type { ColumnConfig, RedditPost } from '@/types';
-import { Input } from '@/components/ui/input';
+import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Search, Loader2, Rss } from 'lucide-react'; 
-import { searchReddit, RedditSearchParams } from '@/lib/reddit-api-service';
+import { Loader2, Rss, Users as UsersIcon, Edit3, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from '@/contexts/auth-context';
+import { getUsers, updateUserKeywords } from '@/lib/user-service';
+import { searchReddit } from '@/lib/reddit-api-service'; // Needed for user view
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 
-const columns: ColumnConfig<RedditPost>[] = [
-  { 
+// Schema for admin's keyword editing form
+const editKeywordsSchema = z.object({
+  keywords: z.string().optional(),
+});
+type EditKeywordsFormValues = z.infer<typeof editKeywordsSchema>;
+
+// Columns for Reddit posts (for user view)
+const redditPostColumns: ColumnConfig<RedditPost>[] = [
+    { 
     key: 'subreddit', 
     header: 'Subreddit', 
     sortable: true, 
@@ -53,27 +74,87 @@ const columns: ColumnConfig<RedditPost>[] = [
   },
 ];
 
-export default function RedditAnalyticsPage() {
+export default function RedditPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
 
+  // --- Admin View State ---
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+  const [isSavingKeywords, setIsSavingKeywords] = useState<boolean>(false);
+  
+  const editKeywordsForm = useForm<EditKeywordsFormValues>({
+    resolver: zodResolver(editKeywordsSchema),
+    defaultValues: { keywords: "" },
+  });
+
+  // --- User View State ---
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [displayedSearchTerm, setDisplayedSearchTerm] = useState<string | null>(null);
 
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      // For users with keywords, this might not be an error, just initial state.
-      // Only toast if it's a manual search attempt with no query.
-      if(currentUser?.role === 'admin' || !currentUser?.assignedKeywords || currentUser.assignedKeywords.length === 0) {
-        toast({ variant: "destructive", title: "Search term required", description: "Please enter a keyword to search Reddit." });
+  // Fetch all users for admin dropdown
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      setIsLoadingUsers(true);
+      getUsers()
+        .then(setAllUsers)
+        .catch(() => toast({ variant: "destructive", title: "Error", description: "Failed to fetch user list." }))
+        .finally(() => setIsLoadingUsers(false));
+    }
+  }, [currentUser, toast]);
+
+  // Effect to update form when admin selects a different user
+  useEffect(() => {
+    if (currentUser?.role === 'admin' && selectedUserId) {
+      const userToEdit = allUsers.find(u => u.id === selectedUserId);
+      if (userToEdit) {
+        editKeywordsForm.reset({ keywords: userToEdit.assignedKeywords?.join(', ') || "" });
       }
+    } else if (currentUser?.role === 'admin' && !selectedUserId) {
+      editKeywordsForm.reset({ keywords: ""}); // Clear form if no user is selected
+    }
+  }, [selectedUserId, allUsers, currentUser, editKeywordsForm]);
+
+  // Handler for admin saving keywords
+  const onEditKeywordsSubmit = async (data: EditKeywordsFormValues) => {
+    if (!selectedUserId || currentUser?.role !== 'admin') return;
+    const userToEdit = allUsers.find(u => u.id === selectedUserId);
+    if (!userToEdit) {
+        toast({ variant: "destructive", title: "Error", description: "Selected user not found." });
+        return;
+    }
+
+    setIsSavingKeywords(true);
+    const keywordsArray = data.keywords ? data.keywords.split(',').map(k => k.trim()).filter(k => k !== "") : [];
+    try {
+      const result = await updateUserKeywords(selectedUserId, keywordsArray);
+      if (result.success) {
+        toast({ title: "Keywords Updated", description: `Keywords for ${userToEdit.name} saved.` });
+        // Update the local 'allUsers' state to reflect changes immediately
+        setAllUsers(prevUsers => prevUsers.map(u => u.id === selectedUserId ? {...u, assignedKeywords: keywordsArray} : u));
+      } else {
+        toast({ variant: "destructive", title: "Update Failed", description: result.error || "Could not update keywords." });
+      }
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred." });
+    } finally {
+      setIsSavingKeywords(false);
+    }
+  };
+
+  // Handler for fetching Reddit posts (for user view)
+  const fetchRedditPostsForUser = useCallback(async (keywords: string[]) => {
+    if (keywords.length === 0) {
       setRedditPosts([]);
       setDisplayedSearchTerm(null);
+      setIsLoadingPosts(false);
       return;
     }
-    setIsLoading(true);
+    const query = keywords.join(' OR ');
+    setIsLoadingPosts(true);
     setDisplayedSearchTerm(query);
     try {
       const { data, error } = await searchReddit({ q: query, limit: 25, sort: 'relevance' });
@@ -83,52 +164,29 @@ export default function RedditAnalyticsPage() {
       } else if (data) {
         setRedditPosts(data);
         if (data.length === 0) {
-          toast({ title: "No Results", description: `No Reddit posts found for "${query}".` });
+          toast({ title: "No Results", description: `No Reddit posts found for your keywords: "${query}".` });
         }
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred during Reddit search." });
       setRedditPosts([]);
     } finally {
-      setIsLoading(false);
+      setIsLoadingPosts(false);
     }
-  }, [toast, currentUser]); // Added currentUser to dependency array for role check in toast
-  
+  }, [toast]);
+
+  // Effect for user view: fetch posts based on their keywords
   useEffect(() => {
-    if (!authLoading && currentUser) {
-      if (currentUser.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-        const userKeywordsQuery = currentUser.assignedKeywords.join(' OR ');
-        setSearchTerm(userKeywordsQuery); // Pre-fill for consistency, though input might be hidden
-        handleSearch(userKeywordsQuery);
+    if (!authLoading && currentUser?.role === 'user') {
+      if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
+        fetchRedditPostsForUser(currentUser.assignedKeywords);
       } else {
-        // For admins, or users with no keywords, clear previous results if any.
-        // This allows admins to start with a clean slate.
-        // Users without keywords will see the search bar and can initiate search.
-        if (currentUser.role === 'admin') {
-            setRedditPosts([]);
-            setDisplayedSearchTerm(null);
-            setSearchTerm(''); // Clear admin search term on load
-        }
+        setIsLoadingPosts(false);
+        setRedditPosts([]);
+        setDisplayedSearchTerm(null);
       }
     }
-  }, [currentUser, authLoading, handleSearch]);
-
-  const onSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    handleSearch(searchTerm);
-  };
-
-  const canUserSearch = currentUser?.role === 'admin' || 
-                        (currentUser?.role === 'user' && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0));
-
-  let pageDescription = "Monitor Reddit posts by keyword.";
-  if (currentUser?.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-    pageDescription = `Showing posts related to your keywords: "${currentUser.assignedKeywords.join(', ')}".`;
-  } else if (currentUser?.role === 'admin') {
-    pageDescription = "Search for Reddit posts by keyword. Results will appear below.";
-  } else if (currentUser?.role === 'user' && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0)) {
-    pageDescription = "You have no assigned keywords. Enter terms below to search Reddit.";
-  }
+  }, [currentUser, authLoading, fetchRedditPostsForUser]);
 
 
   if (authLoading) {
@@ -139,82 +197,143 @@ export default function RedditAnalyticsPage() {
     );
   }
 
-  return (
-    <DataTableShell
-      title="Reddit Keyword Monitoring"
-      description={pageDescription}
-    >
-      {canUserSearch && (
-        <form onSubmit={onSearchSubmit} className="mb-6 flex items-center gap-2">
-          <Input
-            type="search"
-            placeholder="Enter keywords to search Reddit (e.g., Next.js, AI)"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-grow bg-background shadow-sm"
-            aria-label="Search Reddit Posts"
-            disabled={isLoading}
-          />
-          <Button type="submit" disabled={isLoading || !searchTerm.trim()}>
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-            Search
-          </Button>
-        </form>
-      )}
+  if (!currentUser) { // Should be caught by layout, but as a safeguard
+    router.replace('/login');
+    return null;
+  }
 
-      {isLoading && (
-        <div className="flex justify-center items-center py-10">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-muted-foreground">Fetching Reddit posts for "{displayedSearchTerm || searchTerm}"...</p>
-        </div>
-      )}
+  // Admin View: Manage User Keywords
+  if (currentUser.role === 'admin') {
+    const selectedUserDetails = allUsers.find(u => u.id === selectedUserId);
+    return (
+      <DataTableShell
+        title="Manage User Keywords for Reddit"
+        description="Select a user to view and edit their assigned keywords. These keywords may be used for features like personalized Reddit feeds for users."
+      >
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <Label htmlFor="user-select" className="text-sm font-medium shrink-0">Select User:</Label>
+            {isLoadingUsers ? (
+                <div className="flex items-center text-sm text-muted-foreground w-full sm:w-[300px]">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...
+                </div>
+            ) : (
+            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+              <SelectTrigger id="user-select" className="w-full sm:w-[300px] bg-background shadow-sm">
+                <SelectValue placeholder="Select a user..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Select a user...</SelectItem>
+                {allUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} ({u.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            )}
+          </div>
 
-      {!isLoading && displayedSearchTerm && redditPosts.length === 0 && (
-        <div className="text-center py-10">
-          <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-          <p className="text-lg font-semibold">No Reddit Posts Found</p>
-          <p className="text-muted-foreground">
-            No posts matched your search for "{displayedSearchTerm}". Try different keywords.
-          </p>
+          {selectedUserId && selectedUserDetails && (
+            <Form {...editKeywordsForm}>
+              <form onSubmit={editKeywordsForm.handleSubmit(onEditKeywordsSubmit)} className="space-y-4 p-4 border rounded-md shadow-sm bg-card">
+                <h3 className="text-lg font-semibold">
+                  Editing Keywords for: <span className="text-primary">{selectedUserDetails.name}</span>
+                </h3>
+                <FormField
+                  control={editKeywordsForm.control}
+                  name="keywords"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Assigned Keywords (comma-separated)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="e.g., technology, AI, startups"
+                          rows={4}
+                          {...field}
+                          disabled={isSavingKeywords}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={isSavingKeywords || !editKeywordsForm.formState.isDirty}>
+                  {isSavingKeywords ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Keywords for {selectedUserDetails.name.split(' ')[0]}
+                </Button>
+              </form>
+            </Form>
+          )}
+           {!selectedUserId && !isLoadingUsers && (
+            <div className="text-center py-10 text-muted-foreground">
+                <UsersIcon className="mx-auto h-12 w-12 mb-3" />
+                <p>Please select a user from the dropdown to manage their keywords.</p>
+            </div>
+           )}
         </div>
-      )}
-      
-      {/* Initial state for admin or user without keywords before any search */}
-      {!isLoading && !displayedSearchTerm && redditPosts.length === 0 && canUserSearch && (
-         <div className="text-center py-10">
+      </DataTableShell>
+    );
+  }
+
+  // User View: Display Reddit Posts based on their assigned keywords
+  if (currentUser.role === 'user') {
+    let userPageDescription = "Your Reddit feed based on assigned keywords.";
+    if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
+      userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
+    } else if (displayedSearchTerm) {
+      userPageDescription = `Showing posts related to your keywords: "${displayedSearchTerm}".`;
+    }
+
+    return (
+      <DataTableShell
+        title="Your Reddit Keyword Feed"
+        description={userPageDescription}
+      >
+        {isLoadingPosts && (
+          <div className="flex justify-center items-center py-10">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="ml-3 text-muted-foreground">Fetching Reddit posts for your keywords...</p>
+          </div>
+        )}
+
+        {!isLoadingPosts && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
+          <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-            <p className="text-lg font-semibold">
-              {currentUser?.role === 'admin' ? "Ready to Search Reddit" : "Search for Reddit Posts"}
-            </p>
+            <p className="text-lg font-semibold">No Keywords Assigned</p>
             <p className="text-muted-foreground">
-              {currentUser?.role === 'admin' 
-                ? "Enter keywords above to find relevant posts."
-                : "Enter keywords in the search bar above to find relevant posts."
-              }
+              Your Reddit feed cannot be displayed as you have no keywords assigned.
+              <br />
+              Please contact an administrator to assign keywords to your profile.
             </p>
-        </div>
-      )}
+          </div>
+        )}
+        
+        {!isLoadingPosts && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && displayedSearchTerm && (
+          <div className="text-center py-10">
+            <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+            <p className="text-lg font-semibold">No Reddit Posts Found</p>
+            <p className="text-muted-foreground">
+              No posts matched your assigned keywords: "{displayedSearchTerm}".
+            </p>
+          </div>
+        )}
 
-      {/* For users with assigned keywords, if initial load yields no results (but displayedSearchTerm is set) */}
-       {!isLoading && displayedSearchTerm && redditPosts.length === 0 && 
-        currentUser?.role === 'user' && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && (
-        <div className="text-center py-10">
-          <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-          <p className="text-lg font-semibold">No Reddit Posts Found for Your Keywords</p>
-          <p className="text-muted-foreground">
-            No posts matched your assigned keywords: "{displayedSearchTerm}".
-          </p>
-        </div>
-      )}
+        {!isLoadingPosts && redditPosts.length > 0 && (
+          <GenericDataTable<RedditPost>
+            data={redditPosts}
+            columns={redditPostColumns}
+            caption={displayedSearchTerm ? `Showing Reddit posts related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Posts"}
+          />
+        )}
+      </DataTableShell>
+    );
+  }
 
-
-      {!isLoading && redditPosts.length > 0 && (
-        <GenericDataTable<RedditPost>
-          data={redditPosts}
-          columns={columns}
-          caption={displayedSearchTerm ? `Showing Reddit posts related to "${displayedSearchTerm}"` : "Reddit Posts"}
-        />
-      )}
-    </DataTableShell>
+  // Fallback for unexpected scenarios (e.g., if role is neither admin nor user)
+  return (
+    <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
+      <p className="text-muted-foreground">Page content not available for your role.</p>
+    </div>
   );
 }
