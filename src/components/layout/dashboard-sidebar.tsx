@@ -7,14 +7,11 @@ import React from 'react';
 import {
   LayoutDashboard,
   Youtube,
-  // Reddit, // Removed as it doesn't exist in lucide-react
   Twitter,
   Globe,
   Users,
   Settings,
   LogOut,
-  ChevronDown,
-  ChevronRight
 } from 'lucide-react';
 import { AppLogo } from './app-logo';
 import { useAuth } from '@/contexts/auth-context';
@@ -49,7 +46,6 @@ const RedditIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-
 interface NavItem {
   href: string;
   label: string;
@@ -64,7 +60,7 @@ const navItems: NavItem[] = [
   { href: '/dashboard/reddit', label: 'Reddit', icon: RedditIcon },
   { href: '/dashboard/twitter', label: 'Twitter/X', icon: Twitter },
   { href: '/dashboard/mentions', label: 'Mentions', icon: Globe },
-  // { href: '/dashboard/users', label: 'User Management', icon: Users, adminOnly: true },
+  { href: '/dashboard/users', label: 'User Management', icon: Users, adminOnly: true },
   // { href: '/dashboard/settings', label: 'Settings', icon: Settings, adminOnly: true },
 ];
 
