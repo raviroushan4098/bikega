@@ -17,6 +17,22 @@ export const DUMMY_USERS: User[] = [
     profilePictureUrl: 'https://placehold.co/100x100.png',
     assignedKeywords: ['AI', 'innovation'] 
   },
+  {
+    id: '3',
+    email: 'admin123@gmail.com',
+    role: 'admin',
+    name: 'New Admin',
+    profilePictureUrl: 'https://placehold.co/100x100.png',
+    assignedKeywords: ['nextjs', 'tailwindcss', 'typescript', 'ai', 'analytics']
+  },
+  {
+    id: '4',
+    email: 'user123@gmail.com',
+    role: 'user',
+    name: 'New User',
+    profilePictureUrl: 'https://placehold.co/100x100.png',
+    assignedKeywords: ['tailwindcss', 'analytics']
+  }
 ];
 
 export const login = async (email: string, passwordInput: string): Promise<User | null> => {
@@ -35,3 +51,4 @@ export const logout = async (): Promise<void> => {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 300));
 };
+
