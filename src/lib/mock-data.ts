@@ -1,9 +1,16 @@
+
 import type { YoutubeVideo, RedditPost, Tweet, Mention, User } from '@/types';
 
 const now = new Date();
 const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
 const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+// Assuming 'user123@gmail.com' might have an ID like 'user123-firestore-id' after seeding.
+// Replace with actual Firestore IDs if known, or keep as illustrative placeholders.
+const USER123_ID = 'user123-firestore-id'; // Example ID for user123@gmail.com
+const ADMIN123_ID = 'admin123-firestore-id'; // Example ID for admin123@gmail.com
+
 
 export const mockYoutubeVideos: YoutubeVideo[] = [
   {
@@ -15,7 +22,8 @@ export const mockYoutubeVideos: YoutubeVideo[] = [
     commentCount: 850,
     shareCount: 1200,
     channelTitle: 'Tech Explained',
-    url: 'https://www.youtube.com/watch?v=example1'
+    url: 'https://www.youtube.com/watch?v=example1',
+    assignedToUserId: ADMIN123_ID, // Assigned to admin
   },
   {
     id: 'yt2',
@@ -26,7 +34,8 @@ export const mockYoutubeVideos: YoutubeVideo[] = [
     commentCount: 1500,
     shareCount: 3000,
     channelTitle: 'Future AI',
-    url: 'https://www.youtube.com/watch?v=example2'
+    url: 'https://www.youtube.com/watch?v=example2',
+    assignedToUserId: USER123_ID, // Assigned to user
   },
   {
     id: 'yt3',
@@ -37,7 +46,8 @@ export const mockYoutubeVideos: YoutubeVideo[] = [
     commentCount: 420,
     shareCount: 950,
     channelTitle: 'Dev Tutorials',
-    url: 'https://www.youtube.com/watch?v=example3'
+    url: 'https://www.youtube.com/watch?v=example3',
+    // Not assigned to anyone specific, or could be assigned to admin
   },
   {
     id: 'yt4',
@@ -48,7 +58,8 @@ export const mockYoutubeVideos: YoutubeVideo[] = [
     commentCount: 310,
     shareCount: 600,
     channelTitle: 'React Insights',
-    url: 'https://www.youtube.com/watch?v=example4'
+    url: 'https://www.youtube.com/watch?v=example4',
+    assignedToUserId: USER123_ID, // Assigned to user
   },
 ];
 

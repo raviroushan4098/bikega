@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   email: string;
@@ -16,6 +17,8 @@ export interface YoutubeVideo {
   shareCount: number;
   channelTitle?: string; // Added for context
   url: string;
+  assignedToUserId?: string; // New field for user assignment
+  dataAiHint?: string;
 }
 
 export interface RedditPost {
