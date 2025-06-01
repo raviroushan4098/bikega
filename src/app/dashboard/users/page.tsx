@@ -53,7 +53,6 @@ const columns: ColumnConfig<User>[] = [
     sortable: true,
     render: (item) => <Badge variant={item.role === 'admin' ? 'default' : 'secondary'}>{item.role.charAt(0).toUpperCase() + item.role.slice(1)}</Badge>
   },
-  // Add actions column if needed later e.g. for edit/delete
 ];
 
 export default function UserManagementPage() {
@@ -62,7 +61,7 @@ export default function UserManagementPage() {
   const { toast } = useToast();
 
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPage, setIsLoadingPage] = useState(true); // Renamed to avoid conflict
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -77,14 +76,14 @@ export default function UserManagementPage() {
   });
 
   const fetchUsersList = useCallback(async () => {
-    setIsLoading(true);
+    setIsLoadingPage(true);
     try {
       const fetchedUsers = await getUsers();
       setUsers(fetchedUsers);
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to fetch users." });
     } finally {
-      setIsLoading(false);
+      setIsLoadingPage(false);
     }
   }, [toast]);
 
@@ -102,14 +101,15 @@ export default function UserManagementPage() {
   async function onSubmit(data: UserFormValues) {
     setIsSubmitting(true);
     try {
-      const result = await addUser(data as NewUserDetails); // Cast because password is included
+      // Password is not stored in Firestore in this iteration, but the form collects it.
+      const result = await addUser(data as NewUserDetails); 
       if ('error' in result) {
          toast({ variant: "destructive", title: "Failed to Add User", description: result.error });
       } else if (result) {
         toast({ title: "User Added", description: `${result.name} has been successfully added.` });
         setIsAddUserDialogOpen(false);
         form.reset();
-        await fetchUsersList(); // Refresh the list
+        await fetchUsersList(); 
       } else {
         toast({ variant: "destructive", title: "Failed to Add User", description: "An unknown error occurred." });
       }
@@ -121,7 +121,7 @@ export default function UserManagementPage() {
     }
   }
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoadingPage) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -130,7 +130,6 @@ export default function UserManagementPage() {
   }
   
   if (!currentUser || currentUser.role !== 'admin') {
-     // This case should ideally be handled by the useEffect redirect, but as a fallback:
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <p className="text-muted-foreground">Access Denied. You must be an admin to view this page.</p>
@@ -141,7 +140,7 @@ export default function UserManagementPage() {
   return (
     <DataTableShell
       title="User Management"
-      description="View and manage user accounts."
+      description="View and manage user accounts. User data is saved in your browser's local storage."
     >
       <div className="mb-4 flex justify-end">
         <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>

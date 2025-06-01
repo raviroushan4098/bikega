@@ -1,7 +1,8 @@
+
 "use client";
 
 import type { User } from '@/types';
-import { DUMMY_USERS, login as apiLogin, logout as apiLogout } from '@/lib/auth-dummy';
+import { login as apiLogin, logout as apiLogout, DUMMY_USERS_FOR_SESSION_VALIDATION } from '@/lib/auth-dummy';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -23,16 +24,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (storedUser) {
+    const storedUserJson = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (storedUserJson) {
       try {
-        const parsedUser = JSON.parse(storedUser) as User;
-        // Validate if this user still exists in our dummy list or if schema matches
-        const isValidUser = DUMMY_USERS.some(du => du.id === parsedUser.id && du.email === parsedUser.email);
+        const parsedUser = JSON.parse(storedUserJson) as User;
+        // Validate if this user still exists in our user list (now potentially from localStorage)
+        // and if schema matches.
+        const currentAvailableUsers = DUMMY_USERS_FOR_SESSION_VALIDATION();
+        const isValidUser = currentAvailableUsers.some(du => du.id === parsedUser.id && du.email === parsedUser.email);
         if (isValidUser) {
            setUser(parsedUser);
         } else {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
+          localStorage.removeItem(AUTH_STORAGE_KEY); // User no longer valid
         }
       } catch (error) {
         console.error("Failed to parse stored user:", error);
@@ -48,6 +51,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(loggedInUser);
     if (loggedInUser) {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(loggedInUser));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY); // Clear if login failed
     }
     setLoading(false);
     return loggedInUser;
@@ -58,7 +63,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await apiLogout();
     setUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
-    router.push('/login'); // Redirect to login after logout
+    router.push('/login'); 
     setLoading(false);
   };
   
