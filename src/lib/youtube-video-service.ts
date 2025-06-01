@@ -24,6 +24,7 @@ export async function addYoutubeVideoToFirestore(
   assignedToUserId: string
 ): Promise<YoutubeVideo> {
   try {
+    console.log(`[youtube-video-service] addYoutubeVideoToFirestore called. URL: '${videoUrl}', assignedToUserId: '${assignedToUserId}'`);
     const createdAtTimestamp = Timestamp.now();
     const newVideoData: NewYoutubeVideoData = {
       url: videoUrl,
@@ -34,12 +35,13 @@ export async function addYoutubeVideoToFirestore(
       commentCount: 0,
       shareCount: 0,
       channelTitle: 'N/A', // Placeholder channel
-      assignedToUserId: assignedToUserId,
+      assignedToUserId: assignedToUserId, // This is the ID being stored
       createdAt: createdAtTimestamp,
     };
 
     const docRef = await addDoc(collection(db, 'youtube_videos'), newVideoData);
-    
+    console.log(`[youtube-video-service] Video added to Firestore with doc ID: ${docRef.id}, assignedToUserId: '${assignedToUserId}'`);
+
     return {
       id: docRef.id,
       url: newVideoData.url,
@@ -55,7 +57,7 @@ export async function addYoutubeVideoToFirestore(
     };
 
   } catch (error) {
-    console.error("Error adding YouTube video to Firestore: ", error);
+    console.error("[youtube-video-service] Error adding YouTube video to Firestore: ", error);
     throw new Error("Failed to save video assignment.");
   }
 }
@@ -66,10 +68,10 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
     let q;
 
     if (userIdForFilter && userIdForFilter !== 'all') {
-      console.log(`[getYoutubeVideosFromFirestore] Querying for videos assigned to user ID: '${userIdForFilter}'`);
+      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for videos assigned to user ID: '${userIdForFilter}'`);
       q = query(videosCollectionRef, where('assignedToUserId', '==', userIdForFilter), orderBy('createdAt', 'desc'));
     } else {
-      console.log("[getYoutubeVideosFromFirestore] Querying for ALL videos (no specific user filter).");
+      console.log("[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos (no specific user filter).");
       q = query(videosCollectionRef, orderBy('createdAt', 'desc'));
     }
 
@@ -90,15 +92,17 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
         createdAt: data.createdAt.toDate().toISOString(), // Convert Firestore Timestamp to ISO string
       } as YoutubeVideo; // Ensure it matches the client-side YoutubeVideo type
     });
-    console.log(`[getYoutubeVideosFromFirestore] Found ${videos.length} videos for filter '${userIdForFilter || 'all'}'.`);
+    console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${videos.length} videos for filter '${userIdForFilter || 'all'}'.`);
+    if (videos.length > 0 && userIdForFilter && userIdForFilter !== 'all') {
+        console.log(`[youtube-video-service] First video returned for user '${userIdForFilter}': `, videos[0]);
+    }
     return videos;
   } catch (error) {
-    console.error(`[getYoutubeVideosFromFirestore] Error fetching videos for filter '${userIdForFilter || 'all'}': `, error);
+    console.error(`[youtube-video-service] getYoutubeVideosFromFirestore: Error fetching videos for filter '${userIdForFilter || 'all'}': `, error);
     // Check if the error message suggests creating an index
     if (error instanceof Error && error.message && error.message.includes('composite index')) {
-      console.error("[getYoutubeVideosFromFirestore] Firestore is likely missing a composite index. Please check the Firebase console for a link to create it. The query involves filtering by 'assignedToUserId' and ordering by 'createdAt'.");
+      console.error("[youtube-video-service] Firestore is likely missing a composite index. Please check the Firebase console for a link to create it. The query involves filtering by 'assignedToUserId' and ordering by 'createdAt'.");
     }
     return []; // Return empty array on error
   }
 }
-

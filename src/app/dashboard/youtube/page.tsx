@@ -44,13 +44,13 @@ type AddVideoFormValues = z.infer<typeof addVideoSchema>;
 export default function YouTubeAnalyticsPage() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
-  
+
   const [videos, setVideos] = useState<YoutubeVideo[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState<boolean>(true);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
   const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>('all');
-  
+
   const [isAddVideoDialogOpen, setIsAddVideoDialogOpen] = useState(false);
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false);
 
@@ -75,43 +75,51 @@ export default function YouTubeAnalyticsPage() {
     });
   }, [currentUser, selectedUserIdForFilter, allUsers, videos, isLoadingVideos, isLoadingUsers]);
 
+  useEffect(() => {
+    console.log("[YouTubePage] allUsers state updated for dropdown:", allUsers.map(u => ({id: u.id, name: u.name})));
+  }, [allUsers]);
+
   const columns: ColumnConfig<YoutubeVideo>[] = useMemo(() => [
-    { 
-      key: 'thumbnailUrl', 
-      header: 'Thumbnail', 
+    {
+      key: 'thumbnailUrl',
+      header: 'Thumbnail',
       render: (item) => renderImageCell(item, 'thumbnail'),
       className: "w-[100px]"
     },
     { key: 'title', header: 'Title', sortable: true, className: "min-w-[200px] font-medium" },
     { key: 'channelTitle', header: 'Channel', sortable: true, className: "min-w-[120px]" },
-    { 
-      key: 'assignedToUserId', 
+    {
+      key: 'assignedToUserId',
       header: 'Assigned To',
       render: (item: YoutubeVideo) => {
         if (!item.assignedToUserId) return <Badge variant="outline">Unassigned</Badge>;
         const user = allUsers.find(u => u.id === item.assignedToUserId);
+        // Log if user is not found for a given assignedToUserId, this helps debug mismatches
+        if (item.assignedToUserId && !user) {
+            console.warn(`[YouTubePage] User not found in 'allUsers' for assignedToUserId: '${item.assignedToUserId}' on video ID '${item.id}'. 'allUsers' contains IDs: ${allUsers.map(u=>u.id).join(', ')}`);
+        }
         return user ? <Badge variant="secondary">{user.name}</Badge> : <Badge variant="destructive" className="text-xs">ID: {item.assignedToUserId} (User not found)</Badge>;
       },
       className: "min-w-[150px]"
     },
-    { 
-      key: 'likeCount', 
-      header: 'Likes', 
-      sortable: true, 
+    {
+      key: 'likeCount',
+      header: 'Likes',
+      sortable: true,
       render: (item) => item.likeCount?.toLocaleString() ?? '0',
       className: "text-right w-[100px]"
     },
-    { 
-      key: 'commentCount', 
-      header: 'Comments', 
-      sortable: true,       
+    {
+      key: 'commentCount',
+      header: 'Comments',
+      sortable: true,
       render: (item) => item.commentCount?.toLocaleString() ?? '0',
       className: "text-right w-[120px]"
     },
-    { 
-      key: 'shareCount', 
-      header: 'Shares', 
-      sortable: true, 
+    {
+      key: 'shareCount',
+      header: 'Shares',
+      sortable: true,
       render: (item) => item.shareCount?.toLocaleString() ?? '0',
       className: "text-right w-[100px]"
     },
@@ -127,15 +135,16 @@ export default function YouTubeAnalyticsPage() {
 
   const fetchVideos = useCallback(async () => {
     setIsLoadingVideos(true);
-    console.log(`[YouTubePage] fetchVideos called. Admin: ${currentUser?.role === 'admin'}, SelectedFilter: ${selectedUserIdForFilter}, CurrentUser ID: ${currentUser?.id}`);
-    try {
-      const filterId = currentUser?.role === 'admin' && selectedUserIdForFilter !== 'all' 
-                       ? selectedUserIdForFilter 
+    console.log(`[YouTubePage] fetchVideos called. Admin: ${currentUser?.role === 'admin'}, SelectedFilter (from state): '${selectedUserIdForFilter}', CurrentUser ID (if user role): '${currentUser?.id}'`);
+
+    const filterId = currentUser?.role === 'admin' && selectedUserIdForFilter !== 'all'
+                       ? selectedUserIdForFilter
                        : currentUser?.role === 'user' ? currentUser.id : undefined;
-      
-      console.log(`[YouTubePage] Determined filterId for Firestore query: '${filterId === undefined ? "ALL_VIDEOS_OR_UNAUTHENTICATED" : filterId}'.`);
+
+    console.log(`[YouTubePage] Determined filterId for Firestore query: '${filterId === undefined ? "ALL_VIDEOS_OR_UNAUTHENTICATED" : filterId}'.`);
+    try {
       const fetchedVideos = await getYoutubeVideosFromFirestore(filterId);
-      
+
       console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos from Firestore using filterId '${filterId === undefined ? "ALL_VIDEOS_OR_UNAUTHENTICATED" : filterId}'.`);
       if (fetchedVideos.length > 0 && (filterId === undefined || filterId === 'all')) {
         console.log("[YouTubePage] Sample of first fetched video (when fetching all):", fetchedVideos[0]);
@@ -166,7 +175,8 @@ export default function YouTubeAnalyticsPage() {
       setIsLoadingUsers(true);
       getUsers()
         .then(users => {
-          console.log("[YouTubePage] Fetched users for admin dropdown:", users.map(u => ({id: u.id, name: u.name, email: u.email})));
+          // Log already exists in getUsers() in user-service.ts
+          // console.log("[YouTubePage] Fetched users for admin dropdown:", users.map(u => ({id: u.id, name: u.name, email: u.email})));
           setAllUsers(users);
         })
         .catch(error => {
@@ -179,7 +189,7 @@ export default function YouTubeAnalyticsPage() {
 
   async function onSubmitAddVideo(data: AddVideoFormValues) {
     setIsSubmittingVideo(true);
-    console.log("[YouTubePage] onSubmitAddVideo called with data:", data);
+    console.log("[YouTubePage] onSubmitAddVideo: Attempting to assign video to user ID:", data.assignedToUserId, "Video URL:", data.url);
     try {
       await addYoutubeVideoToFirestore(data.url, data.assignedToUserId);
       toast({
@@ -188,7 +198,7 @@ export default function YouTubeAnalyticsPage() {
       });
       form.reset();
       setIsAddVideoDialogOpen(false);
-      fetchVideos(); 
+      fetchVideos();
     } catch (error) {
       toast({
         variant: "destructive",
@@ -202,18 +212,20 @@ export default function YouTubeAnalyticsPage() {
   }
 
   const displayedVideos = useMemo(() => {
+    // Log videos before returning them to GenericDataTable
+    console.log("[YouTubePage] displayedVideos (data passed to table):", videos.map(v => ({id: v.id, title: v.title, assignedToUserId: v.assignedToUserId})));
     return videos;
   }, [videos]);
 
 
-  if (!currentUser && isLoadingVideos) { 
+  if (!currentUser && isLoadingVideos) {
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
-  
+
   if (currentUser?.role === 'admin' && isLoadingUsers && allUsers.length === 0 && !isAddVideoDialogOpen) {
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -238,7 +250,14 @@ export default function YouTubeAnalyticsPage() {
                 <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...
               </div>
             ) : (
-              <Select value={selectedUserIdForFilter} onValueChange={setSelectedUserIdForFilter}>
+              <Select
+                value={selectedUserIdForFilter}
+                onValueChange={(value) => {
+                    console.log("[YouTubePage] User selected from dropdown. New selectedUserIdForFilter:", value);
+                    console.log("[YouTubePage] Current allUsers for selection (ID, Name):", allUsers.map(u => ({id: u.id, name: u.name})));
+                    setSelectedUserIdForFilter(value);
+                }}
+              >
                 <SelectTrigger id="user-select-filter" className="w-full sm:w-[280px] bg-background shadow-sm">
                   <SelectValue placeholder="Select a user" />
                 </SelectTrigger>
@@ -333,4 +352,3 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
-

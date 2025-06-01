@@ -16,7 +16,7 @@ export const login = async (email: string, passwordInput: string): Promise<User 
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.warn(`Login Failed: No user found in Firestore with email '${email}'. 
+      console.warn(`Login Failed: No user found in Firestore with email '${email}'.
       Please check:
       1. The email is spelled correctly.
       2. The user exists in your Firestore 'users' collection.
@@ -27,13 +27,13 @@ export const login = async (email: string, passwordInput: string): Promise<User 
     // Assuming email is unique, take the first match
     const userDoc = querySnapshot.docs[0];
     const user = { id: userDoc.id, ...userDoc.data() } as User;
-    
+
     // Dummy password check placeholder - in real app, Firebase Auth handles this.
-    console.log(`Login Succeeded: User '${email}' found in Firestore.`);
+    console.log(`Login Succeeded: User '${email}' found in Firestore with ID '${user.id}'.`);
     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
     return user;
   } catch (error) {
-    console.error(`Login Failed: Error querying Firestore for email '${email}'. 
+    console.error(`Login Failed: Error querying Firestore for email '${email}'.
       This could be due to:
       1. Firestore security rules (e.g., the 'users' collection might not be readable by unauthenticated users).
       2. Network issues.
@@ -77,9 +77,9 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
         : [],
       // createdAt: serverTimestamp(), // Optional: add a timestamp
     };
-    
-    await setDoc(newUserDocRef, newUser);
 
+    await setDoc(newUserDocRef, newUser);
+    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}`);
     return { id: newUserDocRef.id, ...newUser };
 
   } catch (error) {
@@ -95,6 +95,7 @@ export const getUsers = async (): Promise<User[]> => {
   try {
     const querySnapshot = await getDocs(usersCollectionRef);
     const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+    console.log("[user-service] getUsers fetched these users (ID, Name, Email):", users.map(u => ({ id: u.id, name: u.name, email: u.email })));
     return users;
   } catch (error) {
     console.error("Error fetching users from Firestore: ", error);
@@ -110,12 +111,11 @@ export const getUserById = async (userId: string): Promise<User | null> => {
     if (userDocSnap.exists()) {
       return { id: userDocSnap.id, ...userDocSnap.data() } as User;
     } else {
-      console.log("No such user document!");
+      console.log(`[user-service] No such user document with ID: ${userId}`);
       return null;
     }
   } catch (error) {
-    console.error("Error fetching user by ID:", error);
+    console.error(`[user-service] Error fetching user by ID (${userId}):`, error);
     return null;
   }
 };
-
