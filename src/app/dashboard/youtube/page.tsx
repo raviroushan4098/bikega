@@ -62,6 +62,16 @@ export default function YouTubeAnalyticsPage() {
     },
   });
 
+  useEffect(() => {
+    console.log("[YouTubePage] Debug Info Update:");
+    console.log("  currentUser:", currentUser);
+    console.log("  selectedUserIdForFilter:", selectedUserIdForFilter);
+    console.log("  allUsers (for dropdown/display):", allUsers);
+    console.log("  videos (current state):", videos);
+    console.log("  isLoadingVideos:", isLoadingVideos);
+    console.log("  isLoadingUsers:", isLoadingUsers);
+  }, [currentUser, selectedUserIdForFilter, allUsers, videos, isLoadingVideos, isLoadingUsers]);
+
   const columns: ColumnConfig<YoutubeVideo>[] = useMemo(() => [
     { 
       key: 'thumbnailUrl', 
@@ -114,13 +124,21 @@ export default function YouTubeAnalyticsPage() {
 
   const fetchVideos = useCallback(async () => {
     setIsLoadingVideos(true);
+    console.log(`[YouTubePage] fetchVideos called. Admin: ${currentUser?.role === 'admin'}, SelectedFilter: ${selectedUserIdForFilter}, CurrentUser ID: ${currentUser?.id}`);
     try {
       const filterId = currentUser?.role === 'admin' && selectedUserIdForFilter !== 'all' 
                        ? selectedUserIdForFilter 
                        : currentUser?.role === 'user' ? currentUser.id : undefined;
+      
+      console.log(`[YouTubePage] Determined filterId for Firestore query: ${filterId}`);
       const fetchedVideos = await getYoutubeVideosFromFirestore(filterId);
+      console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos from Firestore with filterId '${filterId}'.`);
+      if (fetchedVideos.length > 0) {
+        console.log("[YouTubePage] Fetched video data sample (first video):", fetchedVideos[0]);
+      }
       setVideos(fetchedVideos);
     } catch (error) {
+      console.error("[YouTubePage] Error in fetchVideos:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to fetch videos from Firestore." });
     } finally {
       setIsLoadingVideos(false);
@@ -135,9 +153,12 @@ export default function YouTubeAnalyticsPage() {
     if (currentUser?.role === 'admin') {
       setIsLoadingUsers(true);
       getUsers()
-        .then(setAllUsers)
+        .then(users => {
+          console.log("[YouTubePage] Fetched users for admin dropdown:", users);
+          setAllUsers(users);
+        })
         .catch(error => {
-          console.error("Failed to fetch users for admin dropdown:", error)
+          console.error("[YouTubePage] Failed to fetch users for admin dropdown:", error)
           toast({ variant: "destructive", title: "Error", description: "Failed to fetch users list." });
         })
         .finally(() => setIsLoadingUsers(false));
@@ -146,6 +167,7 @@ export default function YouTubeAnalyticsPage() {
 
   async function onSubmitAddVideo(data: AddVideoFormValues) {
     setIsSubmittingVideo(true);
+    console.log("[YouTubePage] onSubmitAddVideo called with data:", data);
     try {
       await addYoutubeVideoToFirestore(data.url, data.assignedToUserId);
       toast({
@@ -154,14 +176,14 @@ export default function YouTubeAnalyticsPage() {
       });
       form.reset();
       setIsAddVideoDialogOpen(false);
-      fetchVideos(); // Refresh video list
+      fetchVideos(); 
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error Assigning Video",
         description: (error as Error).message || "Could not assign the video. Please try again.",
       });
-      console.error("Error assigning video:", error);
+      console.error("[YouTubePage] Error assigning video:", error);
     } finally {
       setIsSubmittingVideo(false);
     }
@@ -180,7 +202,6 @@ export default function YouTubeAnalyticsPage() {
     );
   }
   
-  // Early return for loading state or non-admin user if necessary user data isn't ready
   if (!currentUser || (currentUser.role === 'admin' && isLoadingUsers && allUsers.length === 0 && !isAddVideoDialogOpen)) {
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -297,3 +318,4 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
+
