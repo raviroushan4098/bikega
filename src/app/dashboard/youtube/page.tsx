@@ -49,8 +49,6 @@ export default function YouTubeAnalyticsPage() {
   const [isLoadingVideos, setIsLoadingVideos] = useState<boolean>(true);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
-  // Default to '' which means no user is selected initially for fetching.
-  // 'all' is an option in dropdown, but service treats 'all' or empty as "select a specific user".
   const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>(''); 
 
   const [isAddVideoDialogOpen, setIsAddVideoDialogOpen] = useState(false);
@@ -60,7 +58,7 @@ export default function YouTubeAnalyticsPage() {
     resolver: zodResolver(addVideoSchema),
     defaultValues: {
       url: "",
-      assignedToUserId: "", // Will be populated by user selection
+      assignedToUserId: "", 
     },
   });
 
@@ -93,7 +91,6 @@ export default function YouTubeAnalyticsPage() {
       key: 'assignedToUserId',
       header: 'Assigned To',
       render: (item: YoutubeVideo) => {
-        // This 'assignedToUserId' comes from the video object, which should be correctly set by getYoutubeVideosFromFirestore
         if (!item.assignedToUserId) return <Badge variant="outline">Error: No User ID</Badge>;
         const user = allUsers.find(u => u.id === item.assignedToUserId);
         if (!user) {
@@ -139,22 +136,17 @@ export default function YouTubeAnalyticsPage() {
     if (!currentUser) {
       console.log("[YouTubePage] currentUser not available, skipping fetchVideos.");
       setIsLoadingVideos(false);
-      setVideos([]); // Clear videos if no user
+      setVideos([]); 
       return;
     }
 
-    // Determine the actual ID to use for filtering.
-    // If admin has selected 'all' or '', no specific user is chosen for filtering yet.
-    // If user role, always use their own ID.
     let filterIdForService: string | undefined = undefined;
     if (currentUser.role === 'admin') {
-      if (selectedUserIdForFilter && selectedUserIdForFilter !== 'all') {
+      if (selectedUserIdForFilter && selectedUserIdForFilter !== 'all' && selectedUserIdForFilter !== '') {
         filterIdForService = selectedUserIdForFilter;
       } else {
-        // Admin selected "All Assigned Videos" or hasn't selected yet.
-        // The service now handles this by returning [] - admin must pick a user.
-        console.log("[YouTubePage] Admin view: 'All Assigned Videos' selected or no user picked. Service will return empty if no specific user is chosen.");
-        setVideos([]); // Clear videos, admin must select a user
+        console.log("[YouTubePage] Admin view: No specific user selected for filter. Clearing videos.");
+        setVideos([]); 
         setIsLoadingVideos(false);
         return;
       }
@@ -189,14 +181,14 @@ export default function YouTubeAnalyticsPage() {
   }, [currentUser, selectedUserIdForFilter, toast]);
 
   useEffect(() => {
-    // Fetch videos if a user is logged in AND (either they are a 'user' OR they are an 'admin' AND have made a selection)
     if (currentUser) {
-        if (currentUser.role === 'user' || (currentUser.role === 'admin' && selectedUserIdForFilter && selectedUserIdForFilter !== 'all')) {
+        if (currentUser.role === 'user') { // User: always fetch their videos
             fetchVideos();
-        } else if (currentUser.role === 'admin' && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all')) {
-            // Admin hasn't selected a specific user, clear videos and don't fetch.
+        } else if (currentUser.role === 'admin' && selectedUserIdForFilter && selectedUserIdForFilter !== 'all' && selectedUserIdForFilter !== '') { // Admin: fetch if a specific user is selected
+            fetchVideos();
+        } else if (currentUser.role === 'admin' && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all' || selectedUserIdForFilter === '')) {
             setVideos([]);
-            setIsLoadingVideos(false); // Ensure loading stops
+            setIsLoadingVideos(false); 
             console.log("[YouTubePage] Admin view: No specific user selected for filter. Videos cleared. Select a user to view their assignments.");
         }
     } else {
@@ -220,10 +212,7 @@ export default function YouTubeAnalyticsPage() {
         })
         .finally(() => setIsLoadingUsers(false));
     } else if (currentUser?.role === 'user' && currentUser.id && currentUser.name) {
-      // For a 'user' role, 'allUsers' list can just be themselves for display purposes if needed
-      // For the dropdown, it's not shown to 'user' role.
-      // For "Assigned To" column, we need the user's own info if they only see their videos.
-      setAllUsers([{ ...currentUser }]); // Make themselves available in allUsers if table needs it
+      setAllUsers([{ ...currentUser }]); 
     }
   }, [currentUser, toast]);
 
@@ -243,15 +232,12 @@ export default function YouTubeAnalyticsPage() {
       });
       form.reset();
       setIsAddVideoDialogOpen(false);
-      // Re-fetch videos for the currently selected user, or if it was the user videos were assigned to
+
+      // Refresh videos if the current view matches the user to whom the video was assigned
       if (currentUser?.role === 'admin' && selectedUserIdForFilter === data.assignedToUserId) {
         fetchVideos();
       } else if (currentUser?.role === 'user' && currentUser.id === data.assignedToUserId) {
         fetchVideos();
-      } else if (currentUser?.role === 'admin' && selectedUserIdForFilter !== 'all' && selectedUserIdForFilter !== '') {
-        // If admin has a different user selected, still refresh for that user.
-        // Or simply trigger a general refetch if the current filter matches the assigned user
-        if(selectedUserIdForFilter === data.assignedToUserId) fetchVideos();
       }
       
     } catch (error) {
@@ -272,7 +258,7 @@ export default function YouTubeAnalyticsPage() {
   }, [videos]);
 
 
-  if (!currentUser && (isLoadingUsers || isLoadingVideos)) { // Adjusted loading check
+  if (!currentUser && (isLoadingUsers || isLoadingVideos)) { 
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -280,7 +266,6 @@ export default function YouTubeAnalyticsPage() {
     );
   }
 
-  // Specific loading state for admin waiting for user list for dropdowns
   if (currentUser?.role === 'admin' && isLoadingUsers && allUsers.length === 0 && !isAddVideoDialogOpen) {
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -294,12 +279,16 @@ export default function YouTubeAnalyticsPage() {
   return (
     <DataTableShell
       title="YouTube Analytics (Firestore)"
-      description="Track performance of YouTube videos. Admins can assign videos to users, saved in Firestore using user-specific subcollections."
+      description={
+        currentUser?.role === 'admin' 
+        ? "Assign videos to users. Select a user from the dropdown to view their specific video list."
+        : "Track performance of YouTube videos assigned to you."
+      }
     >
       {currentUser?.role === 'admin' && (
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Label htmlFor="user-select-filter" className="text-sm font-medium shrink-0">View videos assigned to:</Label>
+            <Label htmlFor="user-select-filter" className="text-sm font-medium shrink-0">View videos for:</Label>
             {isLoadingUsers && allUsers.length === 0 ? (
               <div className="flex items-center text-sm text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...
@@ -309,17 +298,17 @@ export default function YouTubeAnalyticsPage() {
                 value={selectedUserIdForFilter}
                 onValueChange={(value) => {
                     console.log("[YouTubePage] Admin selected user from filter dropdown. New selectedUserIdForFilter:", value);
-                    setSelectedUserIdForFilter(value);
-                    if (!value || value === 'all') { // If 'all' or empty is selected, clear videos
+                    setSelectedUserIdForFilter(value === 'all' ? '' : value); // Treat 'all' as empty selection
+                    if (value === 'all' || value === '') { 
                         setVideos([]);
                     }
                 }}
               >
-                <SelectTrigger id="user-select-filter" className="w-full sm:w-[280px] bg-background shadow-sm">
-                  <SelectValue placeholder="Select a user to view videos" />
+                <SelectTrigger id="user-select-filter" className="w-full sm:w-[320px] bg-background shadow-sm">
+                  <SelectValue placeholder="Select a user to view their assigned videos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Select a User...</SelectItem> {/* Changed "All Assigned Videos" as it's not functional now */}
+                  <SelectItem value="all">-- Select a User --</SelectItem> 
                   {allUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name} ({u.email})
@@ -371,7 +360,15 @@ export default function YouTubeAnalyticsPage() {
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={(isLoadingUsers && allUsers.length === 0) ? "Loading users..." : "Select a user"} />
+                              <SelectValue 
+                                placeholder={
+                                  isLoadingUsers && allUsers.length === 0 
+                                  ? "Loading users..." 
+                                  : allUsers.length === 0 
+                                    ? "No users available"
+                                    : "Select a user to assign"
+                                } 
+                              />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -392,7 +389,14 @@ export default function YouTubeAnalyticsPage() {
                     <Button type="button" variant="outline" onClick={() => setIsAddVideoDialogOpen(false)} disabled={isSubmittingVideo}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={isSubmittingVideo || (isLoadingUsers && allUsers.length === 0 && !form.getValues("assignedToUserId")) || isSubmittingVideo || !form.formState.isValid}>
+                    <Button 
+                      type="submit" 
+                      disabled={
+                        isSubmittingVideo || 
+                        ((isLoadingUsers && allUsers.length === 0) && !form.getValues("assignedToUserId")) || 
+                        !form.formState.isValid
+                      }
+                    >
                       {isSubmittingVideo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Save Video Assignment
                     </Button>
@@ -409,12 +413,17 @@ export default function YouTubeAnalyticsPage() {
           data={displayedVideos}
           columns={columns}
           caption={
-            currentUser?.role === 'admin' && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all') 
+            currentUser?.role === 'admin' && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all' || selectedUserIdForFilter === '') 
             ? "Please select a user from the dropdown to view their assigned videos."
-            : "YouTube Video Performance Data (from Firestore)"
+            : (currentUser?.role === 'user' && videos.length === 0)
+              ? "No YouTube videos have been assigned to you yet."
+              : (currentUser?.role === 'admin' && selectedUserIdForFilter && videos.length === 0)
+                ? `No YouTube videos found assigned to the selected user.`
+                : "YouTube Video Performance Data (from Firestore)"
           }
         />
       )}
     </DataTableShell>
   );
 }
+
