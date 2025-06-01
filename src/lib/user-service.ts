@@ -1,15 +1,12 @@
 
-import type { User } from '@/types';
+import type { User, NewUserDetails as NewUserDetailsType } from '@/types'; // Renamed import to avoid conflict
 import { db } from './firebase';
-import { collection, query, where, getDocs, addDoc, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, setDoc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 // Collection reference
 const usersCollectionRef = collection(db, 'users');
 
 export const login = async (email: string, passwordInput: string): Promise<User | null> => {
-  // Firestore doesn't handle password verification directly without Firebase Auth.
-  // This login remains simplified: find user by email.
-  // In a real app, use Firebase Authentication.
   try {
     console.log(`Login attempt for email: ${email}`);
     const q = query(usersCollectionRef, where('email', '==', email));
@@ -24,62 +21,54 @@ export const login = async (email: string, passwordInput: string): Promise<User 
       return null;
     }
 
-    // Assuming email is unique, take the first match
     const userDoc = querySnapshot.docs[0];
     const user = { id: userDoc.id, ...userDoc.data() } as User;
 
-    // Dummy password check placeholder - in real app, Firebase Auth handles this.
     console.log(`Login Succeeded: User '${email}' found in Firestore with ID '${user.id}'.`);
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 500));
     return user;
   } catch (error) {
-    console.error(`Login Failed: Error querying Firestore for email '${email}'.
-      This could be due to:
-      1. Firestore security rules (e.g., the 'users' collection might not be readable by unauthenticated users).
-      2. Network issues.
-      3. Firebase SDK initialization problems.
-      Error Details:`, error);
+    console.error(`Login Failed: Error querying Firestore for email '${email}'. Error Details:`, error);
     return null;
   }
 };
 
 export const logout = async (): Promise<void> => {
-  // For Firebase Auth, you would call signOut(auth)
-  // For this Firestore-only data setup, no server-side logout action is needed beyond client-side state clearing.
   await new Promise(resolve => setTimeout(resolve, 300));
 };
 
-export interface NewUserDetails {
-  name: string;
-  email: string;
-  password?: string; // Password handling is dummy in this Firestore-only setup
-  role: 'admin' | 'user';
-}
+// Use the renamed import for NewUserDetails type
+export interface NewUserDetails extends NewUserDetailsType {}
 
 export const addUser = async (userData: NewUserDetails): Promise<User | { error: string }> => {
   try {
-    // Check if email already exists
     const q = query(usersCollectionRef, where('email', '==', userData.email));
     const emailCheckSnapshot = await getDocs(q);
     if (!emailCheckSnapshot.empty) {
       return { error: "Email already exists." };
     }
 
-    const newUserDocRef = doc(usersCollectionRef); // Auto-generate ID
+    const newUserDocRef = doc(usersCollectionRef);
+
+    let keywordsArray: string[] = [];
+    if (userData.assignedKeywords && userData.assignedKeywords.trim() !== "") {
+      keywordsArray = userData.assignedKeywords.split(',').map(k => k.trim()).filter(k => k !== "");
+    } else {
+      keywordsArray = userData.role === 'admin'
+        ? ['technology', 'AI', 'startup', 'innovation', 'finance']
+        : [];
+    }
 
     const newUser: Omit<User, 'id'> = {
       email: userData.email,
       name: userData.name,
       role: userData.role,
       profilePictureUrl: `https://placehold.co/100x100.png?text=${userData.name.substring(0,2)}`,
-      assignedKeywords: userData.role === 'admin'
-        ? ['technology', 'AI', 'startup', 'innovation', 'finance']
-        : [],
-      // createdAt: serverTimestamp(), // Optional: add a timestamp
+      assignedKeywords: keywordsArray,
     };
 
     await setDoc(newUserDocRef, newUser);
-    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}`);
+    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}`);
     return { id: newUserDocRef.id, ...newUser };
 
   } catch (error) {
@@ -95,7 +84,7 @@ export const getUsers = async (): Promise<User[]> => {
   try {
     const querySnapshot = await getDocs(usersCollectionRef);
     const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    console.log("[user-service] getUsers fetched these users (ID, Name, Email):", users.map(u => ({ id: u.id, name: u.name, email: u.email })));
+    console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords })));
     return users;
   } catch (error) {
     console.error("Error fetching users from Firestore: ", error);
@@ -117,5 +106,22 @@ export const getUserById = async (userId: string): Promise<User | null> => {
   } catch (error) {
     console.error(`[user-service] Error fetching user by ID (${userId}):`, error);
     return null;
+  }
+};
+
+export const updateUserKeywords = async (userId: string, keywords: string[]): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    await updateDoc(userDocRef, {
+      assignedKeywords: keywords
+    });
+    console.log(`[user-service] Successfully updated keywords for user ${userId} to: ${keywords.join(', ')}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`[user-service] Error updating keywords for user ${userId}:`, error);
+    if (error instanceof Error) {
+      return { success: false, error: `Failed to update keywords: ${error.message}` };
+    }
+    return { success: false, error: "An unknown error occurred while updating keywords." };
   }
 };

@@ -80,3 +80,11 @@ export interface NewApiKeyData {
   description?: string;
   addedByUserId: string;
 }
+
+export interface NewUserDetails {
+  name: string;
+  email: string;
+  password?: string; // Password handling is dummy in this Firestore-only setup
+  role: 'admin' | 'user';
+  assignedKeywords?: string; // Comma-separated string
+}
