@@ -1,12 +1,13 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable, renderImageCell } from '@/components/analytics/generic-data-table';
 import { useAuth } from '@/contexts/auth-context';
-import { getFilteredData, mockYoutubeVideos } from '@/lib/mock-data';
 import type { ColumnConfig, YoutubeVideo, User } from '@/types';
 import { getUsers } from '@/lib/user-service';
+import { addYoutubeVideoToFirestore, getYoutubeVideosFromFirestore } from '@/lib/youtube-video-service';
 import {
   Select,
   SelectContent,
@@ -46,21 +47,21 @@ const columns: ColumnConfig<YoutubeVideo>[] = [
     key: 'likeCount', 
     header: 'Likes', 
     sortable: true, 
-    render: (item) => item.likeCount.toLocaleString(),
+    render: (item) => item.likeCount?.toLocaleString() ?? '0',
     className: "text-right w-[100px]"
   },
   { 
     key: 'commentCount', 
     header: 'Comments', 
     sortable: true, 
-    render: (item) => item.commentCount.toLocaleString(),
+    render: (item) => item.commentCount?.toLocaleString() ?? '0',
     className: "text-right w-[120px]"
   },
   { 
     key: 'shareCount', 
     header: 'Shares', 
     sortable: true, 
-    render: (item) => item.shareCount.toLocaleString(),
+    render: (item) => item.shareCount?.toLocaleString() ?? '0',
     className: "text-right w-[100px]"
   },
 ];
@@ -74,14 +75,15 @@ type AddVideoFormValues = z.infer<typeof addVideoSchema>;
 export default function YouTubeAnalyticsPage() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
+  
+  const [videos, setVideos] = useState<YoutubeVideo[]>([]);
+  const [isLoadingVideos, setIsLoadingVideos] = useState<boolean>(true);
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>('all'); // 'all' or a user ID for filtering
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+  const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>('all');
+  
   const [isAddVideoDialogOpen, setIsAddVideoDialogOpen] = useState(false);
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false);
-
-  // Initialize video list state with mock data
-  const [videos, setVideos] = useState<YoutubeVideo[]>(() => getFilteredData(mockYoutubeVideos, currentUser));
 
   const form = useForm<AddVideoFormValues>({
     resolver: zodResolver(addVideoSchema),
@@ -90,75 +92,81 @@ export default function YouTubeAnalyticsPage() {
       assignedToUserId: "",
     },
   });
-  
-  useEffect(() => {
-    // Update videos if currentUser changes (e.g. on login/logout or role change if that was possible)
-    // This re-applies the initial getFilteredData logic
-    setVideos(getFilteredData(mockYoutubeVideos, currentUser));
-  }, [currentUser]);
 
+  const fetchVideos = useCallback(async () => {
+    setIsLoadingVideos(true);
+    try {
+      const filterId = currentUser?.role === 'admin' && selectedUserIdForFilter !== 'all' 
+                       ? selectedUserIdForFilter 
+                       : currentUser?.role === 'user' ? currentUser.id : undefined;
+      const fetchedVideos = await getYoutubeVideosFromFirestore(filterId);
+      setVideos(fetchedVideos);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to fetch videos from Firestore." });
+    } finally {
+      setIsLoadingVideos(false);
+    }
+  }, [currentUser, selectedUserIdForFilter, toast]);
+
+  useEffect(() => {
+    fetchVideos();
+  }, [fetchVideos]);
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
       setIsLoadingUsers(true);
       getUsers()
         .then(setAllUsers)
-        .catch(console.error) // Basic error handling
+        .catch(error => {
+          console.error("Failed to fetch users for admin dropdown:", error)
+          toast({ variant: "destructive", title: "Error", description: "Failed to fetch users list." });
+        })
         .finally(() => setIsLoadingUsers(false));
     }
-  }, [currentUser]);
-
-  // Filter displayed videos based on admin's selection and the current 'videos' state
-  const displayedVideos = useMemo(() => {
-    if (currentUser?.role !== 'admin' || selectedUserIdForFilter === 'all') {
-      return videos; // Show videos based on initial user permissions or all from state
-    }
-    // Admin is viewing a specific user's videos
-    return videos.filter(video => video.assignedToUserId === selectedUserIdForFilter);
-  }, [videos, selectedUserIdForFilter, currentUser]);
+  }, [currentUser, toast]);
 
   async function onSubmitAddVideo(data: AddVideoFormValues) {
     setIsSubmittingVideo(true);
     try {
-      // Simulate adding a video. In a real app, this would interact with a backend.
-      const newVideo: YoutubeVideo = {
-        id: `yt_new_${Date.now()}`,
-        url: data.url,
-        title: `New Video: ${data.url.substring(0, 30)}...`, // Placeholder title
-        thumbnailUrl: 'https://placehold.co/320x180.png',
-        dataAiHint: 'custom video',
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 0,
-        channelTitle: 'N/A',
-        assignedToUserId: data.assignedToUserId,
-      };
-
-      setVideos(prevVideos => [...prevVideos, newVideo]);
-      
+      await addYoutubeVideoToFirestore(data.url, data.assignedToUserId);
       toast({
-        title: "Video Added (Session Only)",
-        description: `Video ${newVideo.url} assigned to user. This change is for the current session only.`,
+        title: "Video Assigned",
+        description: `Video ${data.url} has been assigned and saved.`,
       });
       form.reset();
       setIsAddVideoDialogOpen(false);
-
+      fetchVideos(); // Refresh video list
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Error Adding Video",
-        description: "Could not add the video. Please try again.",
+        title: "Error Assigning Video",
+        description: (error as Error).message || "Could not assign the video. Please try again.",
       });
-      console.error("Error adding video:", error);
+      console.error("Error assigning video:", error);
     } finally {
       setIsSubmittingVideo(false);
     }
   }
 
+  const displayedVideos = useMemo(() => {
+    // The fetchVideos function already handles filtering based on selectedUserIdForFilter and currentUser role.
+    // So, the `videos` state should already be correctly filtered.
+    return videos;
+  }, [videos]);
+
+
+  if (isLoadingVideos && videos.length === 0) { // Show loader only on initial load or if videos list is empty
+     return (
+      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <DataTableShell
-      title="YouTube Analytics"
-      description="Track performance of selected YouTube videos and channels. Admins can assign videos to users."
+      title="YouTube Analytics (Firestore)"
+      description="Track performance of YouTube videos. Admins can assign videos to users, saved in Firestore."
     >
       {currentUser?.role === 'admin' && (
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -172,7 +180,7 @@ export default function YouTubeAnalyticsPage() {
                   <SelectValue placeholder="Select a user" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Assigned Videos (Based on your keywords)</SelectItem>
+                  <SelectItem value="all">All Assigned Videos</SelectItem>
                   {allUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name} ({u.email})
@@ -190,9 +198,9 @@ export default function YouTubeAnalyticsPage() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px]">
               <DialogHeader>
-                <DialogTitle>Add/Assign New YouTube Video</DialogTitle>
+                <DialogTitle>Add & Assign New YouTube Video</DialogTitle>
                 <DialogDescription>
-                  Enter the YouTube video URL and select a user to assign it to.
+                  Enter video URL and assign to a user. Data saved to Firestore.
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -240,7 +248,7 @@ export default function YouTubeAnalyticsPage() {
                     <Button type="button" variant="outline" onClick={() => setIsAddVideoDialogOpen(false)} disabled={isSubmittingVideo}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={isSubmittingVideo || isLoadingUsers}>
+                    <Button type="submit" disabled={isSubmittingVideo || isLoadingUsers || isSubmittingVideo}>
                       {isSubmittingVideo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Save Video Assignment
                     </Button>
@@ -251,11 +259,15 @@ export default function YouTubeAnalyticsPage() {
           </Dialog>
         </div>
       )}
-      <GenericDataTable<YoutubeVideo>
-        data={displayedVideos}
-        columns={columns}
-        caption="YouTube Video Performance Data"
-      />
+       {isLoadingVideos && <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+      {!isLoadingVideos && (
+        <GenericDataTable<YoutubeVideo>
+          data={displayedVideos}
+          columns={columns}
+          caption="YouTube Video Performance Data (from Firestore)"
+        />
+      )}
     </DataTableShell>
   );
 }
+
