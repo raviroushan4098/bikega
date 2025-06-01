@@ -33,38 +33,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-
-const columns: ColumnConfig<YoutubeVideo>[] = [
-  { 
-    key: 'thumbnailUrl', 
-    header: 'Thumbnail', 
-    render: (item) => renderImageCell(item, 'thumbnail'),
-    className: "w-[100px]"
-  },
-  { key: 'title', header: 'Title', sortable: true, className: "min-w-[200px] font-medium" },
-  { key: 'channelTitle', header: 'Channel', sortable: true, className: "min-w-[120px]" },
-  { 
-    key: 'likeCount', 
-    header: 'Likes', 
-    sortable: true, 
-    render: (item) => item.likeCount?.toLocaleString() ?? '0',
-    className: "text-right w-[100px]"
-  },
-  { 
-    key: 'commentCount', 
-    header: 'Comments', 
-    sortable: true, 
-    render: (item) => item.commentCount?.toLocaleString() ?? '0',
-    className: "text-right w-[120px]"
-  },
-  { 
-    key: 'shareCount', 
-    header: 'Shares', 
-    sortable: true, 
-    render: (item) => item.shareCount?.toLocaleString() ?? '0',
-    className: "text-right w-[100px]"
-  },
-];
+import { Badge } from '@/components/ui/badge';
 
 const addVideoSchema = z.object({
   url: z.string().url({ message: "Please enter a valid YouTube URL." }),
@@ -92,6 +61,56 @@ export default function YouTubeAnalyticsPage() {
       assignedToUserId: "",
     },
   });
+
+  const columns: ColumnConfig<YoutubeVideo>[] = useMemo(() => [
+    { 
+      key: 'thumbnailUrl', 
+      header: 'Thumbnail', 
+      render: (item) => renderImageCell(item, 'thumbnail'),
+      className: "w-[100px]"
+    },
+    { key: 'title', header: 'Title', sortable: true, className: "min-w-[200px] font-medium" },
+    { key: 'channelTitle', header: 'Channel', sortable: true, className: "min-w-[120px]" },
+    { 
+      key: 'assignedToUserId', 
+      header: 'Assigned To',
+      render: (item: YoutubeVideo) => {
+        if (!item.assignedToUserId) return <Badge variant="outline">Unassigned</Badge>;
+        const user = allUsers.find(u => u.id === item.assignedToUserId);
+        return user ? <Badge variant="secondary">{user.name}</Badge> : <Badge variant="outline" className="text-xs">{item.assignedToUserId}</Badge>;
+      },
+      className: "min-w-[150px]"
+    },
+    { 
+      key: 'likeCount', 
+      header: 'Likes', 
+      sortable: true, 
+      render: (item) => item.likeCount?.toLocaleString() ?? '0',
+      className: "text-right w-[100px]"
+    },
+    { 
+      key: 'commentCount', 
+      header: 'Comments', 
+      sortable: true, 
+      render: (item) => item.commentCount?.toLocaleString() ?? '0',
+      className: "text-right w-[120px]"
+    },
+    { 
+      key: 'shareCount', 
+      header: 'Shares', 
+      sortable: true, 
+      render: (item) => item.shareCount?.toLocaleString() ?? '0',
+      className: "text-right w-[100px]"
+    },
+    {
+      key: 'createdAt',
+      header: 'Date Added',
+      sortable: true,
+      render: (item) => new Date(item.createdAt).toLocaleDateString(),
+      className: "w-[120px]"
+    }
+  ], [allUsers]);
+
 
   const fetchVideos = useCallback(async () => {
     setIsLoadingVideos(true);
@@ -131,7 +150,7 @@ export default function YouTubeAnalyticsPage() {
       await addYoutubeVideoToFirestore(data.url, data.assignedToUserId);
       toast({
         title: "Video Assigned",
-        description: `Video ${data.url} has been assigned and saved.`,
+        description: `Video from ${data.url} has been assigned and saved.`,
       });
       form.reset();
       setIsAddVideoDialogOpen(false);
@@ -149,19 +168,27 @@ export default function YouTubeAnalyticsPage() {
   }
 
   const displayedVideos = useMemo(() => {
-    // The fetchVideos function already handles filtering based on selectedUserIdForFilter and currentUser role.
-    // So, the `videos` state should already be correctly filtered.
     return videos;
   }, [videos]);
 
 
-  if (isLoadingVideos && videos.length === 0) { // Show loader only on initial load or if videos list is empty
+  if (isLoadingVideos && videos.length === 0 && !currentUser) { 
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
+  
+  // Early return for loading state or non-admin user if necessary user data isn't ready
+  if (!currentUser || (currentUser.role === 'admin' && isLoadingUsers && allUsers.length === 0 && !isAddVideoDialogOpen)) {
+     return (
+      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
 
   return (
     <DataTableShell
@@ -224,7 +251,7 @@ export default function YouTubeAnalyticsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Assign to User</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingVideo || isLoadingUsers}>
+                        <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled={isSubmittingVideo || isLoadingUsers}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder={isLoadingUsers ? "Loading users..." : "Select a user"} />
@@ -270,4 +297,3 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
-
