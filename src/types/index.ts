@@ -19,6 +19,7 @@ export interface YoutubeVideo {
   url: string;
   assignedToUserId?: string; // New field for user assignment
   dataAiHint?: string;
+  createdAt: string; // ISO date string
 }
 
 export interface RedditPost {
@@ -63,3 +64,4 @@ export interface ColumnConfig<T> {
   sortable?: boolean;
   className?: string; // Optional className for th/td
 }
+

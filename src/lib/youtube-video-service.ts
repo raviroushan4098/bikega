@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from './firebase';
-import { collection, addDoc, getDocs, query, where, Timestamp, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, Timestamp, orderBy, doc } from 'firebase/firestore';
 import type { YoutubeVideo } from '@/types';
 
 // Define the structure of the data to be stored in Firestore, omitting the client-side 'id'
@@ -16,7 +16,7 @@ export interface NewYoutubeVideoData {
   shareCount: number;
   channelTitle: string;
   assignedToUserId: string;
-  createdAt: Timestamp;
+  createdAt: Timestamp; // Stored as Firestore Timestamp
 }
 
 export async function addYoutubeVideoToFirestore(
@@ -24,6 +24,7 @@ export async function addYoutubeVideoToFirestore(
   assignedToUserId: string
 ): Promise<YoutubeVideo> {
   try {
+    const createdAtTimestamp = Timestamp.now();
     const newVideoData: NewYoutubeVideoData = {
       url: videoUrl,
       title: `Video: ${videoUrl.substring(0, 40)}...`, // Placeholder title
@@ -34,23 +35,24 @@ export async function addYoutubeVideoToFirestore(
       shareCount: 0,
       channelTitle: 'N/A', // Placeholder channel
       assignedToUserId: assignedToUserId,
-      createdAt: Timestamp.now(),
+      createdAt: createdAtTimestamp,
     };
 
     const docRef = await addDoc(collection(db, 'youtube_videos'), newVideoData);
     
-    // Convert Firestore Timestamp to Date for the client-side type if necessary
-    // For simplicity, we're constructing the return object to match YoutubeVideo,
-    // assuming createdAt will be handled as a string or Date on the client.
-    // Firestore's serverTimestamp() is better for production for createdAt.
-    
     return {
       id: docRef.id,
-      ...newVideoData,
-      // Ensure createdAt is a string or Date as per YoutubeVideo type for client use
-      // For this example, we'll assume the client handles the Timestamp object
-      // or converts it. If YoutubeVideo expects a string, convert newVideoData.createdAt.toDate().toISOString()
-    } as unknown as YoutubeVideo; // Adjust if YoutubeVideo expects Date/string for createdAt
+      url: newVideoData.url,
+      title: newVideoData.title,
+      thumbnailUrl: newVideoData.thumbnailUrl,
+      dataAiHint: newVideoData.dataAiHint,
+      likeCount: newVideoData.likeCount,
+      commentCount: newVideoData.commentCount,
+      shareCount: newVideoData.shareCount,
+      channelTitle: newVideoData.channelTitle,
+      assignedToUserId: newVideoData.assignedToUserId,
+      createdAt: createdAtTimestamp.toDate().toISOString(), // Convert to ISO string for client
+    };
 
   } catch (error) {
     console.error("Error adding YouTube video to Firestore: ", error);
@@ -71,15 +73,21 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
     }
 
     const querySnapshot = await getDocs(q);
-    const videos = querySnapshot.docs.map(doc => {
-      const data = doc.data();
+    const videos = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data() as NewYoutubeVideoData; // Assert type based on Firestore structure
       return {
-        id: doc.id,
-        ...data,
-        // Convert Firestore Timestamp to ISO string or Date object if your YoutubeVideo type expects that
-        // For example, if data.createdAt is a Firestore Timestamp:
-        // createdAt: data.createdAt.toDate().toISOString(), 
-      } as YoutubeVideo;
+        id: docSnap.id,
+        url: data.url,
+        title: data.title,
+        thumbnailUrl: data.thumbnailUrl,
+        dataAiHint: data.dataAiHint,
+        likeCount: data.likeCount,
+        commentCount: data.commentCount,
+        shareCount: data.shareCount,
+        channelTitle: data.channelTitle,
+        assignedToUserId: data.assignedToUserId,
+        createdAt: data.createdAt.toDate().toISOString(), // Convert Firestore Timestamp to ISO string
+      } as YoutubeVideo; // Ensure it matches the client-side YoutubeVideo type
     });
     return videos;
   } catch (error) {
@@ -87,3 +95,4 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
     return []; // Return empty array on error
   }
 }
+
