@@ -17,7 +17,7 @@ export interface YoutubeVideo {
   shareCount: number;
   channelTitle?: string; // Added for context
   url: string;
-  assignedToUserId?: string; // New field for user assignment
+  assignedToUserId?: string;
   dataAiHint?: string;
   createdAt: string; // ISO date string
 }
@@ -65,3 +65,18 @@ export interface ColumnConfig<T> {
   className?: string; // Optional className for th/td
 }
 
+export interface ApiKey {
+  id: string;
+  serviceName: string;
+  keyValue: string; // SECURITY NOTE: Storing raw API keys readable by client is risky for production.
+  description?: string;
+  createdAt: string; // ISO date string
+  addedByUserId: string;
+}
+
+export interface NewApiKeyData {
+  serviceName: string;
+  keyValue: string;
+  description?: string;
+  addedByUserId: string;
+}

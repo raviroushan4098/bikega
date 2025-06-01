@@ -16,6 +16,7 @@ const getPageTitle = (pathname: string): string => {
   if (pathname.startsWith("/dashboard/twitter")) return "Twitter/X Analytics";
   if (pathname.startsWith("/dashboard/mentions")) return "Global Mentions";
   if (pathname.startsWith("/dashboard/users")) return "User Management";
+  if (pathname.startsWith("/dashboard/api-management")) return "API Key Management";
   if (pathname.startsWith("/dashboard/settings")) return "Settings";
   return "Dashboard";
 };

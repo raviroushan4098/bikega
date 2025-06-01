@@ -12,7 +12,7 @@ import {
   Users,
   Settings,
   LogOut,
-  // ShieldCheck, // Icon for Admin Panel removed
+  KeyRound, // Icon for API Management
 } from 'lucide-react';
 import { AppLogo } from './app-logo';
 import { useAuth } from '@/contexts/auth-context';
@@ -35,8 +35,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarMenuSub,
-  // SidebarMenuSubButton, // Not used currently
-  // SidebarMenuSubItem, // Not used currently
   SidebarSeparator
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
@@ -64,8 +62,8 @@ const navItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
-  // { href: '/dashboard/admin', label: 'Admin Panel', icon: ShieldCheck, adminOnly: true }, // Removed
   { href: '/dashboard/users', label: 'User Management', icon: Users, adminOnly: true },
+  { href: '/dashboard/api-management', label: 'API Management', icon: KeyRound, adminOnly: true },
   // { href: '/dashboard/settings', label: 'Settings', icon: Settings, adminOnly: true }, // Can be re-added if needed
 ];
 
@@ -80,8 +78,6 @@ export default function DashboardSidebar() {
       }
       const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
       
-      // const MenuButtonComponent = isSubmenu ? SidebarMenuSubButton : SidebarMenuButton; // Submenus not used currently
-
       return (
         <SidebarMenuItem key={item.href}>
           <Link href={item.href} passHref legacyBehavior>
