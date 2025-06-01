@@ -7,7 +7,7 @@ import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/anal
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyB34-w680xXMyGTduUsi1bri2pB9_ulcUg",
   authDomain: "insight-stream-606ef.firebaseapp.com",
   projectId: "insight-stream-606ef",
@@ -27,11 +27,11 @@ if (typeof window !== 'undefined') {
     if (supported) {
       getAnalytics(app); // Initialize analytics for its side effects
     } else {
-      console.log("Firebase Analytics is not supported in this environment (checked via isSupported()).");
+      // console.log("Firebase Analytics is not supported in this environment (checked via isSupported()).");
     }
   }).catch(err => {
     // Catch errors during the support check or initialization
-    console.error("Error during Firebase Analytics support check or initialization:", err);
+    // console.error("Error during Firebase Analytics support check or initialization:", err);
   });
 }
 
