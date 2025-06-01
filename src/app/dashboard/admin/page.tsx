@@ -50,7 +50,7 @@ export default function AdminDashboardPage() {
   if (authLoading) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center bg-slate-900">
-        <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
@@ -59,7 +59,7 @@ export default function AdminDashboardPage() {
     // This check is mainly for the brief moment before redirection or if redirection fails
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center bg-slate-900">
-        <p className="text-slate-400">Access Denied. Redirecting...</p>
+        <p className="text-muted-foreground">Access Denied. Redirecting...</p>
       </div>
     );
   }
@@ -67,8 +67,8 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-8 p-2 md:p-0"> {/* Adjusted padding for smaller screens */}
       <div>
-        <h1 className="text-3xl font-bold text-white font-headline">Admin Dashboard</h1>
-        <p className="text-slate-400">Overview of all analytics and system metrics.</p>
+        <h1 className="text-3xl font-bold text-foreground font-headline">Admin Dashboard</h1>
+        <p className="text-muted-foreground">Overview of all analytics and system metrics.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -77,7 +77,7 @@ export default function AdminDashboardPage() {
           value={totalUsers}
           change={12}
           changeLabel="vs last month"
-          icon={<Users className="w-6 h-6 text-white" />}
+          icon={<Users className="w-6 h-6 text-primary-foreground" />}
           color="bg-gradient-to-br from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800"
         />
         
@@ -86,7 +86,7 @@ export default function AdminDashboardPage() {
           value={activeKeywords}
           change={-8} // Example of negative change
           changeLabel="vs last week"
-          icon={<Activity className="w-6 h-6 text-white" />}
+          icon={<Activity className="w-6 h-6 text-primary-foreground" />}
           color="bg-gradient-to-br from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800"
         />
         
@@ -95,69 +95,69 @@ export default function AdminDashboardPage() {
           value={youtubeVideosTracked}
           change={15}
           changeLabel="tracked this month"
-          icon={<Youtube className="w-6 h-6 text-white" />}
+          icon={<Youtube className="w-6 h-6 text-primary-foreground" />}
           color="bg-gradient-to-br from-red-500 to-red-700 hover:from-red-600 hover:to-red-800"
         />
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="bg-slate-800/60 border border-slate-700/80 p-1 rounded-lg">
-          <TabsTrigger value="overview" className="px-4 py-2 text-sm font-medium text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white rounded-md">
+        <TabsList className="bg-card border border-border p-1 rounded-lg">
+          <TabsTrigger value="overview" className="px-4 py-2 text-sm font-medium text-muted-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground rounded-md">
             Platform Overview
           </TabsTrigger>
-          <TabsTrigger value="assignments" className="px-4 py-2 text-sm font-medium text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white rounded-md">
+          <TabsTrigger value="assignments" className="px-4 py-2 text-sm font-medium text-muted-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground rounded-md">
             Analytics Assignments
           </TabsTrigger>
-          <TabsTrigger value="settings" className="px-4 py-2 text-sm font-medium text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white rounded-md">
+          <TabsTrigger value="settings" className="px-4 py-2 text-sm font-medium text-muted-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground rounded-md">
             API Settings
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Platform Activity</h2>
+            <div className="bg-card border border-border rounded-xl p-6 shadow-lg">
+              <h2 className="text-xl font-semibold text-foreground mb-4">Platform Activity</h2>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <Youtube className="w-5 h-5 text-red-400" />
-                    <span className="text-slate-300">YouTube Analytics</span>
+                    <Youtube className="w-5 h-5 text-red-500" /> {/* Specific color for YouTube */}
+                    <span className="text-muted-foreground">YouTube Analytics</span>
                   </div>
-                  <span className="text-white font-medium">{platformOverviewData.youtube.count.toLocaleString()} {platformOverviewData.youtube.unit}</span>
+                  <span className="text-foreground font-medium">{platformOverviewData.youtube.count.toLocaleString()} {platformOverviewData.youtube.unit}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <MessageSquare className="w-5 h-5 text-orange-400" /> {/* Assuming Reddit icon, using MessageSquare as placeholder if RedditIcon isn't available here */}
-                    <span className="text-slate-300">Reddit Analytics</span>
+                    <MessageSquare className="w-5 h-5 text-orange-500" /> {/* Specific color for Reddit-like */}
+                    <span className="text-muted-foreground">Reddit Analytics</span>
                   </div>
-                  <span className="text-white font-medium">{platformOverviewData.reddit.count.toLocaleString()} {platformOverviewData.reddit.unit}</span>
+                  <span className="text-foreground font-medium">{platformOverviewData.reddit.count.toLocaleString()} {platformOverviewData.reddit.unit}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <Twitter className="w-5 h-5 text-blue-400" />
-                    <span className="text-slate-300">Twitter Analytics</span>
+                    <Twitter className="w-5 h-5 text-sky-500" /> {/* Specific color for Twitter */}
+                    <span className="text-muted-foreground">Twitter Analytics</span>
                   </div>
-                  <span className="text-white font-medium">{platformOverviewData.twitter.count.toLocaleString()} {platformOverviewData.twitter.unit}</span>
+                  <span className="text-foreground font-medium">{platformOverviewData.twitter.count.toLocaleString()} {platformOverviewData.twitter.unit}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <Globe className="w-5 h-5 text-green-400" />
-                    <span className="text-slate-300">Global Mentions</span>
+                    <Globe className="w-5 h-5 text-green-500" /> {/* Specific color for Globe */}
+                    <span className="text-muted-foreground">Global Mentions</span>
                   </div>
-                  <span className="text-white font-medium">{platformOverviewData.mentions.count.toLocaleString()} {platformOverviewData.mentions.unit}</span>
+                  <span className="text-foreground font-medium">{platformOverviewData.mentions.count.toLocaleString()} {platformOverviewData.mentions.unit}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Recent Activity</h2>
+            <div className="bg-card border border-border rounded-xl p-6 shadow-lg">
+              <h2 className="text-xl font-semibold text-foreground mb-4">Recent Activity</h2>
               <div className="space-y-3 max-h-72 overflow-y-auto">
                 {recentActivity.map(activity => (
                   <div key={activity.id} className="flex items-start space-x-3">
-                    <div className={`w-2.5 h-2.5 bg-${activity.color} rounded-full mt-1.5 shrink-0`}></div>
+                    <div className={`w-2.5 h-2.5 bg-${activity.color} rounded-full mt-1.5 shrink-0`}></div> {/* Dynamic color kept as is */}
                     <div>
-                      <p className="text-slate-300 text-sm">{activity.text}</p>
-                      <p className="text-slate-500 text-xs">{activity.time}</p>
+                      <p className="text-muted-foreground text-sm">{activity.text}</p>
+                      <p className="text-xs text-muted-foreground/70">{activity.time}</p>
                     </div>
                   </div>
                 ))}

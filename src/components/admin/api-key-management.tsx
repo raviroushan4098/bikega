@@ -9,37 +9,37 @@ import { Label } from '@/components/ui/label';
 
 const APIKeyManagement: React.FC = () => {
   return (
-    <Card className="bg-slate-800/50 backdrop-blur-sm border-slate-700/50 text-white">
+    <Card className="bg-card border-border text-foreground shadow-lg">
       <CardHeader>
         <CardTitle>API Key Management</CardTitle>
-        <CardDescription className="text-slate-400">
+        <CardDescription className="text-muted-foreground">
           Configure API keys for external services like YouTube, Twitter, etc.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="youtube-api-key" className="text-slate-300">YouTube Data API Key</Label>
+          <Label htmlFor="youtube-api-key" className="text-muted-foreground">YouTube Data API Key</Label>
           <div className="flex gap-2">
-            <Input id="youtube-api-key" type="password" placeholder="Enter YouTube API Key" className="bg-slate-700 border-slate-600 text-white placeholder-slate-500 focus:ring-blue-500" />
-            <Button variant="outline" className="border-slate-600 hover:bg-slate-700">Save</Button>
+            <Input id="youtube-api-key" type="password" placeholder="Enter YouTube API Key" />
+            <Button variant="outline">Save</Button>
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="twitter-api-key" className="text-slate-300">Twitter/X API Key</Label>
+          <Label htmlFor="twitter-api-key" className="text-muted-foreground">Twitter/X API Key</Label>
            <div className="flex gap-2">
-            <Input id="twitter-api-key" type="password" placeholder="Enter Twitter/X API Key" className="bg-slate-700 border-slate-600 text-white placeholder-slate-500 focus:ring-blue-500" />
-            <Button variant="outline" className="border-slate-600 hover:bg-slate-700">Save</Button>
+            <Input id="twitter-api-key" type="password" placeholder="Enter Twitter/X API Key" />
+            <Button variant="outline">Save</Button>
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="reddit-api-key" className="text-slate-300">Reddit API Credentials</Label>
+          <Label htmlFor="reddit-api-key" className="text-muted-foreground">Reddit API Credentials</Label>
            <div className="flex gap-2">
-            <Input id="reddit-client-id" placeholder="Reddit Client ID" className="bg-slate-700 border-slate-600 text-white placeholder-slate-500 focus:ring-blue-500" />
-            <Input id="reddit-client-secret" type="password" placeholder="Reddit Client Secret" className="bg-slate-700 border-slate-600 text-white placeholder-slate-500 focus:ring-blue-500" />
-            <Button variant="outline" className="border-slate-600 hover:bg-slate-700">Save</Button>
+            <Input id="reddit-client-id" placeholder="Reddit Client ID" />
+            <Input id="reddit-client-secret" type="password" placeholder="Reddit Client Secret" />
+            <Button variant="outline">Save</Button>
           </div>
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground/80">
           Note: API key storage and management should be handled securely on the backend. This is a UI placeholder.
         </p>
       </CardContent>

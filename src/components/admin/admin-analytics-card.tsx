@@ -29,18 +29,18 @@ const AdminAnalyticsCard: React.FC<AdminAnalyticsCardProps> = ({
   const isNegativeChange = hasChange && change < 0;
 
   return (
-    <div className={cn("rounded-xl p-5 shadow-lg text-white", color, className)}>
+    <div className={cn("rounded-xl p-5 shadow-lg text-primary-foreground", color, className)}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-semibold">{title}</h3>
-        <div className="p-2 bg-white/20 rounded-lg">
+        <div className="p-2 bg-white/20 rounded-lg"> {/* Specific styling for icon background on gradient */}
           {icon}
         </div>
       </div>
       <div className="text-4xl font-bold mb-1">{value}</div>
       {hasChange && (
         <div className="flex items-center text-sm opacity-90">
-          {isPositiveChange && <ArrowUpRight className="w-4 h-4 mr-1 text-green-300" />}
-          {isNegativeChange && <ArrowDownRight className="w-4 h-4 mr-1 text-red-300" />}
+          {isPositiveChange && <ArrowUpRight className="w-4 h-4 mr-1 text-green-300" />} {/* Specific color for positive change */}
+          {isNegativeChange && <ArrowDownRight className="w-4 h-4 mr-1 text-red-300" />} {/* Specific color for negative change */}
           <span className={cn(
             isPositiveChange && "text-green-300",
             isNegativeChange && "text-red-300"
