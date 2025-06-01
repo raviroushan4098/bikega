@@ -3,7 +3,10 @@
 
 import { db } from './firebase';
 import { collection, addDoc, getDocs, query, Timestamp, orderBy, doc, writeBatch } from 'firebase/firestore';
-import type { YoutubeVideo, User } from '@/types';
+import type { YoutubeVideo } from '@/types';
+import { getApiKeys } from './api-key-service'; // To fetch the YouTube API key
+
+const YOUTUBE_API_KEY_SERVICE_NAME = "YouTube Data API Key";
 
 // This interface now represents the data stored within a user's 'assigned_links' subcollection
 export interface AssignedLinkData {
@@ -13,10 +16,79 @@ export interface AssignedLinkData {
   dataAiHint?: string;
   likeCount: number;
   commentCount: number;
-  shareCount: number;
+  shareCount: number; // YouTube API might not provide share count directly, might be 0 or estimated
   channelTitle: string;
   createdAt: Timestamp; // Stored as Firestore Timestamp
+  fetchedFromApi: boolean; // To track if details were fetched
 }
+
+function extractYouTubeVideoId(url: string): string | null {
+  let videoId: string | null = null;
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.hostname === 'www.youtube.com' || urlObj.hostname === 'youtube.com') {
+      videoId = urlObj.searchParams.get('v');
+    } else if (urlObj.hostname === 'youtu.be') {
+      videoId = urlObj.pathname.substring(1);
+    }
+  } catch (e) {
+    // Invalid URL, try regex
+  }
+
+  if (!videoId) {
+    const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/ ]{11})/;
+    const match = url.match(regex);
+    if (match && match[1]) {
+      videoId = match[1];
+    }
+  }
+  return videoId;
+}
+
+async function fetchVideoDetailsFromYouTubeAPI(videoId: string): Promise<Partial<AssignedLinkData> | null> {
+  const apiKeys = await getApiKeys();
+  const youtubeApiKeyEntry = apiKeys.find(k => k.serviceName === YOUTUBE_API_KEY_SERVICE_NAME);
+
+  if (!youtubeApiKeyEntry || !youtubeApiKeyEntry.keyValue) {
+    console.warn(`[youtube-video-service] '${YOUTUBE_API_KEY_SERVICE_NAME}' not found or empty in API Management. Cannot fetch video details from API.`);
+    return null;
+  }
+  const apiKey = youtubeApiKeyEntry.keyValue;
+  const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${apiKey}&part=snippet,statistics`;
+
+  try {
+    const response = await fetch(apiUrl);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error(`[youtube-video-service] YouTube API error (${response.status}):`, errorData.error?.message || response.statusText);
+      return null;
+    }
+    const data = await response.json();
+    if (data.items && data.items.length > 0) {
+      const item = data.items[0];
+      const snippet = item.snippet;
+      const statistics = item.statistics;
+      return {
+        title: snippet.title || 'N/A',
+        thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || 'https://placehold.co/320x180.png',
+        channelTitle: snippet.channelTitle || 'N/A',
+        likeCount: parseInt(statistics.likeCount, 10) || 0,
+        commentCount: parseInt(statistics.commentCount, 10) || 0,
+        // Share count is not directly available via the videos endpoint's statistics part in a reliable public way.
+        // It's often restricted or not provided. We'll default to 0.
+        shareCount: 0, 
+        dataAiHint: `youtube video ${snippet.title?.substring(0,20) || ''}`, // Basic hint
+        fetchedFromApi: true,
+      };
+    }
+    console.warn(`[youtube-video-service] Video ID '${videoId}' not found via YouTube API.`);
+    return null;
+  } catch (error) {
+    console.error("[youtube-video-service] Error fetching from YouTube API: ", error);
+    return null;
+  }
+}
+
 
 export async function addYoutubeVideoToFirestore(
   videoUrl: string,
@@ -29,29 +101,37 @@ export async function addYoutubeVideoToFirestore(
       throw new Error("assignedToUserId cannot be empty.");
     }
 
+    const videoId = extractYouTubeVideoId(videoUrl);
+    let videoDetails: Partial<AssignedLinkData> | null = null;
+
+    if (videoId) {
+      videoDetails = await fetchVideoDetailsFromYouTubeAPI(videoId);
+    } else {
+      console.warn(`[youtube-video-service] Could not extract Video ID from URL: ${videoUrl}. Using placeholders.`);
+    }
+    
     const createdAtTimestamp = Timestamp.now();
-    // Data for the document in the 'assigned_links' subcollection
+    
     const newLinkData: AssignedLinkData = {
       url: videoUrl,
-      title: `Video: ${videoUrl.substring(0, 40)}...`, // Placeholder title
-      thumbnailUrl: 'https://placehold.co/320x180.png',
-      dataAiHint: 'custom video placeholder',
-      likeCount: 0,
-      commentCount: 0,
-      shareCount: 0,
-      channelTitle: 'N/A', // Placeholder channel
+      title: videoDetails?.title || `Video: ${videoUrl.substring(0, 40)}...`,
+      thumbnailUrl: videoDetails?.thumbnailUrl || 'https://placehold.co/320x180.png',
+      dataAiHint: videoDetails?.dataAiHint || 'video placeholder',
+      likeCount: videoDetails?.likeCount || 0,
+      commentCount: videoDetails?.commentCount || 0,
+      shareCount: videoDetails?.shareCount || 0,
+      channelTitle: videoDetails?.channelTitle || 'N/A',
       createdAt: createdAtTimestamp,
+      fetchedFromApi: videoDetails?.fetchedFromApi || false,
     };
 
-    // Path to the user's 'assigned_links' subcollection
     const userAssignedLinksRef = collection(db, `youtube_videos/${assignedToUserId}/assigned_links`);
     const docRef = await addDoc(userAssignedLinksRef, newLinkData);
 
-    console.log(`[youtube-video-service] Video added to Firestore at path: youtube_videos/${assignedToUserId}/assigned_links/${docRef.id}`);
+    console.log(`[youtube-video-service] Video added to Firestore at path: youtube_videos/${assignedToUserId}/assigned_links/${docRef.id}. Fetched from API: ${newLinkData.fetchedFromApi}`);
 
-    // Return a YoutubeVideo object consistent with the client-side type
     return {
-      id: docRef.id, // This is the ID of the link document
+      id: docRef.id,
       url: newLinkData.url,
       title: newLinkData.title,
       thumbnailUrl: newLinkData.thumbnailUrl,
@@ -60,8 +140,9 @@ export async function addYoutubeVideoToFirestore(
       commentCount: newLinkData.commentCount,
       shareCount: newLinkData.shareCount,
       channelTitle: newLinkData.channelTitle,
-      assignedToUserId: assignedToUserId, // Add this back for client-side consistency
-      createdAt: createdAtTimestamp.toDate().toISOString(), // Convert to ISO string for client
+      assignedToUserId: assignedToUserId,
+      createdAt: createdAtTimestamp.toDate().toISOString(),
+      // You might want to add 'fetchedFromApi' to YoutubeVideo type if client needs to know
     };
 
   } catch (error) {
@@ -76,9 +157,6 @@ export async function addYoutubeVideoToFirestore(
 export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
   try {
     if (!userIdForFilter || userIdForFilter === 'all') {
-      // For "All Assigned Videos", or if no user is specified, we return an empty array.
-      // Fetching all videos across all user subcollections is complex and not implemented here.
-      // Admin must select a specific user.
       console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID provided or 'all' selected. Returning empty array. Admin should select a user.`);
       return [];
     }
@@ -89,9 +167,9 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
 
     const querySnapshot = await getDocs(q);
     const videos = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as AssignedLinkData; // Data from the link document
+      const data = docSnap.data() as AssignedLinkData; 
       return {
-        id: docSnap.id, // ID of the link document
+        id: docSnap.id, 
         url: data.url,
         title: data.title,
         thumbnailUrl: data.thumbnailUrl,
@@ -100,8 +178,8 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
         commentCount: data.commentCount,
         shareCount: data.shareCount,
         channelTitle: data.channelTitle,
-        assignedToUserId: userIdForFilter, // Add this back for client-side consistency
-        createdAt: data.createdAt.toDate().toISOString(), // Convert Firestore Timestamp to ISO string
+        assignedToUserId: userIdForFilter, 
+        createdAt: data.createdAt.toDate().toISOString(), 
       } as YoutubeVideo;
     });
 
@@ -116,9 +194,10 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
     if (error instanceof Error && error.message && error.message.includes('composite index')) {
       console.error("[youtube-video-service] Firestore is likely missing a composite index for the subcollection query. Path: youtube_videos/{userId}/assigned_links, ordered by 'createdAt'. Please check Firebase console.");
     } else if (error instanceof Error && error.message && (error.message.includes('Fetched document to delete does not exist') || error.message.includes('No document to update'))) {
-        // This might indicate an issue with the path, e.g. userIdForFilter doesn't exist as a document in youtube_videos
         console.warn(`[youtube-video-service] Potential issue with path for user '${userIdForFilter}'. The user document might not exist at 'youtube_videos/${userIdForFilter}'.`);
     }
-    return []; // Return empty array on error
+    return []; 
   }
 }
+
+    
