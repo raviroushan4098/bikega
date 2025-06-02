@@ -286,7 +286,7 @@ export default function YouTubeAnalyticsPage() {
         return "Please select an option from the dropdown (a user or 'Show All Videos').";
       }
       if (selectedUserIdForFilter === 'all') {
-        return videos.length === 0 ? "No YouTube videos found assigned to any user." : "Showing all assigned YouTube videos.";
+        return videos.length === 0 ? "No YouTube videos found assigned to any user." : "Showing all videos assigned across all users.";
       }
       // Specific user selected by admin
       const selectedUserDetails = allUsers.find(u => u.id === selectedUserIdForFilter);
