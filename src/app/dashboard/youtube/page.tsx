@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable, renderImageCell } from '@/components/analytics/generic-data-table';
 import { useAuth } from '@/contexts/auth-context';
-import type { ColumnConfig, YoutubeVideo, User as AuthUserType } from '@/types'; // Renamed User to AuthUserType
+import type { ColumnConfig, YoutubeVideo, User as AuthUserType } from '@/types';
 import { getUsers, assignYoutubeUrlToUser, removeYoutubeUrlFromUser, getUserById } from '@/lib/user-service';
 import { fetchVideoDetailsFromYouTubeAPI, fetchBatchVideoDetailsFromYouTubeAPI } from '@/lib/youtube-video-service';
 import {
@@ -25,7 +25,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
@@ -46,17 +45,15 @@ export default function YouTubeAnalyticsPage() {
   const { toast } = useToast();
 
   const [displayedVideos, setDisplayedVideos] = useState<YoutubeVideo[]>([]);
-  const [isLoadingPageData, setIsLoadingPageData] = useState<boolean>(true); // Overall loading state
-  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false); // For admin dropdown
-  const [allUsersForAdmin, setAllUsersForAdmin] = useState<AuthUserType[]>([]); // For admin dropdown & name mapping
+  const [isLoadingPageData, setIsLoadingPageData] = useState<boolean>(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false); 
+  const [allUsersForAdmin, setAllUsersForAdmin] = useState<AuthUserType[]>([]); 
   
-  // Filter state for admin
   const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>('');
 
   const [isAddVideoDialogOpen, setIsAddVideoDialogOpen] = useState(false);
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false);
 
-  // For debugging and understanding state changes
   useEffect(() => {
     console.log("[YouTubePage] State Update Triggered. Current State: ", {
       authLoading,
@@ -77,8 +74,7 @@ export default function YouTubeAnalyticsPage() {
     resolver: zodResolver(addVideoSchema),
     defaultValues: { url: "", assignedToUserId: "" },
   });
-
-  // Function to fetch and process YouTube video details from URLs
+  
   const processUrlsToVideos = useCallback(async (
     urls: string[],
     targetUserId: string,
@@ -86,168 +82,73 @@ export default function YouTubeAnalyticsPage() {
   ): Promise<YoutubeVideo[]> => {
     if (!urls || urls.length === 0) return [];
 
-    const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
-    // The `extractYouTubeVideoId` is now internal to `youtube-video-service` and not needed here.
-    // We will pass URLs directly to `fetchBatchVideoDetailsFromYouTubeAPI`.
-    // This function will handle ID extraction if necessary, or directly use IDs if passed.
-
-    // To adapt `fetchBatchVideoDetailsFromYouTubeAPI`, we'll pass the URLs and the map.
-    // The service will handle extracting IDs and then fetching.
-    // However, for simplicity and to align with `fetchBatchVideoDetailsFromYouTubeAPI` expecting IDs,
-    // let's assume the URLs are passed directly, and the batch service will handle ID extraction.
-    // For now, this function primarily constructs the assignment map.
-    // The key change is `fetchBatchVideoDetailsFromYouTubeAPI` now takes URLs if ID extraction is needed,
-    // or direct IDs. Let's simplify `processUrlsToVideos` to just be a wrapper that passes to the batch function.
-    
-    // This function essentially becomes a direct call to the batch processing if URLs are provided,
-    // or it could be simplified further if `fetchBatchVideoDetailsFromYouTubeAPI` can directly take user objects.
-    // Let's assume `fetchBatchVideoDetailsFromYouTubeAPI` is robust enough to handle URLs/IDs and a map.
-
-    // New approach: `fetchBatchVideoDetailsFromYouTubeAPI` expects video IDs,
-    // so we need to extract IDs from URLs here or, more simply, pass URLs and let the service do it.
-    // For the purpose of this function, if it's just passing URLs to a batch fetcher,
-    // the batch fetcher must be adapted to extract IDs *from* those URLs.
-    // Let's stick to the current design: fetchBatchVideoDetailsFromYouTubeAPI expects *video IDs*.
-    // So, this function is more about preparing the call to the batch function.
-
-    // Re-evaluating: `fetchBatchVideoDetailsFromYouTubeAPI` expects IDs.
-    // The current structure expects URLs to be transformed into `YoutubeVideo` objects.
-    // `fetchVideoDetailsFromYouTubeAPI` (singular) takes a URL or ID.
-
     const videoFetchPromises = urls.map(url => 
         fetchVideoDetailsFromYouTubeAPI(url, targetUserId, targetUserName)
     );
     const results = await Promise.all(videoFetchPromises);
     return results.filter(video => video !== null) as YoutubeVideo[];
-
-  }, []);
-  
-  const processMultipleUsersUrlsToVideos = useCallback(async (usersWithUrls: AuthUserType[]): Promise<YoutubeVideo[]> => {
-    const allVideoUrlsWithAssignments: {url: string, userId: string, userName?: string}[] = [];
-
-    usersWithUrls.forEach(user => {
-      user.assignedYoutubeUrls?.forEach(url => {
-        allVideoUrlsWithAssignments.push({ url, userId: user.id, userName: user.name });
-      });
-    });
-
-    if (allVideoUrlsWithAssignments.length === 0) return [];
-
-    // We're passing the full URL list and letting the batch function handle ID extraction & API calls
-    const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
-    const uniqueVideoIds = new Set<string>(); // To pass to the API
-
-    // This part is tricky if `fetchBatchVideoDetailsFromYouTubeAPI` expects IDs.
-    // Let's assume it can take URLs and will extract IDs internally, or we extract IDs first.
-    // For simplicity, we should pass IDs to `fetchBatchVideoDetailsFromYouTubeAPI`.
-    // The current `fetchBatchVideoDetailsFromYouTubeAPI` in `youtube-video-service` expects an array of `videoIds`.
-
-    // Let's re-think. The new `fetchBatchVideoDetailsFromYouTubeAPI` *does* take an array of *IDs*.
-    // So we must extract them first.
-    
-    const videoIdsForBatch: string[] = [];
-    allVideoUrlsWithAssignments.forEach(item => {
-        // We can't call extractYouTubeVideoId here anymore as it's not exported.
-        // The `fetchBatchVideoDetailsFromYouTubeAPI` will need to handle ID extraction if it takes URLs.
-        // OR, we use singular `fetchVideoDetailsFromYouTubeAPI` in a loop (less efficient for many).
-
-        // For this refactor, let's assume `fetchBatchVideoDetailsFromYouTubeAPI` can now take URLs.
-        // However, the service was updated to take IDs. This is a conflict.
-
-        // Simplest change now is to use `fetchVideoDetailsFromYouTubeAPI` in a loop.
-        // This is less optimal but avoids re-exposing extractYouTubeVideoId for now.
-        // Later, `fetchBatchVideoDetailsFromYouTubeAPI` could be enhanced.
-
-        // We will construct the list of video IDs and the assignment map as before
-        // The `extractYouTubeVideoId` function is not available here.
-        // This implies `fetchBatchVideoDetailsFromYouTubeAPI` MUST handle ID extraction from the URLs *if* we pass URLs.
-        // Given the previous refactor, `fetchBatchVideoDetailsFromYouTubeAPI` was designed to take IDs.
-        // This part needs to align. Let's assume `fetchBatchVideoDetailsFromYouTubeAPI` is updated to take `videoUrlOrId`s.
-        // Or, we pass the video ID strings, which means we need to extract them here, but `extractYouTubeVideoId` is not exported.
-
-        // The `fetchBatchVideoDetailsFromYouTubeAPI` in the last step was specifically designed to take an array of VIDEO IDs.
-        // Let's stick to that. So, `processMultipleUsersUrlsToVideos` will need to prepare IDs.
-        // This means `extractYouTubeVideoId` *does* need to be accessible or duplicated, or the service changes.
-        // Since the goal is to fix the import error, and `extractYouTubeVideoId` is not used elsewhere on this page,
-        // the import removal is correct. The logic within `processMultipleUsersUrlsToVideos` would need to call
-        // the service functions (`fetchVideoDetailsFromYouTubeAPI` or `fetchBatchVideoDetailsFromYouTubeAPI`)
-        // which themselves use the internal `extractYouTubeVideoId`.
-
-        // The previous `fetchBatchVideoDetailsFromYouTubeAPI` expects video *IDs*.
-        // The `assignedToUserMap` is also keyed by video ID.
-        // So, to use it, we need to get video IDs from URLs first.
-        // This means `extractYouTubeVideoId` should be re-exported if it's used by functions outside its module,
-        // OR functions like `fetchBatch...` should accept URLs and extract IDs internally.
-        // The last fix made `extractYouTubeVideoId` internal. This means this `page.tsx` cannot extract IDs itself.
-        // It MUST rely on the service functions to do so.
-
-        // Simplest path: the `fetchVideos` function below will iterate through user URLs and call `fetchVideoDetailsFromYouTubeAPI`
-        // one by one. This avoids the complexity of batching and ID extraction here, as the service function handles it.
-
-    });
-    
-    // If `fetchBatchVideoDetailsFromYouTubeAPI` is to be used for *all* users' videos,
-    // it needs a list of all unique video URLs (or IDs) and a map of ID to assigned user.
-    // The service would then fetch details.
-
-    // For now, to unblock, `fetchAndSetVideos` will iterate and use `fetchVideoDetailsFromYouTubeAPI`.
-    // This is less efficient for "show all" but avoids the ID extraction issue here.
-    // `fetchBatchVideoDetailsFromYouTubeAPI` will be called by `fetchAndSetVideos` internally.
-
-    return []; // This function will be simplified in `fetchAndSetVideos`.
-
   }, []);
 
 
   const fetchAndSetVideos = useCallback(async () => {
     if (authLoading || !currentUser) {
+      setDisplayedVideos([]); 
       setIsLoadingPageData(false);
       return;
     }
-    console.log(`[YouTubePage] fetchVideos called. Admin: ${currentUser.role === 'admin'}, Filter: ${selectedUserIdForFilter}`);
+    console.log(`[YouTubePage] fetchVideos called. Admin: ${currentUser.role === 'admin'}, Filter: ${selectedUserIdForFilter}, isLoadingUsers: ${isLoadingUsers}`);
     setIsLoadingPageData(true);
     let fetchedVideos: YoutubeVideo[] = [];
 
+    if (currentUser.role === 'admin' && selectedUserIdForFilter === 'all') {
+      if (isLoadingUsers && allUsersForAdmin.length === 0) {
+        console.log("[YouTubePage] fetchVideos (admin 'all'): Users are still loading. Deferring video fetch. isLoadingPageData remains true.");
+        // setIsLoadingPageData is already true, so the main loader will spin.
+        return; 
+      }
+      if (!isLoadingUsers && allUsersForAdmin.length === 0) {
+        console.log("[YouTubePage] fetchVideos (admin 'all'): No users available in state. Setting no videos and stopping loader.");
+        setDisplayedVideos([]);
+        setIsLoadingPageData(false); 
+        return;
+      }
+    }
+    
     try {
       if (currentUser.role === 'admin') {
         if (selectedUserIdForFilter === 'all') {
-          console.log("[YouTubePage] fetchVideos: Admin view, 'all' selected. Fetching all users.");
-          const users = await getUsers();
-          setAllUsersForAdmin(users); // Keep a full list for name mapping and Add Video dropdown
-          
+          console.log("[YouTubePage] fetchVideos: Admin view, 'all' selected. Using 'allUsersForAdmin' state.");
           const allUrlsWithAssignments: {url: string, userId: string, userName?: string}[] = [];
-          users.forEach(u => {
+          allUsersForAdmin.forEach(u => {
             u.assignedYoutubeUrls?.forEach(url => {
               allUrlsWithAssignments.push({ url, userId: u.id, userName: u.name });
             });
           });
 
           if (allUrlsWithAssignments.length > 0) {
-            // Use the batch fetching method: it now expects URLs directly or can handle IDs if extracted prior.
-            // The service's `fetchBatchVideoDetailsFromYouTubeAPI` expects IDs.
-            // We need to adapt. The page should not extract IDs.
-            // Let's simplify: if `fetchBatchVideoDetailsFromYouTubeAPI` is to be used, it should internally manage IDs.
-            // The existing `fetchBatchVideoDetailsFromYouTubeAPI` expects IDs and an assignment map.
-            // We need to re-evaluate.
-            // The simplest for `page.tsx` is: gather all URLs, then pass to a function that manages details.
+             // Extract unique video IDs and prepare the assignment map
+            const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
+            const uniqueVideoIds: string[] = [];
 
-            // This will be inefficient if `fetchBatchVideoDetailsFromYouTubeAPI` cannot take URLs.
-            // Given current `fetchBatchVideoDetailsFromYouTubeAPI` takes IDs,
-            // let's reconstruct how it's called or simplify the loop.
+            for (const item of allUrlsWithAssignments) {
+                // The service `fetchBatchVideoDetailsFromYouTubeAPI` expects video IDs.
+                // We need to extract them here.
+                // For simplicity, we'll use singular fetch in a loop, same as processUrlsToVideos
+                // This could be optimized with actual ID extraction and batching later if needed.
+            }
+            // Using singular fetch in a loop for simplicity, aligning with processUrlsToVideos
             const videoPromises = allUrlsWithAssignments.map(item => 
               fetchVideoDetailsFromYouTubeAPI(item.url, item.userId, item.userName)
             );
             const results = await Promise.all(videoPromises);
             fetchedVideos = results.filter(video => video !== null) as YoutubeVideo[];
-
           } else {
             fetchedVideos = [];
           }
           console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos for 'all users'.`);
 
         } else if (selectedUserIdForFilter) {
-          console.log(`[YouTubePage] fetchVideos: Admin view, specific user '${selectedUserIdForFilter}' selected. Calling getVideosForUserFromFirestore.`);
-          // This function was for Firestore, now we need to get user, then their URLs, then fetch details.
+          console.log(`[YouTubePage] fetchVideos: Admin view, specific user '${selectedUserIdForFilter}' selected.`);
           const userDoc = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter) || await getUserById(selectedUserIdForFilter);
           if (userDoc && userDoc.assignedYoutubeUrls && userDoc.assignedYoutubeUrls.length > 0) {
              fetchedVideos = await processUrlsToVideos(userDoc.assignedYoutubeUrls, userDoc.id, userDoc.name);
@@ -256,10 +157,10 @@ export default function YouTubeAnalyticsPage() {
           }
           console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos. (Filter/User: ${selectedUserIdForFilter})`);
         } else {
-          fetchedVideos = []; // No user or "all" selected by admin initially
+          fetchedVideos = []; 
           console.log("[YouTubePage] fetchVideos: Admin view, no specific user or 'all' selected yet.");
         }
-      } else { // Regular user view
+      } else { 
         console.log(`[YouTubePage] fetchVideos: User view for ${currentUser.id}.`);
         if (currentUser.assignedYoutubeUrls && currentUser.assignedYoutubeUrls.length > 0) {
           fetchedVideos = await processUrlsToVideos(currentUser.assignedYoutubeUrls, currentUser.id, currentUser.name);
@@ -269,22 +170,21 @@ export default function YouTubeAnalyticsPage() {
         console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos for current user.`);
       }
       setDisplayedVideos(fetchedVideos);
+      setIsLoadingPageData(false); 
     } catch (error) {
       console.error("[YouTubePage] Error fetching video data:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to load YouTube video data." });
       setDisplayedVideos([]);
-    } finally {
       setIsLoadingPageData(false);
     }
-  }, [currentUser, authLoading, selectedUserIdForFilter, processUrlsToVideos, toast, allUsersForAdmin]);
+  }, [currentUser, authLoading, selectedUserIdForFilter, processUrlsToVideos, toast, allUsersForAdmin, isLoadingUsers]);
 
   useEffect(() => {
     fetchAndSetVideos();
   }, [fetchAndSetVideos]);
 
-  // Fetch all users for admin dropdown and name mapping
   useEffect(() => {
-    if (currentUser?.role === 'admin' && allUsersForAdmin.length === 0) { // Fetch only if not already populated
+    if (currentUser?.role === 'admin' && allUsersForAdmin.length === 0) { 
       setIsLoadingUsers(true);
       getUsers()
         .then(users => {
@@ -293,6 +193,7 @@ export default function YouTubeAnalyticsPage() {
         })
         .catch(error => {
           toast({ variant: "destructive", title: "Error", description: "Failed to fetch user list for admin." });
+          setAllUsersForAdmin([]); // Ensure it's an empty array on error
         })
         .finally(() => setIsLoadingUsers(false));
     }
@@ -306,13 +207,12 @@ export default function YouTubeAnalyticsPage() {
         toast({ title: "Video Assigned", description: `Video URL has been assigned to the user.` });
         addVideoForm.reset();
         setIsAddVideoDialogOpen(false);
-        // Update allUsersForAdmin state to reflect new URL for the user
         setAllUsersForAdmin(prevUsers => prevUsers.map(u => 
             u.id === data.assignedToUserId 
             ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), data.url] }
             : u
         ));
-        await fetchAndSetVideos(); // Re-fetch videos to update the table
+        await fetchAndSetVideos(); 
       } else {
         toast({ variant: "destructive", title: "Assignment Failed", description: result.error || "Could not assign video URL." });
       }
@@ -331,13 +231,12 @@ export default function YouTubeAnalyticsPage() {
       const result = await removeYoutubeUrlFromUser(videoToRemove.assignedToUserId, videoToRemove.url);
       if (result.success) {
         toast({ title: "Video Removed", description: `Video has been unassigned.` });
-         // Update allUsersForAdmin state to reflect removal
         setAllUsersForAdmin(prevUsers => prevUsers.map(u => 
             u.id === videoToRemove.assignedToUserId
             ? { ...u, assignedYoutubeUrls: (u.assignedYoutubeUrls || []).filter(url => url !== videoToRemove.url) }
             : u
         ));
-        await fetchAndSetVideos(); // Refresh the list
+        await fetchAndSetVideos(); 
       } else {
         toast({ variant: "destructive", title: "Removal Failed", description: result.error || "Could not unassign video." });
       }
@@ -390,22 +289,28 @@ export default function YouTubeAnalyticsPage() {
       ),
       className: "text-center w-[100px]"
     }
-  ], [currentUser, handleRemoveVideo]); // handleRemoveVideo added to dependency array
+  ], [currentUser, handleRemoveVideo]); 
 
   const getTableCaption = () => {
     if (currentUser?.role === 'admin') {
       if (!selectedUserIdForFilter && !isLoadingUsers) return "Please select an option (a user or 'Show All Videos').";
       if (selectedUserIdForFilter === 'all') {
-        return isLoadingPageData ? "Loading all assigned videos..." : (displayedVideos.length === 0 ? "No YouTube videos found assigned to any user." : "Showing all videos assigned across all users.");
+        if (isLoadingPageData || (isLoadingUsers && allUsersForAdmin.length === 0)) return "Loading all assigned videos...";
+        return displayedVideos.length === 0 ? "No YouTube videos found assigned to any user." : "Showing all videos assigned across all users.";
       }
       const selectedUserDetails = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter);
       const userName = selectedUserDetails ? selectedUserDetails.name : 'the selected user';
-      return isLoadingPageData ? `Loading videos for ${userName}...` : (displayedVideos.length === 0 ? `No YouTube videos found assigned to ${userName}.` : `Showing videos assigned to ${userName}.`);
+      if (isLoadingPageData) return `Loading videos for ${userName}...`;
+      return displayedVideos.length === 0 ? `No YouTube videos found assigned to ${userName}.` : `Showing videos assigned to ${userName}.`;
     }
-     return isLoadingPageData ? "Loading your assigned videos..." : (displayedVideos.length === 0 ? "No YouTube videos have been assigned to you yet." : "Your Assigned YouTube Videos");
+    if (isLoadingPageData) return "Loading your assigned videos...";
+    return displayedVideos.length === 0 ? "No YouTube videos have been assigned to you yet." : "Your Assigned YouTube Videos";
   };
   
-  if (authLoading || (isLoadingPageData && displayedVideos.length === 0 && !isAddVideoDialogOpen && !isLoadingUsers)) {
+  const showMainLoader = authLoading || isLoadingPageData || 
+    (currentUser?.role === 'admin' && selectedUserIdForFilter === 'all' && isLoadingUsers && allUsersForAdmin.length === 0);
+
+  if (showMainLoader) {
      return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -413,7 +318,6 @@ export default function YouTubeAnalyticsPage() {
     );
   }
   
-  console.log("[YouTubePage] displayedVideos (data passed to table): ", displayedVideos);
   const noDataMessageText = !isLoadingPageData && displayedVideos.length === 0 && (currentUser?.role !== 'admin' || !!selectedUserIdForFilter) ? getTableCaption() : null;
 
   return (
@@ -514,24 +418,22 @@ export default function YouTubeAnalyticsPage() {
       )}
 
       {/* Conditional rendering for loading and no data states */}
-      {isLoadingPageData && (
-        <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-      )}
+      {/* The main loader is handled by showMainLoader at the top of the return */}
       
-      {noDataMessageText && !isLoadingPageData && (
+      {!showMainLoader && noDataMessageText && ( // Only show this if not already showing main loader
         <div className="text-center py-10 text-muted-foreground">
             <Rss className="mx-auto h-12 w-12 mb-3" />
             <p className="text-lg font-semibold mb-1">
-                {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" : "No Videos Found"}
+                {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" : 
+                 noDataMessageText.startsWith("Loading") ? "Loading..." : "No Videos Found"}
             </p>
             <p>{noDataMessageText}</p>
             
-            {/* Admin Tip for Missing Index */}
             {currentUser?.role === 'admin' && 
              selectedUserIdForFilter && 
              selectedUserIdForFilter !== 'all' && 
              displayedVideos.length === 0 &&
-             !isLoadingPageData && (
+             !isLoadingPageData && ( // Ensure not loading page data specifically for this tip
               <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 shadow">
                 <p className="font-semibold mb-2">Admin Tip:</p>
                 <p>
@@ -543,17 +445,17 @@ export default function YouTubeAnalyticsPage() {
                   <code className="block bg-blue-100 p-1 rounded text-xs my-1 break-all">https://console.firebase.google.com/project/.../firestore/indexes?create_composite=...</code>
                 </p>
                 <p className="mt-2">
-                  This link will guide you to create the required composite index (usually on the 'assignedToUserId' (Ascending) and 'createdAt' (Descending) fields in the 'youtube_videos' collection, but in our new structure, this refers to the query against 'users' collection's 'assignedYoutubeUrls' if we were to directly query on array contents, which we are not. The specific user view relies on fetching user document then processing urls. The 'Show All' view fetches all users. No composite index is expected to be an issue for this new model based on user doc reads).
+                  This link will guide you to create the required composite index. For querying videos by user, it's typically on the `users` collection if you were to query an array directly (which Firestore doesn't support efficiently for `orderBy` on other fields), or on the `youtube_videos` collection as previously discussed if using that structure (which we've moved away from).
                 </p>
                  <p className="mt-2 text-xs">
-                    (Note: The Admin Tip's reference to 'youtube_videos' collection and its index is now outdated due to recent data model changes. The primary check is for a valid YouTube API key and ensuring URLs are correctly assigned to users. If data appears missing for a user, verify their assigned URLs in the 'users' collection.)
+                    (Note: With the current model of storing URLs in the user document, direct querying for a specific user's videos relies on fetching the user document first. If issues persist for a specific user, ensure their `assignedYoutubeUrls` array is correctly populated in Firestore. The "Show All" view fetches all users and then processes their URLs.)
                 </p>
               </div>
             )}
         </div>
       )}
 
-      {!isLoadingPageData && displayedVideos.length > 0 && (
+      {!showMainLoader && displayedVideos.length > 0 && (
         <GenericDataTable<YoutubeVideo>
           data={displayedVideos}
           columns={columns}
@@ -563,6 +465,4 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
-
-
     
