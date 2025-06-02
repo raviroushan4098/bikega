@@ -41,7 +41,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     key: 'sno', 
     header: 'S.No', 
     className: "w-[60px] text-center",
-    render: (item) => <span className="text-sm text-muted-foreground">{item.sno}</span>,
+    render: (item, index) => <span className="text-sm text-muted-foreground">{index + 1}</span>,
   },
   { 
     key: 'timestamp', 
@@ -70,24 +70,48 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     className: "w-[120px]",
   },
   { 
-    key: 'title', 
+    key: 'title', // This key remains 'title', but it now handles both post titles and comment content for the trigger
     header: 'Title / Content', 
     sortable: true, 
     className: "min-w-[250px] max-w-sm",
     render: (item) => {
       if (item.type === 'Post') {
-        return <p className="font-medium line-clamp-3">{item.title}</p>;
+        return (
+          <Popover>
+            <PopoverTrigger asChild>
+              <p className="font-medium line-clamp-3 cursor-pointer hover:text-primary">
+                {item.title || "No Title"}
+              </p>
+            </PopoverTrigger>
+            <PopoverContent className="w-96 text-sm">
+              <div>
+                <p className="font-semibold text-base mb-1">Post Title:</p>
+                <p className="mb-3 text-card-foreground">{item.title || "No Title Provided"}</p>
+                <p className="font-semibold text-base mb-1">Content:</p>
+                <p className="max-h-60 overflow-y-auto text-muted-foreground">
+                  {item.content || "No additional text content."}
+                </p>
+              </div>
+            </PopoverContent>
+          </Popover>
+        );
       } else { // Comment
         return (
           <Popover>
             <PopoverTrigger asChild>
               <p className="line-clamp-2 cursor-pointer hover:text-primary">
-                {item.content || "No content"}
+                {item.content || "No comment body"}
               </p>
             </PopoverTrigger>
-            <PopoverContent className="w-80 text-sm">
-              <p className="font-semibold mb-1">Comment on: <span className="text-muted-foreground">{item.title}</span></p>
-              <p className="max-h-48 overflow-y-auto">{item.content}</p>
+            <PopoverContent className="w-96 text-sm">
+               <div>
+                <p className="font-semibold text-base mb-1">Parent Post Title:</p>
+                <p className="mb-3 text-muted-foreground">{item.title || "No parent title"}</p> {/* For comments, item.title is parent post's title */}
+                <p className="font-semibold text-base mb-1">Comment:</p>
+                <p className="max-h-60 overflow-y-auto text-card-foreground">
+                  {item.content || "No comment body."}
+                </p>
+              </div>
             </PopoverContent>
           </Popover>
         );
@@ -104,7 +128,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
   },
   { 
     key: 'numComments', 
-    header: 'Replies', // Renamed for clarity, as for posts this is "comments", for comments it's its own replies (usually 0 for top-level)
+    header: 'Replies', 
     sortable: true, 
     render: (item) => <span className="text-right block">{item.type === 'Post' ? item.numComments.toLocaleString() : '-'}</span>,
     className: "text-right w-[100px]"
@@ -168,10 +192,11 @@ export default function RedditPage() {
   });
 
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
-  const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
+  const [isLoadingInitialPosts, setIsLoadingInitialPosts] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [nextAfterCursor, setNextAfterCursor] = useState<string | null>(null);
   const [displayedSearchTerm, setDisplayedSearchTerm] = useState<string | null>(null);
+  const [totalFetchedItemsCount, setTotalFetchedItemsCount] = useState<number>(0);
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
@@ -219,90 +244,88 @@ export default function RedditPage() {
     }
   };
 
-  const fetchRedditPostsForUser = useCallback(async (keywords: string[], currentAfterCursor?: string) => {
+  const performRedditSearch = useCallback(async (keywords: string[], currentAfterCursor?: string) => {
     if (keywords.length === 0) {
       setRedditPosts([]);
       setDisplayedSearchTerm(null);
       setNextAfterCursor(null);
-      setIsLoadingPosts(false);
-      setIsLoadingMore(false);
+      setTotalFetchedItemsCount(0);
+      if (currentAfterCursor) setIsLoadingMore(false); else setIsLoadingInitialPosts(false);
       return;
     }
-    const query = keywords.join(' OR ');
 
-    if (currentAfterCursor) {
-      setIsLoadingMore(true);
-    } else {
-      setIsLoadingPosts(true);
-      setRedditPosts([]); 
-    }
+    const query = keywords.join(' OR ');
+    if (currentAfterCursor) setIsLoadingMore(true); else setIsLoadingInitialPosts(true);
     
+    if (!currentAfterCursor) { // Reset for new initial search
+      setRedditPosts([]);
+      setTotalFetchedItemsCount(0);
+    }
     setDisplayedSearchTerm(query);
 
     try {
-      // Requesting 50 items per call (split between posts and comments by the service)
       const { data, error, nextAfter } = await searchReddit({ 
         q: query, 
-        limit: 50, // This limit is for posts, comments are fetched additionally per post
+        limit: 50, 
         sort: 'new',
         after: currentAfterCursor 
       });
 
       if (error) {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
-        if (!currentAfterCursor) setRedditPosts([]);
+        if (!currentAfterCursor) { setRedditPosts([]); setTotalFetchedItemsCount(0); }
       } else if (data) {
-        // Client-side assignment of matchedKeyword and sno
-        const processedData = data.map((item, index) => {
+        const processedData = data.map((item) => {
           let matchedKeyword: string | undefined = undefined;
           if (currentUser?.assignedKeywords) {
             for (const kw of currentUser.assignedKeywords) {
-              const contentToCheck = item.type === 'Post' ? item.title + " " + (item.content || "") : (item.content || "");
+              const contentToCheck = item.type === 'Post' ? (item.title || "") + " " + (item.content || "") : (item.content || "");
               if (contentToCheck.toLowerCase().includes(kw.toLowerCase())) {
                 matchedKeyword = kw;
                 break; 
               }
             }
           }
-          return { 
-            ...item,
-            matchedKeyword,
-            sno: (currentAfterCursor ? redditPosts.length : 0) + index + 1 
-          };
+          return { ...item, matchedKeyword };
         });
-
-        setRedditPosts(prevPosts => currentAfterCursor ? [...prevPosts, ...processedData] : processedData);
+        
+        const newPosts = currentAfterCursor ? [...redditPosts, ...processedData] : processedData;
+        setRedditPosts(newPosts);
+        setTotalFetchedItemsCount(newPosts.length);
         setNextAfterCursor(nextAfter || null);
         
         if (data.length === 0 && !currentAfterCursor) {
-          toast({ title: "No Results", description: `No Reddit posts or comments found for your keywords: "${query}". This might be due to very specific keywords or Reddit's search algorithm.` });
+          toast({ title: "No Results", description: `No Reddit posts or comments found for your keywords: "${query}" on or after June 1, 2025. This might be due to very specific keywords, the date filter, or Reddit's search algorithm.` });
         }
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred during Reddit search." });
-      if (!currentAfterCursor) setRedditPosts([]);
+      if (!currentAfterCursor) { setRedditPosts([]); setTotalFetchedItemsCount(0); }
     } finally {
-      if (currentAfterCursor) {
-        setIsLoadingMore(false);
-      } else {
-        setIsLoadingPosts(false);
-      }
+      if (currentAfterCursor) setIsLoadingMore(false); else setIsLoadingInitialPosts(false);
     }
-  }, [toast, redditPosts.length, currentUser?.assignedKeywords]); 
+  }, [toast, currentUser?.assignedKeywords, redditPosts]);
 
   useEffect(() => {
     if (!authLoading && currentUser?.role === 'user') {
       if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-        fetchRedditPostsForUser(currentUser.assignedKeywords);
+        performRedditSearch(currentUser.assignedKeywords);
       } else {
-        setIsLoadingPosts(false);
+        setIsLoadingInitialPosts(false);
         setRedditPosts([]);
         setDisplayedSearchTerm(null);
         setNextAfterCursor(null);
+        setTotalFetchedItemsCount(0);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, authLoading]); 
+  }, [currentUser, authLoading]); // Removed performRedditSearch from deps to avoid re-triggering on its own re-creation
+
+  const fetchMoreRedditPosts = () => {
+    if (currentUser?.assignedKeywords && nextAfterCursor) {
+      performRedditSearch(currentUser.assignedKeywords, nextAfterCursor);
+    }
+  };
 
 
   if (authLoading) {
@@ -320,10 +343,12 @@ export default function RedditPage() {
 
   if (currentUser.role === 'admin') {
     const selectedUserDetails = allUsers.find(u => u.id === selectedUserId);
+    const descriptionText = "Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed. Recent data from Reddit is fetched, then filtered to show items on or after June 1, 2025.";
+
     return (
       <DataTableShell
         title="Manage User Keywords for Reddit"
-        description="Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed."
+        description={descriptionText}
       >
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -391,11 +416,11 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'user') {
-    let userPageDescription = "Your Reddit feed of posts and comments based on assigned keywords.";
+    let userPageDescription = "Your Reddit feed. Recent data from Reddit is fetched, then filtered to show only items on or after June 1, 2025.";
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
-      userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
+      userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator. Data filter: June 1, 2025 onwards.";
     } else if (displayedSearchTerm) {
-      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched up to ${redditPosts.length} items.`;
+      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched ${totalFetchedItemsCount} items (filtered from June 1, 2025). Sentiments analyzed locally.`;
     }
 
     return (
@@ -403,14 +428,14 @@ export default function RedditPage() {
         title="Your Reddit Keyword Feed"
         description={userPageDescription}
       >
-        {isLoadingPosts && (
+        {isLoadingInitialPosts && (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="ml-3 text-muted-foreground">Fetching latest Reddit posts and comments...</p>
+            <p className="ml-3 text-muted-foreground">Fetching latest Reddit posts and comments (from 2025-06-01 onwards)...</p>
           </div>
         )}
 
-        {!isLoadingPosts && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
+        {!isLoadingInitialPosts && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
           <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Keywords Assigned</p>
@@ -422,29 +447,30 @@ export default function RedditPage() {
           </div>
         )}
         
-        {!isLoadingPosts && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && displayedSearchTerm && (
+        {!isLoadingInitialPosts && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && displayedSearchTerm && (
           <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
-              No items matched your assigned keywords: "{displayedSearchTerm}".
-              This may be due to very specific keywords, or Reddit's search algorithm finding no recent matching content.
+              No items matched your assigned keywords: "{displayedSearchTerm}" on or after June 1, 2025.
+              <br/>
+              This may be due to very specific keywords, the date filter, or Reddit's search algorithm finding no recent matching content.
               Try broadening your keywords with an admin, or check back later.
             </p>
           </div>
         )}
 
-        {!isLoadingPosts && redditPosts.length > 0 && (
+        {!isLoadingInitialPosts && redditPosts.length > 0 && (
           <>
             <GenericDataTable<RedditPost>
               data={redditPosts}
               columns={redditPostColumnsUserView} 
-              caption={displayedSearchTerm ? `Showing Reddit posts and comments related to: "${displayedSearchTerm}". Displaying ${redditPosts.length} items.` : "Your Reddit Feed"}
+              caption={displayedSearchTerm ? `Showing Reddit posts and comments related to: "${displayedSearchTerm}" (filtered from June 1, 2025). Displaying ${redditPosts.length} items.` : "Your Reddit Feed (filtered from June 1, 2025)"}
             />
             {nextAfterCursor && (
               <div className="mt-6 flex justify-center">
                 <Button 
-                  onClick={() => fetchRedditPostsForUser(currentUser.assignedKeywords || [], nextAfterCursor)} 
+                  onClick={fetchMoreRedditPosts} 
                   disabled={isLoadingMore}
                 >
                   {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChevronDown className="mr-2 h-4 w-4" />}
