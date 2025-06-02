@@ -3,7 +3,7 @@
 
 import type { RedditPost, RedditSearchParams as ClientRedditSearchParams } from '@/types';
 import { getApiKeys } from './api-key-service';
-import Sentiment from 'sentiment'; // Changed from named import { Sentiment }
+import Sentiment from 'sentiment';
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -51,7 +51,6 @@ async function getRedditAccessToken(): Promise<string | null> {
     const tokenData = await response.json();
     accessToken = tokenData.access_token;
     tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000;
-    // console.log('[Reddit API Service] Successfully obtained new Reddit access token.');
     return accessToken;
   } catch (error) {
     console.error('[Reddit API Service] Exception fetching access token:', error);
@@ -64,25 +63,25 @@ export type { ClientRedditSearchParams as RedditSearchParams };
 
 interface RedditApiItemData {
   id: string;
-  name: string;
+  name: string; // Fullname (e.g., t3_xxxxxx or t1_xxxxxx)
   author: string;
   created_utc: number;
   score: number;
   permalink: string;
   subreddit_name_prefixed?: string;
-  subreddit?: string;
-  title?: string;
-  link_title?: string; // For comments, this is the parent post's title
-  num_comments?: number;
+  subreddit?: string; // Subreddit name without 'r/' prefix
+  title?: string; // For posts (t3)
+  link_title?: string; // For comments (t1), this is the parent post's title
+  num_comments?: number; // For posts (t3)
   link_flair_text?: string | null;
-  selftext?: string;
-  body?: string;
-  url?: string;
+  selftext?: string; // For posts (t3)
+  body?: string; // For comments (t1)
+  url?: string; // For posts (t3), direct link if not self-post
   over_18?: boolean;
 }
 
 interface RedditApiChild {
-  kind: 't1' | 't3' | 'more';
+  kind: 't1' | 't3' | 'more'; // t1: comment, t3: link (post)
   data: RedditApiItemData;
 }
 
@@ -120,12 +119,14 @@ export async function searchReddit(
     const cleanSubreddit = subreddit.startsWith('r/') ? subreddit.substring(2) : subreddit;
     apiUrl += `r/${cleanSubreddit}/`;
   }
+  // Request both posts (t3) and comments (t1)
   apiUrl += `search.json?q=${encodeURIComponent(q)}&limit=${limit}&sort=${sort}&t=${t}&type=t3,t1&show=all&restrict_sr=${!!subreddit}&include_over_18=on`;
   if (after) {
     apiUrl += `&after=${after}`;
   }
 
-  console.log(`[Reddit API Service] Querying Reddit: ${apiUrl.replace(q, `'${q}'`)}`);
+  console.log(`[Reddit API Service] Querying Reddit for posts AND comments: ${apiUrl.replace(q, `'${q}'`)}`);
+  let firstCommentLogged = false; // Initialize for each call
 
   try {
     const response = await fetch(apiUrl, {
@@ -144,13 +145,14 @@ export async function searchReddit(
     const rawPostCount = rawItems.filter(child => child.kind === 't3').length;
     const rawCommentCount = rawItems.filter(child => child.kind === 't1').length;
     const rawOtherCount = rawItems.length - rawPostCount - rawCommentCount;
+
     console.log(`[Reddit API Service] Received ${rawItems.length} raw items from API. (Posts: ${rawPostCount}, Comments: ${rawCommentCount}, Others: ${rawOtherCount})`);
     if (rawItems.length > 0) {
       console.log(`[Reddit API Service] Item kinds received from API: ${rawItems.map(child => child.kind).join(', ')}`);
     }
 
-
     const mappedItems: RedditPost[] = [];
+    console.log(`[Reddit API Service] Starting to process ${rawItems.length} raw items for mapping...`);
     for (const child of rawItems) {
       const data = child.data;
       if (child.kind === 't3') { // Post
@@ -161,7 +163,7 @@ export async function searchReddit(
         else if (postSentimentResult.score < 0) postSentiment = 'negative';
 
         mappedItems.push({
-          id: data.name, // Fullname (t3_xxxx)
+          id: data.name,
           title: data.title || 'No Title',
           content: data.selftext || '',
           subreddit: data.subreddit_name_prefixed || `r/${data.subreddit}` || 'N/A',
@@ -175,21 +177,25 @@ export async function searchReddit(
           type: 'Post',
         });
       } else if (child.kind === 't1') { // Comment
+        if (!firstCommentLogged) {
+          console.log('[Reddit API Service] Raw data for FIRST comment item being processed:', JSON.stringify(data, null, 2));
+          firstCommentLogged = true;
+        }
         const commentTextToAnalyze = `${data.link_title || ''} ${data.body || ''}`;
         const commentSentimentResult = sentimentAnalyzer.analyze(commentTextToAnalyze);
         let commentSentiment: RedditPost['sentiment'] = 'neutral';
-        if (commentSentimentResult.score > 0) commentSentiment = 'positive';
+        if (commentSentimentResult.score > 0) postSentiment = 'positive';
         else if (commentSentimentResult.score < 0) commentSentiment = 'negative';
         
         mappedItems.push({
-          id: data.name, // Fullname (t1_xxxx)
-          title: data.link_title || 'Comment (No Parent Title)', // Parent post's title
+          id: data.name,
+          title: data.link_title || 'Comment (No Parent Title)',
           content: data.body || '',
           subreddit: data.subreddit_name_prefixed || `r/${data.subreddit}` || 'N/A',
           author: data.author || '[deleted]',
           timestamp: new Date((data.created_utc || 0) * 1000).toISOString(),
           score: data.score || 0,
-          numComments: 0, // Comments don't have numComments in this context (it's for their own replies)
+          numComments: 0, 
           url: `https://www.reddit.com${data.permalink}`,
           flair: undefined,
           sentiment: commentSentiment,
@@ -197,21 +203,25 @@ export async function searchReddit(
         });
       }
     }
+    console.log(`[Reddit API Service] Finished processing raw items. ${mappedItems.length} items mapped before date filtering.`);
     const postsBeforeFilter = mappedItems.filter(item => item.type === 'Post').length;
     const commentsBeforeFilter = mappedItems.filter(item => item.type === 'Comment').length;
-    console.log(`[Reddit API Service] Mapped ${mappedItems.length} items before date filtering. (Posts: ${postsBeforeFilter}, Comments: ${commentsBeforeFilter})`);
+    console.log(`[Reddit API Service] Mapped item counts before date filtering: Posts: ${postsBeforeFilter}, Comments: ${commentsBeforeFilter}`);
 
+    // Date Filtering Logic
     const CUTOFF_DATE_STRING = '2025-06-01T00:00:00.000Z';
     const cutoffTimestamp = new Date(CUTOFF_DATE_STRING).getTime();
     console.log(`[Reddit API Service] Date filter active: Items must be on or after ${CUTOFF_DATE_STRING} (Cutoff Timestamp: ${cutoffTimestamp})`);
 
+    let itemsProcessedByFilter = 0;
     const itemsAfterDateFilter = mappedItems.filter((item, index) => {
       const itemDate = new Date(item.timestamp);
       const itemNumericTimestamp = itemDate.getTime();
       const isKept = itemNumericTimestamp >= cutoffTimestamp;
       
-      if (index < 5 || (index < 20 && !isKept)) { // Log first 5, and any discarded among first 20
-        console.log(`[Reddit API Filter Detail] Item ID: ${item.id}, Type: ${item.type}, Item Date: ${item.timestamp} (Numeric: ${itemNumericTimestamp}), Cutoff Timestamp: ${cutoffTimestamp}, Kept: ${isKept}`);
+      itemsProcessedByFilter++;
+      if (index < 5 || (index < 20 && !isKept && itemsProcessedByFilter <=20) ) { // Log first 5, and any discarded among first 20 (up to 20 logs for this section)
+        console.log(`[Reddit API Filter Detail #${index+1}] Item ID: ${item.id}, Type: ${item.type}, Item Date: ${item.timestamp} (Num: ${itemNumericTimestamp}), Cutoff: ${cutoffTimestamp}, Kept: ${isKept}`);
       }
       return isKept;
     });
@@ -232,3 +242,4 @@ export async function searchReddit(
     return { data: null, error: `Network or processing error: ${errorMessage}`, nextAfter: null };
   }
 }
+
