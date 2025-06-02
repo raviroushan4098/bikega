@@ -3,7 +3,7 @@
 
 import type { RedditPost, RedditSearchParams as ClientRedditSearchParams } from '@/types';
 import { getApiKeys } from './api-key-service';
-import { Sentiment } from 'sentiment';
+import Sentiment from 'sentiment'; // Changed from named import { Sentiment }
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -113,7 +113,7 @@ export async function searchReddit(
       console.warn(`[Reddit API Service] Warning: '${REDDIT_USER_AGENT_SERVICE_NAME}' not found in API Management. Using fallback User-Agent.`);
   }
 
-  const { q, sort = 'new', t = 'all', subreddit, limit = 25, after } = params; // Default limit reduced for more frequent pagination if needed.
+  const { q, sort = 'new', t = 'all', subreddit, limit = 25, after } = params;
   
   let apiUrl = `https://oauth.reddit.com/`;
   if (subreddit) {
@@ -145,9 +145,9 @@ export async function searchReddit(
     const rawCommentCount = rawItems.filter(child => child.kind === 't1').length;
     const rawOtherCount = rawItems.length - rawPostCount - rawCommentCount;
     console.log(`[Reddit API Service] Received ${rawItems.length} raw items from API. (Posts: ${rawPostCount}, Comments: ${rawCommentCount}, Others: ${rawOtherCount})`);
-    // if (rawItems.length > 0) {
-    //   console.log(`[Reddit API Service] Item kinds received from API: ${rawItems.map(child => child.kind).join(', ')}`);
-    // }
+    if (rawItems.length > 0) {
+      console.log(`[Reddit API Service] Item kinds received from API: ${rawItems.map(child => child.kind).join(', ')}`);
+    }
 
 
     const mappedItems: RedditPost[] = [];
@@ -206,12 +206,11 @@ export async function searchReddit(
     console.log(`[Reddit API Service] Date filter active: Items must be on or after ${CUTOFF_DATE_STRING} (Cutoff Timestamp: ${cutoffTimestamp})`);
 
     const itemsAfterDateFilter = mappedItems.filter((item, index) => {
-      const itemDate = new Date(item.timestamp); // item.timestamp is already an ISO string
+      const itemDate = new Date(item.timestamp);
       const itemNumericTimestamp = itemDate.getTime();
       const isKept = itemNumericTimestamp >= cutoffTimestamp;
       
-      // Log details for the first 3 items being processed, and any of the first 10 that are discarded
-      if (index < 3 || (index < 10 && !isKept)) {
+      if (index < 5 || (index < 20 && !isKept)) { // Log first 5, and any discarded among first 20
         console.log(`[Reddit API Filter Detail] Item ID: ${item.id}, Type: ${item.type}, Item Date: ${item.timestamp} (Numeric: ${itemNumericTimestamp}), Cutoff Timestamp: ${cutoffTimestamp}, Kept: ${isKept}`);
       }
       return isKept;
@@ -224,7 +223,6 @@ export async function searchReddit(
     const finalSortedData = itemsAfterDateFilter.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
     const nextAfterCursor = rawResponseData.data?.after || null;
-    // console.log(`[Reddit API Service] Returning ${finalSortedData.length} items. Next cursor: ${nextAfterCursor}`);
 
     return { data: finalSortedData, error: undefined, nextAfter: nextAfterCursor };
 
