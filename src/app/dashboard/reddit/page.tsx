@@ -27,6 +27,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // Schema for admin's keyword editing form
 const editKeywordsSchema = z.object({
@@ -34,7 +35,7 @@ const editKeywordsSchema = z.object({
 });
 type EditKeywordsFormValues = z.infer<typeof editKeywordsSchema>;
 
-// Columns for Reddit posts (for user view)
+// Columns for Reddit posts/comments (for user view)
 const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
   { 
     key: 'sno', 
@@ -52,7 +53,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
   {
     key: 'type',
     header: 'Type',
-    render: (item) => <Badge variant="outline">{item.type || 'N/A'}</Badge>,
+    render: (item) => <Badge variant={item.type === 'Post' ? "secondary" : "outline"}>{item.type}</Badge>,
     className: "w-[100px]"
   },
   { 
@@ -62,7 +63,31 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     className: "w-[180px] font-medium",
     render: (item) => <Badge variant="secondary">{item.subreddit}</Badge>
   },
-  { key: 'title', header: 'Title', sortable: true, className: "min-w-[300px]" },
+  { 
+    key: 'title', // This column will display post title or comment content
+    header: 'Title / Content', 
+    sortable: true, 
+    className: "min-w-[300px]",
+    render: (item) => {
+      if (item.type === 'Post') {
+        return <p className="font-medium">{item.title}</p>;
+      } else { // Comment
+        return (
+          <Popover>
+            <PopoverTrigger asChild>
+              <p className="line-clamp-2 cursor-pointer hover:text-primary">
+                {item.content || "No content"}
+              </p>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 text-sm">
+              <p className="font-semibold mb-1">Comment on: <span className="text-muted-foreground">{item.title}</span></p>
+              <p className="max-h-48 overflow-y-auto">{item.content}</p>
+            </PopoverContent>
+          </Popover>
+        );
+      }
+    }
+  },
   { key: 'author', header: 'Author', sortable: true, className: "w-[150px]" },
   { 
     key: 'score', 
@@ -73,7 +98,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
   },
   { 
     key: 'numComments', 
-    header: 'Comments', 
+    header: 'Comments', // For posts, shows num comments. For comments, typically 0 from search.
     sortable: true, 
     render: (item) => <span className="text-right block">{item.numComments.toLocaleString()}</span>,
     className: "text-right w-[120px]"
@@ -111,7 +136,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     header: 'Link',
     render: (item) => (
       <Button variant="ghost" size="icon" asChild className="h-8 w-8">
-        <a href={item.url} target="_blank" rel="noopener noreferrer" title="Open post on Reddit">
+        <a href={item.url} target="_blank" rel="noopener noreferrer" title={`Open ${item.type} on Reddit`}>
           <ExternalLink className="h-4 w-4 text-primary" />
         </a>
       </Button>
@@ -203,16 +228,16 @@ export default function RedditPage() {
     setIsLoadingPosts(true);
     setDisplayedSearchTerm(query);
     try {
-      // Fetch latest posts by setting sort to 'new'
-      const { data, error } = await searchReddit({ q: query, limit: 25, sort: 'new' });
+      // Fetch latest posts and comments, aiming for up to 50 items
+      const { data, error } = await searchReddit({ q: query, limit: 50, sort: 'new' });
       if (error) {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
         setRedditPosts([]);
       } else if (data) {
-        const postsWithSno = data.map((post, index) => ({ ...post, sno: index + 1 }));
-        setRedditPosts(postsWithSno);
+        const itemsWithSno = data.map((item, index) => ({ ...item, sno: index + 1 }));
+        setRedditPosts(itemsWithSno);
         if (data.length === 0) {
-          toast({ title: "No Results", description: `No Reddit posts found for your keywords: "${query}".` });
+          toast({ title: "No Results", description: `No Reddit posts or comments found for your keywords: "${query}".` });
         }
       }
     } catch (error) {
@@ -325,11 +350,11 @@ export default function RedditPage() {
 
   // User View: Display Reddit Posts based on their assigned keywords
   if (currentUser.role === 'user') {
-    let userPageDescription = "Your Reddit feed based on assigned keywords.";
+    let userPageDescription = "Your Reddit feed of posts and comments based on assigned keywords.";
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (displayedSearchTerm) {
-      userPageDescription = `Showing latest posts related to your keywords: "${displayedSearchTerm}".`;
+      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}".`;
     }
 
     return (
@@ -340,7 +365,7 @@ export default function RedditPage() {
         {isLoadingPosts && (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="ml-3 text-muted-foreground">Fetching latest Reddit posts for your keywords...</p>
+            <p className="ml-3 text-muted-foreground">Fetching latest Reddit posts and comments...</p>
           </div>
         )}
 
@@ -359,9 +384,9 @@ export default function RedditPage() {
         {!isLoadingPosts && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && displayedSearchTerm && (
           <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-            <p className="text-lg font-semibold">No Reddit Posts Found</p>
+            <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
-              No posts matched your assigned keywords: "{displayedSearchTerm}".
+              No items matched your assigned keywords: "{displayedSearchTerm}".
             </p>
           </div>
         )}
@@ -370,7 +395,7 @@ export default function RedditPage() {
           <GenericDataTable<RedditPost>
             data={redditPosts}
             columns={redditPostColumnsUserView} 
-            caption={displayedSearchTerm ? `Showing latest Reddit posts related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Posts"}
+            caption={displayedSearchTerm ? `Showing latest Reddit posts and comments related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Feed"}
           />
         )}
       </DataTableShell>
@@ -384,4 +409,3 @@ export default function RedditPage() {
     </div>
   );
 }
-

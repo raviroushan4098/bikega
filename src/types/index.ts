@@ -30,16 +30,17 @@ export interface YoutubeVideo {
 export interface RedditPost {
   id:string;
   sno?: number; // Added for serial number in table
-  title: string;
+  title: string; // For posts: post title. For comments: title of the post the comment is on (link_title)
+  content?: string; // For posts: selftext. For comments: comment body.
   subreddit: string;
   author: string;
   timestamp: string; // ISO date string
   score: number;
-  numComments: number;
-  url: string;
+  numComments: number; // Primarily for posts. For comments, this might be 0 or link to post's comment count.
+  url: string; // For posts: post URL. For comments: comment permalink.
   flair?: string;
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
-  type?: 'Post' | 'Comment'; // Added for type distinction
+  type: 'Post' | 'Comment'; // Added for type distinction
 }
 
 export interface Tweet {

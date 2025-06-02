@@ -14,7 +14,6 @@ let tokenExpiry: number | null = null;
 
 async function getRedditAccessToken(): Promise<string | null> {
   if (accessToken && tokenExpiry && Date.now() < tokenExpiry) {
-    // console.log("[Reddit API Service] Using cached Reddit access token.");
     return accessToken;
   }
 
@@ -50,7 +49,7 @@ async function getRedditAccessToken(): Promise<string | null> {
 
     const tokenData = await response.json();
     accessToken = tokenData.access_token;
-    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000; // expires_in is in seconds, set expiry 5 mins earlier
+    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000; 
     console.log("[Reddit API Service] New Reddit access token obtained.");
     return accessToken;
   } catch (error) {
@@ -67,41 +66,132 @@ export interface RedditSearchParams {
   sort?: 'relevance' | 'hot' | 'top' | 'new' | 'comments';
   t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
   subreddit?: string;
+  // type?: 'link' | 'comment' | 'sr'; // sr for subreddits. Can be comma-separated like 'link,comment'
 }
 
-interface RedditOAuthApiResponseChildData {
-  title: string;
-  subreddit_name_prefixed: string;
+// Interface for raw Reddit API response item data (can be post or comment)
+interface RedditApiItemData {
+  // Common fields
+  id: string;
   author: string;
   created_utc: number;
   score: number;
-  num_comments: number;
   permalink: string;
+  subreddit_name_prefixed: string;
+
+  // Post specific (kind: t3)
+  title?: string;
+  num_comments?: number;
   link_flair_text?: string | null;
-  id: string;
-  selftext: string;
-  url: string; 
-  thumbnail?: string;
-  is_self?: boolean;
-  url_overridden_by_dest?: string;
+  selftext?: string; // For self-posts
+  url?: string; // URL of the post itself or external link
+
+  // Comment specific (kind: t1)
+  body?: string; // Comment text
+  link_title?: string; // Title of the post the comment is on
+  link_url?: string; // URL of the post the comment is on
+  parent_id?: string; // ID of parent (comment or post)
 }
 
-interface RedditOAuthApiResponseChild {
-  kind: string;
-  data: RedditOAuthApiResponseChildData;
+interface RedditApiChild {
+  kind: string; // "t3" for post (link), "t1" for comment
+  data: RedditApiItemData;
 }
 
-interface RedditOAuthApiResponseData {
+interface RedditApiResponseData {
   after: string | null;
   dist: number;
-  children: RedditOAuthApiResponseChild[];
+  children: RedditApiChild[];
   before: string | null;
 }
 
-interface RedditOAuthApiResponse {
+interface RedditApiResponse {
   kind: string;
-  data: RedditOAuthApiResponseData;
+  data: RedditApiResponseData;
 }
+
+async function fetchRedditDataByType(
+  token: string,
+  userAgent: string,
+  params: RedditSearchParams,
+  searchType: 'link' | 'comment'
+): Promise<RedditPost[]> {
+  const { q, limit = 25, sort = 'relevance', t = 'all', subreddit } = params;
+
+  let searchUrl = `https://oauth.reddit.com/`;
+  if (subreddit) {
+    searchUrl += `${subreddit.startsWith('r/') ? subreddit : 'r/' + subreddit}/`;
+  }
+  searchUrl += `search.json?q=${encodeURIComponent(q)}&limit=${limit}&sort=${sort}&t=${t}&type=${searchType}&show=all`;
+  
+  if (subreddit && searchType === 'link') { // restrict_sr typically for post searches within a subreddit
+     searchUrl += `&restrict_sr=true`;
+  }
+
+  console.log(`[Reddit API Service] Fetching ${searchType}s via OAuth: ${searchUrl.replace(q,encodeURIComponent(q))}`);
+
+  try {
+    const response = await fetch(searchUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': userAgent,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Reddit API Service] OAuth API Error for ${searchType}s (${response.status}): ${errorText}`);
+      return []; // Return empty on error for this type
+    }
+
+    const rawData: RedditApiResponse = await response.json();
+
+    if (!rawData || !rawData.data || !rawData.data.children) {
+        console.error(`[Reddit API Service] Unexpected OAuth API response structure for ${searchType}s:`, rawData);
+        return [];
+    }
+    
+    return rawData.data.children.map(child => {
+      if (searchType === 'link' && child.kind === 't3') { // Post
+        return {
+          id: child.data.id,
+          title: child.data.title || 'No Title',
+          content: child.data.selftext || '',
+          subreddit: child.data.subreddit_name_prefixed,
+          author: child.data.author,
+          timestamp: new Date(child.data.created_utc * 1000).toISOString(),
+          score: child.data.score,
+          numComments: child.data.num_comments || 0,
+          url: child.data.url ? (child.data.url.startsWith('http') ? child.data.url : `https://www.reddit.com${child.data.permalink}`) : `https://www.reddit.com${child.data.permalink}`,
+          flair: child.data.link_flair_text || undefined,
+          sentiment: 'unknown',
+          type: 'Post',
+        } as RedditPost;
+      } else if (searchType === 'comment' && child.kind === 't1') { // Comment
+        return {
+          id: child.data.id,
+          title: child.data.link_title || 'No Post Title', // Title of the post the comment is on
+          content: child.data.body || '', // The comment text itself
+          subreddit: child.data.subreddit_name_prefixed,
+          author: child.data.author,
+          timestamp: new Date(child.data.created_utc * 1000).toISOString(),
+          score: child.data.score,
+          numComments: 0, // Comments don't have their own numComments in this context
+          url: `https://www.reddit.com${child.data.permalink}`, // Permalink to the comment
+          flair: undefined,
+          sentiment: 'unknown',
+          type: 'Comment',
+        } as RedditPost;
+      }
+      return null; // Should not happen if API behaves
+    }).filter(item => item !== null) as RedditPost[];
+
+  } catch (error) {
+    console.error(`[Reddit API Service] OAuth Fetch Error for ${searchType}s:`, error);
+    return [];
+  }
+}
+
 
 export async function searchReddit(
   params: RedditSearchParams
@@ -119,68 +209,32 @@ export async function searchReddit(
       console.warn(`[Reddit API Service] '${REDDIT_USER_AGENT_SERVICE_NAME}' not found in API Management. Using fallback. Please add it.`);
   }
 
-
-  const { q, limit = 25, sort = 'relevance', t = 'all', subreddit } = params;
-
-  let searchUrl = `https://oauth.reddit.com/`;
-  if (subreddit) {
-    searchUrl += `${subreddit.startsWith('r/') ? subreddit : 'r/' + subreddit}/`;
-  }
-  searchUrl += `search.json?q=${encodeURIComponent(q)}&limit=${limit}&sort=${sort}&t=${t}&show=all`; // show=all includes NSFW if any
-  
-  if (subreddit) {
-     searchUrl += `&restrict_sr=true`;
-  }
-
-  console.log(`[Reddit API Service] Fetching via OAuth: ${searchUrl.replace(q,encodeURIComponent(q))}`); // Log with encoded query for safety
+  const { limit = 50 } = params; // Default total limit for combined results
+  const perTypeLimit = Math.floor(limit / 2); // Fetch roughly half posts, half comments
 
   try {
-    const response = await fetch(searchUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': userAgent,
-      },
-    });
+    const postsParams = { ...params, limit: perTypeLimit };
+    const commentsParams = { ...params, limit: perTypeLimit };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Reddit API Service] OAuth API Error (${response.status}): ${errorText}`);
-      try {
-        const errorJson = JSON.parse(errorText);
-        return { data: null, error: `Reddit API Error (${response.status}): ${errorJson.message || response.statusText}` };
-      } catch {
-        return { data: null, error: `Reddit API Error (${response.status}): ${response.statusText}` };
-      }
-    }
+    const [posts, comments] = await Promise.all([
+      fetchRedditDataByType(token, userAgent, postsParams, 'link'),
+      fetchRedditDataByType(token, userAgent, commentsParams, 'comment')
+    ]);
 
-    const rawData: RedditOAuthApiResponse = await response.json();
+    const combinedResults = [...posts, ...comments];
 
-    if (!rawData || !rawData.data || !rawData.data.children) {
-        console.error("[Reddit API Service] Unexpected OAuth API response structure:", rawData);
-        return { data: null, error: "Unexpected response structure from Reddit OAuth API." };
-    }
+    // Sort by timestamp descending (newest first)
+    combinedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    const posts: RedditPost[] = rawData.data.children.map(child => ({
-      id: child.data.id,
-      title: child.data.title,
-      subreddit: child.data.subreddit_name_prefixed,
-      author: child.data.author,
-      timestamp: new Date(child.data.created_utc * 1000).toISOString(),
-      score: child.data.score,
-      numComments: child.data.num_comments,
-      url: `https://www.reddit.com${child.data.permalink}`,
-      flair: child.data.link_flair_text || undefined,
-      sentiment: 'unknown', // Placeholder sentiment
-      type: 'Post', // Set type as 'Post'
-    }));
+    const finalResults = combinedResults.slice(0, limit); // Ensure we don't exceed the total requested limit
 
-    return { data: posts };
+    return { data: finalResults };
+
   } catch (error) {
-    console.error('[Reddit API Service] OAuth Fetch Error:', error);
+    console.error('[Reddit API Service] Error in combined searchReddit:', error);
     if (error instanceof Error) {
       return { data: null, error: `Network or parsing error: ${error.message}` };
     }
     return { data: null, error: 'An unknown error occurred while fetching from Reddit OAuth API.' };
   }
 }
-
