@@ -25,7 +25,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns'; // Changed from formatDistanceToNow
 import { Badge } from '@/components/ui/badge';
 
 // Schema for admin's keyword editing form
@@ -46,7 +46,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     key: 'timestamp', 
     header: 'Date', 
     sortable: true, 
-    render: (item) => formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
+    render: (item) => format(new Date(item.timestamp), 'dd-MM-yyyy'), // Updated date format
     className: "w-[180px]"
   },
   { 
@@ -80,7 +80,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
       let text = "Unknown";
       switch (item.sentiment) {
         case 'positive':
-          badgeVariant = "default"; // Using default primary for positive (usually green if theme supports)
+          badgeVariant = "default"; 
           text = "Positive";
           break;
         case 'negative':
@@ -91,7 +91,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
           badgeVariant = "secondary";
           text = "Neutral";
           break;
-        default: // unknown or undefined
+        default: 
           badgeVariant = "outline";
           text = "N/A";
           break;
@@ -122,7 +122,7 @@ export default function RedditPage() {
 
   // --- Admin View State ---
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>(''); // Admin selects a user
+  const [selectedUserId, setSelectedUserId] = useState<string>(''); 
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
   const [isSavingKeywords, setIsSavingKeywords] = useState<boolean>(false);
   
@@ -155,7 +155,7 @@ export default function RedditPage() {
         editKeywordsForm.reset({ keywords: userToEdit.assignedKeywords?.join(', ') || "" });
       }
     } else if (currentUser?.role === 'admin' && !selectedUserId) {
-      editKeywordsForm.reset({ keywords: ""}); // Clear form if no user is selected
+      editKeywordsForm.reset({ keywords: ""}); 
     }
   }, [selectedUserId, allUsers, currentUser, editKeywordsForm]);
 
@@ -174,7 +174,6 @@ export default function RedditPage() {
       const result = await updateUserKeywords(selectedUserId, keywordsArray);
       if (result.success) {
         toast({ title: "Keywords Updated", description: `Keywords for ${userToEdit.name} saved.` });
-        // Update the local 'allUsers' state to reflect changes immediately
         setAllUsers(prevUsers => prevUsers.map(u => u.id === selectedUserId ? {...u, assignedKeywords: keywordsArray} : u));
       } else {
         toast({ variant: "destructive", title: "Update Failed", description: result.error || "Could not update keywords." });
@@ -223,7 +222,6 @@ export default function RedditPage() {
       if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
         fetchRedditPostsForUser(currentUser.assignedKeywords);
       } else {
-        // User has no assigned keywords, so don't fetch posts, set loading to false
         setIsLoadingPosts(false);
         setRedditPosts([]);
         setDisplayedSearchTerm(null);
@@ -240,7 +238,7 @@ export default function RedditPage() {
     );
   }
 
-  if (!currentUser) { // Should be caught by layout, but as a safeguard
+  if (!currentUser) { 
     router.replace('/login');
     return null;
   }
@@ -266,7 +264,6 @@ export default function RedditPage() {
                 <SelectValue placeholder="Select a user..." />
               </SelectTrigger>
               <SelectContent>
-                {/* Removed SelectItem with value="" here */}
                 {allUsers.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.name} ({u.email})
@@ -365,7 +362,7 @@ export default function RedditPage() {
         {!isLoadingPosts && redditPosts.length > 0 && (
           <GenericDataTable<RedditPost>
             data={redditPosts}
-            columns={redditPostColumnsUserView} // Using the new user-specific columns
+            columns={redditPostColumnsUserView} 
             caption={displayedSearchTerm ? `Showing Reddit posts related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Posts"}
           />
         )}
@@ -373,7 +370,7 @@ export default function RedditPage() {
     );
   }
 
-  // Fallback for unexpected scenarios (e.g., if role is neither admin nor user)
+  // Fallback for unexpected scenarios
   return (
     <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
       <p className="text-muted-foreground">Page content not available for your role.</p>
