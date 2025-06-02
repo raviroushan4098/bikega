@@ -94,7 +94,7 @@ export async function addYoutubeVideoToFirestore(
 ): Promise<YoutubeVideo> {
   try {
     console.log(`[youtube-video-service] addYoutubeVideoToFirestore called. URL: '${videoUrl}', assignedToUserId: '${assignedToUserId}'`);
-    
+
     if (!assignedToUserId) {
       throw new Error("assignedToUserId cannot be empty.");
     }
@@ -107,9 +107,9 @@ export async function addYoutubeVideoToFirestore(
     } else {
       console.warn(`[youtube-video-service] Could not extract Video ID from URL: ${videoUrl}. Using placeholders.`);
     }
-    
+
     const createdAtTimestamp = Timestamp.now();
-    
+
     const newLinkData: AssignedLinkData = {
       url: videoUrl,
       title: videoDetails?.title || `Video: ${videoUrl.substring(0, 40)}...`,
@@ -153,12 +153,12 @@ export async function addYoutubeVideoToFirestore(
 
 export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
   try {
-    if (!userIdForFilter) { 
+    if (!userIdForFilter) {
       console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID or 'all' selected for filtering. Returning empty array.`);
       return [];
     }
 
-    if (userIdForFilter === 'all') { 
+    if (userIdForFilter === 'all') {
       console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos from ALL users.`);
       const allVideos: YoutubeVideo[] = [];
       const usersCollectionRef = collection(db, `youtube_videos`);
@@ -172,8 +172,10 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
 
       for (const userDoc of usersSnapshot.docs) {
         const currentUserId = userDoc.id;
-        console.log(`[youtube-video-service][ALL_FILTER] Processing user ID: ${currentUserId}`);
-        const userAssignedLinksRef = collection(db, `youtube_videos/${currentUserId}/assigned_links`);
+        const subcollectionPath = `youtube_videos/${currentUserId}/assigned_links`;
+        console.log(`[youtube-video-service][ALL_FILTER] Processing user ID: ${currentUserId}. Querying subcollection at path: ${subcollectionPath}`);
+
+        const userAssignedLinksRef = collection(db, subcollectionPath);
         const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
         console.log(`[youtube-video-service][ALL_FILTER] Found ${querySnapshot.docs.length} videos for user ${currentUserId}.`);
@@ -190,7 +192,7 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
             commentCount: data.commentCount,
             shareCount: data.shareCount,
             channelTitle: data.channelTitle,
-            assignedToUserId: currentUserId, 
+            assignedToUserId: currentUserId,
             createdAt: data.createdAt.toDate().toISOString(),
           });
         });
@@ -239,3 +241,4 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
   }
 }
 
+    
