@@ -22,7 +22,7 @@ async function getRedditAccessToken(): Promise<string | null> {
   const clientSecretEntry = apiKeys.find(k => k.serviceName === REDDIT_CLIENT_SECRET_SERVICE_NAME);
 
   if (!clientIdEntry || !clientSecretEntry) {
-    console.error(`[Reddit API Service] '${REDDIT_CLIENT_ID_SERVICE_NAME}' or '${REDDIT_CLIENT_SECRET_SERVICE_NAME}' not found in API Management. Please add them.`);
+    console.error(`[Reddit API Service] Critical: '${REDDIT_CLIENT_ID_SERVICE_NAME}' or '${REDDIT_CLIENT_SECRET_SERVICE_NAME}' not found in API Management. Please add them.`);
     return null;
   }
 
@@ -40,7 +40,12 @@ async function getRedditAccessToken(): Promise<string | null> {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { message: response.statusText, status: response.status };
+      }
       console.error('[Reddit API Service] Failed to obtain access token:', response.status, errorData);
       accessToken = null;
       tokenExpiry = null;
@@ -49,7 +54,7 @@ async function getRedditAccessToken(): Promise<string | null> {
 
     const tokenData = await response.json();
     accessToken = tokenData.access_token;
-    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000;
+    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000; // Refresh 5 mins before expiry
     console.log("[Reddit API Service] New Reddit access token obtained.");
     return accessToken;
   } catch (error) {
@@ -66,35 +71,29 @@ export interface RedditSearchParams {
   sort?: 'relevance' | 'hot' | 'top' | 'new' | 'comments';
   t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
   subreddit?: string;
-  after?: string; // Added for pagination
+  after?: string; 
 }
 
-// Interface for raw Reddit API response item data (can be post or comment)
 interface RedditApiItemData {
-  // Common fields
   id: string;
   author: string;
   created_utc: number;
   score: number;
   permalink: string;
   subreddit_name_prefixed: string;
-
-  // Post specific (kind: t3)
   title?: string;
   num_comments?: number;
   link_flair_text?: string | null;
-  selftext?: string; // For self-posts
-  url?: string; // URL of the post itself or external link
-
-  // Comment specific (kind: t1)
-  body?: string; // Comment text
-  link_title?: string; // Title of the post the comment is on
-  link_url?: string; // URL of the post the comment is on
-  parent_id?: string; // ID of parent (comment or post)
+  selftext?: string;
+  url?: string; 
+  body?: string; 
+  link_title?: string; 
+  link_url?: string;
+  parent_id?: string; 
 }
 
 interface RedditApiChild {
-  kind: string; // "t3" for post (link), "t1" for comment
+  kind: string; 
   data: RedditApiItemData;
 }
 
@@ -108,95 +107,6 @@ interface RedditApiResponseData {
 interface RedditApiResponse {
   kind: string;
   data: RedditApiResponseData;
-}
-
-// Internal function to fetch a specific type (posts or comments) with pagination support
-async function fetchRedditDataByType(
-  token: string,
-  userAgent: string,
-  params: RedditSearchParams,
-  searchType: 'link' | 'comment'
-): Promise<{ items: RedditPost[]; nextAfter: string | null }> {
-  const { q, limit = 25, sort = 'relevance', t = 'all', subreddit, after } = params;
-
-  let searchUrl = `https://oauth.reddit.com/`;
-  if (subreddit) {
-    searchUrl += `${subreddit.startsWith('r/') ? subreddit : 'r/' + subreddit}/`;
-  }
-  searchUrl += `search.json?q=${encodeURIComponent(q)}&limit=${limit}&sort=${sort}&t=${t}&type=${searchType}&show=all`;
-  
-  if (after) {
-    searchUrl += `&after=${after}`;
-  }
-  if (subreddit && searchType === 'link') {
-     searchUrl += `&restrict_sr=true`;
-  }
-
-
-  console.log(`[Reddit API Service] Fetching ${searchType}s via OAuth (limit ${limit}${after ? ', after ' + after : ''}): ${searchUrl.replace(q,encodeURIComponent(q))}`);
-
-  try {
-    const response = await fetch(searchUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': userAgent,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Reddit API Service] OAuth API Error for ${searchType}s (${response.status}): ${errorText}`);
-      return { items: [], nextAfter: null };
-    }
-
-    const rawData: RedditApiResponse = await response.json();
-
-    if (!rawData || !rawData.data || !rawData.data.children) {
-        console.error(`[Reddit API Service] Unexpected OAuth API response structure for ${searchType}s:`, rawData);
-        return { items: [], nextAfter: null };
-    }
-    
-    const items = rawData.data.children.map(child => {
-      if (searchType === 'link' && child.kind === 't3') { // Post
-        return {
-          id: child.data.id,
-          title: child.data.title || 'No Title',
-          content: child.data.selftext || '',
-          subreddit: child.data.subreddit_name_prefixed,
-          author: child.data.author,
-          timestamp: new Date(child.data.created_utc * 1000).toISOString(),
-          score: child.data.score,
-          numComments: child.data.num_comments || 0,
-          url: child.data.url ? (child.data.url.startsWith('http') ? child.data.url : `https://www.reddit.com${child.data.permalink}`) : `https://www.reddit.com${child.data.permalink}`,
-          flair: child.data.link_flair_text || undefined,
-          sentiment: 'unknown', // Placeholder, can be updated later
-          type: 'Post',
-        } as RedditPost;
-      } else if (searchType === 'comment' && child.kind === 't1') { // Comment
-        return {
-          id: child.data.id,
-          title: child.data.link_title || 'Comment on Post', // Title of the post the comment is on
-          content: child.data.body || '', // The comment text itself
-          subreddit: child.data.subreddit_name_prefixed,
-          author: child.data.author,
-          timestamp: new Date(child.data.created_utc * 1000).toISOString(),
-          score: child.data.score,
-          numComments: 0, // Comments don't have their own numComments in this context
-          url: `https://www.reddit.com${child.data.permalink}`, // Permalink to the comment
-          flair: undefined,
-          sentiment: 'unknown', // Placeholder
-          type: 'Comment',
-        } as RedditPost;
-      }
-      return null;
-    }).filter(item => item !== null) as RedditPost[];
-    
-    return { items, nextAfter: rawData.data.after };
-
-  } catch (error) {
-    console.error(`[Reddit API Service] OAuth Fetch Error for ${searchType}s:`, error);
-    return { items: [], nextAfter: null };
-  }
 }
 
 
@@ -213,46 +123,30 @@ export async function searchReddit(
   
   const userAgent = userAgentEntry ? userAgentEntry.keyValue : "InsightStreamApp/1.0 (FallbackUserAgent)";
   if (!userAgentEntry) {
-      console.warn(`[Reddit API Service] '${REDDIT_USER_AGENT_SERVICE_NAME}' not found in API Management. Using fallback. Please add it.`);
+      console.warn(`[Reddit API Service] Warning: '${REDDIT_USER_AGENT_SERVICE_NAME}' not found in API Management. Using fallback. Please add it for compliance with Reddit API terms.`);
   }
 
-  const { limit = 100, after } = params; // Default total limit for combined results
-  // If 'after' is provided, we're paginating. Fetching both types might become complex with independent 'after' cursors.
-  // For simplicity in this step, if 'after' is used, we might only fetch one type or alternate.
-  // Or, we can fetch both and rely on the client to manage displaying them.
-  // For now, let's keep fetching both and see. Reddit's 'after' for a search query might apply globally.
-
-  const perTypeLimit = Math.ceil(limit / 2);
+  const { q, limit = 100, sort = 'new', t = 'all', subreddit, after } = params;
+    
+  let combinedSearchUrl = `https://oauth.reddit.com/`;
+  if (subreddit) {
+      // Ensure 'r/' prefix is handled correctly, remove if present before adding
+      const cleanSubreddit = subreddit.startsWith('r/') ? subreddit.substring(2) : subreddit;
+      combinedSearchUrl += `r/${cleanSubreddit}/`;
+  }
+  combinedSearchUrl += `search.json?q=${encodeURIComponent(q)}&limit=${limit}&sort=${sort}&t=${t}&type=link,comment&show=all&include_over_18=on`;
+  
+  if (after) {
+      combinedSearchUrl += `&after=${after}`;
+  }
+  // restrict_sr=true should only be used when searching within a specific subreddit context (i.e., when params.subreddit is provided)
+  if (subreddit) {
+      combinedSearchUrl += `&restrict_sr=true`;
+  }
+  
+  console.log(`[Reddit API Service] Fetching combined posts/comments via OAuth (limit ${limit}${after ? ', after ' + after : ''}): ${combinedSearchUrl.replace(q,encodeURIComponent(q))}`);
 
   try {
-    // Pass the 'after' cursor to both calls. Reddit's search 'after' usually applies to the whole query.
-    const postsParams = { ...params, limit: perTypeLimit, after };
-    const commentsParams = { ...params, limit: perTypeLimit, after };
-
-    // Fetch posts and comments.
-    // Note: If fetching both types and paginating, the 'nextAfter' cursor management can be tricky.
-    // Reddit's 'after' on search applies to the *entire result set of that search query*.
-    // So, if we search for posts AND comments with an 'after' cursor, it continues from that point.
-    
-    // For simplicity, we'll just use the 'after' from the primary search call (e.g., posts or combined if API supported)
-    // We'll prioritize fetching posts with pagination and then comments.
-    // Or, better: make one call for combined types if Reddit search supports it well.
-    // Reddit API's `type` param can be `link,comment`.
-    
-    let combinedSearchUrl = `https://oauth.reddit.com/`;
-    if (params.subreddit) {
-        combinedSearchUrl += `${params.subreddit.startsWith('r/') ? params.subreddit : 'r/' + params.subreddit}/`;
-    }
-    combinedSearchUrl += `search.json?q=${encodeURIComponent(params.q)}&limit=${limit}&sort=${params.sort || 'new'}&t=${params.t || 'all'}&type=link,comment&show=all`;
-    if (after) {
-        combinedSearchUrl += `&after=${after}`;
-    }
-    if (params.subreddit) {
-        combinedSearchUrl += `&restrict_sr=true`;
-    }
-    
-    console.log(`[Reddit API Service] Fetching combined posts/comments via OAuth (limit ${limit}${after ? ', after ' + after : ''}): ${combinedSearchUrl.replace(params.q,encodeURIComponent(params.q))}`);
-
     const response = await fetch(combinedSearchUrl, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -261,16 +155,16 @@ export async function searchReddit(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await response.text().catch(() => `Status: ${response.status}`);
       console.error(`[Reddit API Service] OAuth API Error for combined search (${response.status}): ${errorText}`);
-      return { data: [], nextAfter: null, error: `Reddit API Error: ${response.status}` };
+      return { data: [], nextAfter: null, error: `Reddit API Error: ${response.status}. Details: ${errorText.substring(0, 200)}` };
     }
 
     const rawData: RedditApiResponse = await response.json();
 
     if (!rawData || !rawData.data || !rawData.data.children) {
         console.error(`[Reddit API Service] Unexpected OAuth API response structure for combined search:`, rawData);
-        return { data: [], nextAfter: null, error: "Invalid API response structure."};
+        return { data: [], nextAfter: null, error: "Invalid API response structure from Reddit."};
     }
 
     const combinedResults: RedditPost[] = rawData.data.children.map(child => {
@@ -292,27 +186,32 @@ export async function searchReddit(
       } else if (child.kind === 't1') { // Comment
         return {
           id: child.data.id,
-          title: child.data.link_title || 'Comment on Post',
-          content: child.data.body || '',
+          title: child.data.link_title || 'Comment on Post', // Title of the post the comment is on
+          content: child.data.body || '', // The comment text itself
           subreddit: child.data.subreddit_name_prefixed,
           author: child.data.author,
           timestamp: new Date(child.data.created_utc * 1000).toISOString(),
           score: child.data.score,
-          numComments: 0,
-          url: `https://www.reddit.com${child.data.permalink}`,
+          numComments: 0, // Comments don't have their own numComments in this context
+          url: `https://www.reddit.com${child.data.permalink}`, // Permalink to the comment
           flair: undefined,
-          sentiment: 'unknown',
+          sentiment: 'unknown', 
           type: 'Comment',
         } as RedditPost;
       }
       return null;
     }).filter(item => item !== null) as RedditPost[];
-
-    // Sort by timestamp descending (newest first) as API might mix them
-    combinedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    // The 'nextAfter' from the Reddit API response is the cursor for the next page of this combined search
+    // The API should already sort by 'new' if specified, but an additional client sort can be a fallback.
+    // combinedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
     const nextCursor = rawData.data.after;
+    console.log(`[Reddit API Service] Fetched ${combinedResults.length} items. Next cursor: ${nextCursor}`);
+    if (combinedResults.length > 0) {
+        const commentCount = combinedResults.filter(r => r.type === 'Comment').length;
+        console.log(`[Reddit API Service] Of these, ${commentCount} are comments.`);
+    }
+
 
     return { data: combinedResults, nextAfter: nextCursor };
 

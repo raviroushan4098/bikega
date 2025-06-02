@@ -100,7 +100,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     key: 'numComments', 
     header: 'Comments', 
     sortable: true, 
-    render: (item) => <span className="text-right block">{item.numComments.toLocaleString()}</span>,
+    render: (item) => <span className="text-right block">{item.type === 'Post' ? item.numComments.toLocaleString() : '-'}</span>,
     className: "text-right w-[120px]"
   },
   { 
@@ -151,7 +151,6 @@ export default function RedditPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  // --- Admin View State ---
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>(''); 
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
@@ -162,14 +161,12 @@ export default function RedditPage() {
     defaultValues: { keywords: "" },
   });
 
-  // --- User View State ---
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [nextAfterCursor, setNextAfterCursor] = useState<string | null>(null);
   const [displayedSearchTerm, setDisplayedSearchTerm] = useState<string | null>(null);
 
-  // Fetch all users for admin dropdown
   useEffect(() => {
     if (currentUser?.role === 'admin') {
       setIsLoadingUsers(true);
@@ -180,7 +177,6 @@ export default function RedditPage() {
     }
   }, [currentUser, toast]);
 
-  // Effect to update form when admin selects a different user
   useEffect(() => {
     if (currentUser?.role === 'admin' && selectedUserId) {
       const userToEdit = allUsers.find(u => u.id === selectedUserId);
@@ -192,7 +188,6 @@ export default function RedditPage() {
     }
   }, [selectedUserId, allUsers, currentUser, editKeywordsForm]);
 
-  // Handler for admin saving keywords
   const onEditKeywordsSubmit = async (data: EditKeywordsFormValues) => {
     if (!selectedUserId || currentUser?.role !== 'admin') return;
     const userToEdit = allUsers.find(u => u.id === selectedUserId);
@@ -218,7 +213,6 @@ export default function RedditPage() {
     }
   };
 
-  // Handler for fetching Reddit posts (for user view) with pagination
   const fetchRedditPostsForUser = useCallback(async (keywords: string[], currentAfterCursor?: string) => {
     if (keywords.length === 0) {
       setRedditPosts([]);
@@ -234,7 +228,7 @@ export default function RedditPage() {
       setIsLoadingMore(true);
     } else {
       setIsLoadingPosts(true);
-      setRedditPosts([]); // Clear previous results for a new initial search
+      setRedditPosts([]); 
     }
     
     setDisplayedSearchTerm(query);
@@ -242,7 +236,7 @@ export default function RedditPage() {
     try {
       const { data, error, nextAfter } = await searchReddit({ 
         q: query, 
-        limit: 100, // Fetch 100 items per request
+        limit: 100, 
         sort: 'new',
         after: currentAfterCursor 
       });
@@ -260,7 +254,7 @@ export default function RedditPage() {
         setNextAfterCursor(nextAfter || null);
         
         if (data.length === 0 && !currentAfterCursor) {
-          toast({ title: "No Results", description: `No Reddit posts or comments found for your keywords: "${query}".` });
+          toast({ title: "No Results", description: `No Reddit posts or comments found for your keywords: "${query}". This might be due to very specific keywords or Reddit's search algorithm.` });
         }
       }
     } catch (error) {
@@ -273,9 +267,8 @@ export default function RedditPage() {
         setIsLoadingPosts(false);
       }
     }
-  }, [toast, redditPosts.length]); // redditPosts.length is needed for sno calculation
+  }, [toast, redditPosts.length]); 
 
-  // Effect for user view: fetch posts based on their keywords (initial load)
   useEffect(() => {
     if (!authLoading && currentUser?.role === 'user') {
       if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
@@ -288,7 +281,7 @@ export default function RedditPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, authLoading]); // fetchRedditPostsForUser is memoized, fine to exclude
+  }, [currentUser, authLoading]); 
 
 
   if (authLoading) {
@@ -304,7 +297,6 @@ export default function RedditPage() {
     return null;
   }
 
-  // Admin View: Manage User Keywords
   if (currentUser.role === 'admin') {
     const selectedUserDetails = allUsers.find(u => u.id === selectedUserId);
     return (
@@ -377,13 +369,12 @@ export default function RedditPage() {
     );
   }
 
-  // User View: Display Reddit Posts based on their assigned keywords
   if (currentUser.role === 'user') {
     let userPageDescription = "Your Reddit feed of posts and comments based on assigned keywords.";
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (displayedSearchTerm) {
-      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched ${redditPosts.length} items so far.`;
+      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched up to ${redditPosts.length} items.`;
     }
 
     return (
@@ -416,6 +407,7 @@ export default function RedditPage() {
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
               No items matched your assigned keywords: "{displayedSearchTerm}".
+              Try broadening your keywords or check back later.
             </p>
           </div>
         )}
@@ -444,10 +436,10 @@ export default function RedditPage() {
     );
   }
 
-  // Fallback for unexpected scenarios
   return (
     <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
       <p className="text-muted-foreground">Page content not available for your role.</p>
     </div>
   );
 }
+
