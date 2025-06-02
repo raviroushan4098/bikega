@@ -1,21 +1,22 @@
+
 "use client";
 
 import React, { useState, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, ExternalLink } from "lucide-react";
+import { ArrowUpDown } from "lucide-react"; // Removed ExternalLink as it's no longer auto-added
 import type { ColumnConfig } from '@/types';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
-interface GenericDataTableProps<T extends { id: string, url?: string, thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }> {
+interface GenericDataTableProps<T extends { id: string, thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }> { // Removed url from constraint
   data: T[];
   columns: ColumnConfig<T>[];
   caption?: string;
   filterFunction?: (item: T, filter: string) => boolean;
 }
 
-export function GenericDataTable<T extends { id: string, url?: string, thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }>({ data, columns, caption }: GenericDataTableProps<T>) {
+export function GenericDataTable<T extends { id: string, thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }>({ data, columns, caption }: GenericDataTableProps<T>) {
   const [sortConfig, setSortConfig] = useState<{ key: keyof T | string; direction: 'ascending' | 'descending' } | null>(null);
 
   const sortedData = useMemo(() => {
@@ -77,7 +78,7 @@ export function GenericDataTable<T extends { id: string, url?: string, thumbnail
                 )}
               </TableHead>
             ))}
-             {data[0]?.url && <TableHead className="font-semibold w-[80px] text-center">Link</TableHead>}
+            {/* Removed automatic Link column header */}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -88,15 +89,7 @@ export function GenericDataTable<T extends { id: string, url?: string, thumbnail
                   {column.render ? column.render(item) : String(item[column.key as keyof T] ?? '')}
                 </TableCell>
               ))}
-              {item.url && (
-                <TableCell className="text-center py-3">
-                  <Button variant="ghost" size="sm" asChild>
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`View original content for ${item.id}`}>
-                      <ExternalLink className="h-4 w-4 text-primary" />
-                    </a>
-                  </Button>
-                </TableCell>
-              )}
+              {/* Removed automatic Link column cell */}
             </TableRow>
           ))}
         </TableBody>

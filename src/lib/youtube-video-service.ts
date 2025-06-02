@@ -22,7 +22,7 @@ interface YouTubeApiVideoItem {
   statistics?: {
     likeCount?: string;
     commentCount?: string;
-    viewCount?: string; // viewCount might be useful too
+    viewCount?: string; 
   };
 }
 
@@ -118,6 +118,7 @@ export async function fetchVideoDetailsFromYouTubeAPI(
         channelTitle: snippet.channelTitle || 'N/A',
         likeCount: statistics?.likeCount ? parseInt(statistics.likeCount, 10) : 0,
         commentCount: statistics?.commentCount ? parseInt(statistics.commentCount, 10) : 0,
+        viewCount: statistics?.viewCount ? parseInt(statistics.viewCount, 10) : 0,
         assignedToUserId: assignedToUserId,
         assignedToUserName: assignedToUserName,
         dataAiHint: hint.toLowerCase(),
@@ -227,6 +228,7 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
             channelTitle: snippet.channelTitle || 'N/A',
             likeCount: statistics?.likeCount ? parseInt(statistics.likeCount, 10) : 0,
             commentCount: statistics?.commentCount ? parseInt(statistics.commentCount, 10) : 0,
+            viewCount: statistics?.viewCount ? parseInt(statistics.viewCount, 10) : 0,
             assignedToUserId: assignment.userId,
             assignedToUserName: assignment.userName,
             dataAiHint: hint.toLowerCase(),

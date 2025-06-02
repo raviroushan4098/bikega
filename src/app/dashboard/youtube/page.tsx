@@ -25,13 +25,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger, // Added DialogTrigger
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Loader2, Rss, Trash2, ExternalLink } from 'lucide-react';
+import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, Eye as ViewsIcon } from 'lucide-react'; // Added ViewsIcon
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
@@ -81,27 +81,12 @@ export default function YouTubeAnalyticsPage() {
     assignmentMap: Record<string, { userId: string, userName?: string }>
   ): Promise<YoutubeVideo[]> => {
     if (!urls || urls.length === 0) return [];
-    // Here, urls are already assumed to be YouTube video URLs.
-    // We need to extract video IDs for batch fetching.
-    // For simplicity, we'll just use the URLs if ID extraction is problematic,
-    // as fetchBatchVideoDetailsFromYouTubeAPI can handle URLs or IDs.
-    // A more robust solution would ensure all are IDs before batching.
+    
+    const videoIds = urls.map(url => new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop()).filter(Boolean) as string[];
 
-    // For now, assuming fetchBatchVideoDetails... can handle a mix or primarily IDs
-    // The assignmentMap should already be keyed by video ID if possible, or URL if that's what's stored
-    // This part needs to align with how video IDs are obtained from user.assignedYoutubeUrls
-    // If assignedYoutubeUrls stores full URLs, ID extraction happens before this.
+    if(videoIds.length === 0) return [];
     
-    // Let's assume for now that `fetchBatchVideoDetailsFromYouTubeAPI` expects video IDs.
-    // And that `assignmentMap` is keyed by those video IDs.
-    // So, `urls` here should ideally be an array of video IDs.
-    // This implies logic upstream ensures this or `fetchBatch` is more flexible.
-    // Based on current `fetchBatch` in `youtube-video-service`, it expects IDs.
-    
-    // This function is now more about passing IDs and the map to the service.
-    // The previous `processUrlsToVideos` was for single fetches. This one is for batch.
-    
-    const videoDetails = await fetchBatchVideoDetailsFromYouTubeAPI(urls, assignmentMap);
+    const videoDetails = await fetchBatchVideoDetailsFromYouTubeAPI(videoIds, assignmentMap);
     return videoDetails;
 
   }, []);
@@ -113,87 +98,79 @@ export default function YouTubeAnalyticsPage() {
       setIsLoadingPageData(false);
       return;
     }
-
+  
     console.log(`[YouTubePage] fetchVideos called. Role: ${currentUser.role}, Filter: ${selectedUserIdForFilter}, Users Loading: ${isLoadingUsers}`);
     setIsLoadingPageData(true);
     let fetchedVideos: YoutubeVideo[] = [];
     
     try {
       if (currentUser.role === 'admin') {
+        if (isLoadingUsers && selectedUserIdForFilter === 'all' && allUsersForAdmin.length === 0) {
+          console.log("[YouTubePage] Admin 'all': Users still loading. Deferring video fetch.");
+          // isLoadingPageData remains true; the main loader will spin.
+          return; 
+        }
+  
+        const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
+        const urlsToFetch: string[] = [];
+  
         if (selectedUserIdForFilter === 'all') {
-          if (isLoadingUsers && allUsersForAdmin.length === 0) {
-            console.log("[YouTubePage] Admin 'all': Users still loading. Deferring.");
-            // isLoadingPageData remains true, main loader spins.
-            return; 
-          }
+          console.log("[YouTubePage] Admin 'all': Fetching all users' videos.");
           if (!isLoadingUsers && allUsersForAdmin.length === 0) {
-            console.log("[YouTubePage] Admin 'all': No users. No videos to fetch.");
+            console.log("[YouTubePage] Admin 'all': No users found. No videos to fetch.");
             setDisplayedVideos([]);
             setIsLoadingPageData(false);
             return;
           }
-          
-          console.log("[YouTubePage] Admin 'all': Fetching all users' videos.");
-          const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
-          const allVideoIds: string[] = [];
-
           allUsersForAdmin.forEach(u => {
             u.assignedYoutubeUrls?.forEach(url => {
-              const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop(); // Basic ID extraction
-              if (videoId && !videoIdToAssignmentMap[videoId]) { // Avoid duplicate processing of same video ID if assigned to multiple
-                videoIdToAssignmentMap[videoId] = { userId: u.id, userName: u.name };
-                allVideoIds.push(videoId);
-              } else if (videoId && videoIdToAssignmentMap[videoId] && videoIdToAssignmentMap[videoId].userId !== u.id) {
-                // If already seen, but assigned to a different user (edge case, usually one video one primary assignment context)
-                // For "show all", we just need one entry for the video. First encountered assignment wins for display context.
+              const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
+              if (videoId) { // Ensure videoId is extracted
+                if (!videoIdToAssignmentMap[videoId]) { 
+                  urlsToFetch.push(url);
+                  videoIdToAssignmentMap[videoId] = { userId: u.id, userName: u.name };
+                }
               }
             });
           });
-          
-          if (allVideoIds.length > 0) {
-             fetchedVideos = await processAndFetchVideoDetails(allVideoIds, videoIdToAssignmentMap);
-          } else {
-            fetchedVideos = [];
-          }
-          console.log(`[YouTubePage] Admin 'all': Fetched ${fetchedVideos.length} videos.`);
-
-        } else if (selectedUserIdForFilter) { // Specific user selected by admin
+        } else if (selectedUserIdForFilter) { 
           console.log(`[YouTubePage] Admin specific user: '${selectedUserIdForFilter}'.`);
           const userDoc = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter) || await getUserById(selectedUserIdForFilter);
           if (userDoc && userDoc.assignedYoutubeUrls && userDoc.assignedYoutubeUrls.length > 0) {
-            const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
-            const videoIdsForUser: string[] = [];
             userDoc.assignedYoutubeUrls.forEach(url => {
-                const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
-                if (videoId) {
-                    videoIdsForUser.push(videoId);
-                    videoIdToAssignmentMap[videoId] = { userId: userDoc.id, userName: userDoc.name };
-                }
+              const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
+              if (videoId) {
+                  urlsToFetch.push(url);
+                  videoIdToAssignmentMap[videoId] = { userId: userDoc.id, userName: userDoc.name };
+              }
             });
-            fetchedVideos = await processAndFetchVideoDetails(videoIdsForUser, videoIdToAssignmentMap);
-          } else {
-            fetchedVideos = [];
           }
-          console.log(`[YouTubePage] Admin specific user: Fetched ${fetchedVideos.length} videos for ${selectedUserIdForFilter}.`);
-        } else { // Admin, but no user selected and not 'all' (initial state)
-          fetchedVideos = []; 
-          console.log("[YouTubePage] Admin: No specific user or 'all' selected yet.");
+        } else {
+          console.log("[YouTubePage] Admin: No specific user or 'all' selected yet. No videos to fetch.");
         }
-      } else { // Regular user view
-        console.log(`[YouTubePage] User view for ${currentUser.id}.`);
-        if (currentUser.assignedYoutubeUrls && currentUser.assignedYoutubeUrls.length > 0) {
-            const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
-            const videoIdsForUser: string[] = [];
-            currentUser.assignedYoutubeUrls.forEach(url => {
-                const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
-                if (videoId) {
-                    videoIdsForUser.push(videoId);
-                    videoIdToAssignmentMap[videoId] = { userId: currentUser.id, userName: currentUser.name };
-                }
-            });
-          fetchedVideos = await processAndFetchVideoDetails(videoIdsForUser, videoIdToAssignmentMap);
+  
+        if (urlsToFetch.length > 0) {
+          fetchedVideos = await processAndFetchVideoDetails(urlsToFetch, videoIdToAssignmentMap);
         } else {
           fetchedVideos = [];
+        }
+        console.log(`[YouTubePage] Admin view: Fetched ${fetchedVideos.length} videos. Filter: ${selectedUserIdForFilter || 'none'}`);
+  
+      } else { // Regular user view
+        console.log(`[YouTubePage] User view for ${currentUser.id}.`);
+        const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
+        const urlsToFetch: string[] = [];
+        if (currentUser.assignedYoutubeUrls && currentUser.assignedYoutubeUrls.length > 0) {
+            currentUser.assignedYoutubeUrls.forEach(url => {
+              const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
+              if (videoId) {
+                urlsToFetch.push(url);
+                videoIdToAssignmentMap[videoId] = { userId: currentUser.id, userName: currentUser.name };
+              }
+            });
+            if (urlsToFetch.length > 0) {
+              fetchedVideos = await processAndFetchVideoDetails(urlsToFetch, videoIdToAssignmentMap);
+            }
         }
         console.log(`[YouTubePage] User view: Fetched ${fetchedVideos.length} videos.`);
       }
@@ -226,15 +203,14 @@ export default function YouTubeAnalyticsPage() {
         .finally(() => {
             setIsLoadingUsers(false)
         });
-    } else if (currentUser?.role === 'admin' && allUsersForAdmin.length > 0) {
-        setIsLoadingUsers(false); // Ensure it's false if users are already loaded
+    } else if (currentUser?.role === 'admin' && allUsersForAdmin.length > 0 && isLoadingUsers) {
+        setIsLoadingUsers(false); 
     }
-  }, [currentUser, toast, allUsersForAdmin.length, isLoadingUsers]); // Added isLoadingUsers
+  }, [currentUser, toast, allUsersForAdmin.length, isLoadingUsers]); 
 
   async function onSubmitAddVideo(data: AddVideoFormValues) {
     setIsSubmittingVideo(true);
     try {
-      // Basic URL validation / ID extraction before assigning
       const videoId = new URL(data.url).searchParams.get('v') || new URL(data.url).pathname.split('/').pop();
       if (!videoId) {
         toast({ variant: "destructive", title: "Invalid URL", description: "Could not extract video ID from URL." });
@@ -248,10 +224,9 @@ export default function YouTubeAnalyticsPage() {
         toast({ title: "Video Assigned", description: `Video URL has been assigned to the user.` });
         addVideoForm.reset();
         setIsAddVideoDialogOpen(false);
-        // Optimistically update local state or refetch
         setAllUsersForAdmin(prevUsers => prevUsers.map(u => 
             u.id === data.assignedToUserId 
-            ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), canonicalUrl].filter((v,i,a)=>a.indexOf(v)===i) } // ensure unique
+            ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), canonicalUrl].filter((v,i,a)=>a.indexOf(v)===i) } 
             : u
         ));
         await fetchAndSetVideos(); 
@@ -279,7 +254,6 @@ export default function YouTubeAnalyticsPage() {
       const result = await removeYoutubeUrlFromUser(videoToRemove.assignedToUserId, videoToRemove.url);
       if (result.success) {
         toast({ title: "Video Removed", description: `Video has been unassigned.` });
-        // Optimistically update local state or refetch
         setAllUsersForAdmin(prevUsers => prevUsers.map(u => 
             u.id === videoToRemove.assignedToUserId
             ? { ...u, assignedYoutubeUrls: (u.assignedYoutubeUrls || []).filter(url => url !== videoToRemove.url) }
@@ -312,6 +286,10 @@ export default function YouTubeAnalyticsPage() {
       className: "min-w-[150px]"
     },
     {
+      key: 'viewCount', header: 'Views', sortable: true,
+      render: (item) => item.viewCount?.toLocaleString() ?? 'N/A', className: "text-right w-[100px]"
+    },
+    {
       key: 'likeCount', header: 'Likes', sortable: true,
       render: (item) => item.likeCount?.toLocaleString() ?? 'N/A', className: "text-right w-[100px]"
     },
@@ -338,6 +316,7 @@ export default function YouTubeAnalyticsPage() {
       ),
       className: "text-center w-[100px]"
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [currentUser, handleRemoveVideo]); 
 
   const getTableCaption = () => {
@@ -356,11 +335,7 @@ export default function YouTubeAnalyticsPage() {
     return displayedVideos.length === 0 ? "No YouTube videos have been assigned to you yet." : "Your Assigned YouTube Videos";
   };
   
-  const showMainLoader = authLoading || (isLoadingPageData && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all'));
-    // More specific condition for "all" if users are still loading for it.
-    // if (currentUser?.role === 'admin' && selectedUserIdForFilter === 'all' && isLoadingUsers && allUsersForAdmin.length === 0) {
-    //   showMainLoader = true;
-    // }
+  const showMainLoader = authLoading || (isLoadingPageData && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all' || (currentUser?.role === 'admin' && selectedUserIdForFilter === 'all' && isLoadingUsers && allUsersForAdmin.length === 0)));
 
 
   if (showMainLoader) {
@@ -371,7 +346,6 @@ export default function YouTubeAnalyticsPage() {
     );
   }
   
-  // This will hold the specific message to show when no data is available AND not loading
   const noDataMessageText = !isLoadingPageData && displayedVideos.length === 0 && (currentUser?.role !== 'admin' || !!selectedUserIdForFilter) ? getTableCaption() : null;
 
   return (
