@@ -31,7 +31,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Loader2, Rss } from 'lucide-react'; // Added Rss icon
+import { PlusCircle, Loader2, Rss, AlertTriangle } from 'lucide-react'; 
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
@@ -190,7 +190,7 @@ export default function YouTubeAnalyticsPage() {
             } else { 
                 setVideos([]);
                 setIsLoadingVideos(false); 
-                console.log("[YouTubePage] Admin view: 'Select an option...' active. Videos cleared.");
+                console.log("[YouTubePage] Admin view: '-- Select View Option --' active. Videos cleared.");
             }
         }
     } else {
@@ -235,6 +235,7 @@ export default function YouTubeAnalyticsPage() {
       form.reset();
       setIsAddVideoDialogOpen(false);
 
+      // Refetch videos if the added video matches the current filter criteria
       if (currentUser?.role === 'admin' && (selectedUserIdForFilter === data.assignedToUserId || selectedUserIdForFilter === 'all')) {
         fetchVideos();
       } else if (currentUser?.role === 'user' && currentUser.id === data.assignedToUserId) {
@@ -288,11 +289,14 @@ export default function YouTubeAnalyticsPage() {
       const userName = selectedUserDetails ? selectedUserDetails.name : 'the selected user';
       return videos.length === 0 ? `No YouTube videos found assigned to ${userName}.` : `Showing videos assigned to ${userName}.`;
     }
+    // User role
     return videos.length === 0 ? "No YouTube videos have been assigned to you yet." : "Your Assigned YouTube Video Performance";
   };
 
   const shouldShowTable = !isLoadingVideos && displayedVideos.length > 0;
   const noDataMessageText = !isLoadingVideos && displayedVideos.length === 0 ? getTableCaption() : null;
+  const isSpecificUserFilterByAdmin = currentUser?.role === 'admin' && selectedUserIdForFilter && selectedUserIdForFilter !== 'all' && selectedUserIdForFilter !== '';
+
 
   return (
     <DataTableShell
@@ -346,7 +350,7 @@ export default function YouTubeAnalyticsPage() {
               <DialogHeader>
                 <DialogTitle>Add & Assign New YouTube Video</DialogTitle>
                 <DialogDescription>
-                  Enter video URL and assign to a user. Data saved to Firestore under user's specific video list.
+                  Enter video URL and assign to a user. Data saved to Firestore.
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -429,13 +433,31 @@ export default function YouTubeAnalyticsPage() {
       
       {noDataMessageText && !shouldShowTable && (
         <div className="text-center py-10 text-muted-foreground">
-            <Rss className="mx-auto h-12 w-12 mb-3" /> {/* Placeholder icon */}
+            <Rss className="mx-auto h-12 w-12 mb-3" /> 
             <p className="text-lg font-semibold mb-1">
-                {noDataMessageText.startsWith("Please select") ? "Awaiting User Selection" : 
+                {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" : 
                  noDataMessageText.includes("No YouTube videos found") ? "No Videos Found" :
                  "No Data"}
             </p>
             <p>{noDataMessageText}</p>
+            {isSpecificUserFilterByAdmin && noDataMessageText.includes("No YouTube videos found assigned to") && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-300 text-yellow-700 rounded-md text-sm shadow-sm max-w-md mx-auto">
+                    <div className='flex items-center justify-center mb-2'>
+                        <AlertTriangle className="h-5 w-5 mr-2 text-yellow-600" />
+                        <p className="font-semibold">Admin Tip:</p>
+                    </div>
+                    <p>
+                        If you're certain this user has videos assigned, the "No Videos Found" message might be due to a missing Firestore index for this specific query.
+                    </p>
+                    <p className="mt-1">
+                        Please check your browser's developer console (usually F12, then click the "Console" tab) for any error messages from Firestore.
+                        Look for a message that includes a link similar to: <code className="text-xs bg-yellow-200 p-0.5 rounded">https://console.firebase.google.com/project/.../firestore/indexes?create_composite=...</code>
+                    </p>
+                    <p className="mt-1">
+                        This link will guide you to create the required composite index (usually on the 'assignedToUserId' (Ascending) and 'createdAt' (Descending) fields in the 'youtube_videos' collection).
+                    </p>
+                </div>
+            )}
         </div>
       )}
 
@@ -449,3 +471,4 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
+
