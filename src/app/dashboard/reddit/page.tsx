@@ -73,49 +73,37 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     key: 'title', // This key remains 'title', but it now handles both post titles and comment content for the trigger
     header: 'Title / Content', 
     sortable: true, 
-    className: "min-w-[250px] max-w-sm",
+    className: "min-w-[300px] max-w-md", // Increased max-width slightly
     render: (item) => {
-      if (item.type === 'Post') {
-        return (
-          <Popover>
-            <PopoverTrigger asChild>
-              <p className="font-medium line-clamp-3 cursor-pointer hover:text-primary">
-                {item.title || "No Title"}
+      const isPost = item.type === 'Post';
+      const displayTitle = item.title || (isPost ? "No Post Title" : "No Parent Post Title");
+      const displayContent = item.content || (isPost ? "No post body." : "No comment body.");
+
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <div className="cursor-pointer hover:bg-accent/50 p-1 rounded-sm -m-1">
+              <p className="font-semibold text-sm line-clamp-2 text-card-foreground">
+                {isPost ? "Post: " : "Comment on: "} {displayTitle}
               </p>
-            </PopoverTrigger>
-            <PopoverContent className="w-96 text-sm">
-              <div>
-                <p className="font-semibold text-base mb-1">Post Title:</p>
-                <p className="mb-3 text-card-foreground">{item.title || "No Title Provided"}</p>
-                <p className="font-semibold text-base mb-1">Content:</p>
-                <p className="max-h-60 overflow-y-auto text-muted-foreground">
-                  {item.content || "No additional text content."}
-                </p>
-              </div>
-            </PopoverContent>
-          </Popover>
-        );
-      } else { // Comment
-        return (
-          <Popover>
-            <PopoverTrigger asChild>
-              <p className="line-clamp-2 cursor-pointer hover:text-primary">
-                {item.content || "No comment body"}
+              <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
+                {isPost ? "Content: " : "Comment: "} {displayContent}
               </p>
-            </PopoverTrigger>
-            <PopoverContent className="w-96 text-sm">
-               <div>
-                <p className="font-semibold text-base mb-1">Parent Post Title:</p>
-                <p className="mb-3 text-muted-foreground">{item.title || "No parent title"}</p> {/* For comments, item.title is parent post's title */}
-                <p className="font-semibold text-base mb-1">Comment:</p>
-                <p className="max-h-60 overflow-y-auto text-card-foreground">
-                  {item.content || "No comment body."}
-                </p>
-              </div>
-            </PopoverContent>
-          </Popover>
-        );
-      }
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-96 text-sm">
+            <div>
+              <p className="font-bold text-base mb-1">{isPost ? "Post Title:" : "Parent Post Title:"}</p>
+              <p className="mb-3 text-card-foreground">{displayTitle}</p>
+              
+              <p className="font-bold text-base mb-1">{isPost ? "Post Content:" : "Comment Body:"}</p>
+              <p className="max-h-60 overflow-y-auto text-muted-foreground">
+                {displayContent}
+              </p>
+            </div>
+          </PopoverContent>
+        </Popover>
+      );
     }
   },
   { key: 'author', header: 'Author', sortable: true, className: "w-[130px]" },
@@ -319,7 +307,7 @@ export default function RedditPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, authLoading]); // Removed performRedditSearch from deps to avoid re-triggering on its own re-creation
+  }, [currentUser, authLoading]); 
 
   const fetchMoreRedditPosts = () => {
     if (currentUser?.assignedKeywords && nextAfterCursor) {
@@ -490,4 +478,3 @@ export default function RedditPage() {
     </div>
   );
 }
-
