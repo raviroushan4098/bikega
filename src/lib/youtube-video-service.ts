@@ -74,9 +74,7 @@ async function fetchVideoDetailsFromYouTubeAPI(videoId: string): Promise<Partial
         channelTitle: snippet.channelTitle || 'N/A',
         likeCount: parseInt(statistics.likeCount, 10) || 0,
         commentCount: parseInt(statistics.commentCount, 10) || 0,
-        // Share count is not directly available via the videos endpoint's statistics part in a reliable public way.
-        // It's often restricted or not provided. We'll default to 0.
-        shareCount: 0, 
+        shareCount: 0,
         dataAiHint: `youtube video ${snippet.title?.substring(0,20) || ''}`, // Basic hint
         fetchedFromApi: true,
       };
@@ -142,7 +140,6 @@ export async function addYoutubeVideoToFirestore(
       channelTitle: newLinkData.channelTitle,
       assignedToUserId: assignedToUserId,
       createdAt: createdAtTimestamp.toDate().toISOString(),
-      // You might want to add 'fetchedFromApi' to YoutubeVideo type if client needs to know
     };
 
   } catch (error) {
@@ -156,20 +153,55 @@ export async function addYoutubeVideoToFirestore(
 
 export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
   try {
-    if (!userIdForFilter || userIdForFilter === 'all') {
-      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID provided or 'all' selected. Returning empty array. Admin should select a user.`);
+    if (!userIdForFilter) { // If userIdForFilter is empty string or undefined (meaning "Select an option..." is chosen)
+      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID or 'all' selected for filtering. Returning empty array.`);
       return [];
     }
 
+    if (userIdForFilter === 'all') { // Handle fetching all videos
+      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos from ALL users.`);
+      const allVideos: YoutubeVideo[] = [];
+      const usersSnapshot = await getDocs(collection(db, `youtube_videos`));
+
+      for (const userDoc of usersSnapshot.docs) {
+        const currentUserId = userDoc.id;
+        const userAssignedLinksRef = collection(db, `youtube_videos/${currentUserId}/assigned_links`);
+        const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc')); // Order within each user's videos
+        const querySnapshot = await getDocs(q);
+
+        querySnapshot.docs.forEach(docSnap => {
+          const data = docSnap.data() as AssignedLinkData;
+          allVideos.push({
+            id: docSnap.id,
+            url: data.url,
+            title: data.title,
+            thumbnailUrl: data.thumbnailUrl,
+            dataAiHint: data.dataAiHint,
+            likeCount: data.likeCount,
+            commentCount: data.commentCount,
+            shareCount: data.shareCount,
+            channelTitle: data.channelTitle,
+            assignedToUserId: currentUserId, 
+            createdAt: data.createdAt.toDate().toISOString(),
+          });
+        });
+      }
+      // Sort all collected videos by createdAt
+      allVideos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${allVideos.length} videos in total for ALL users.`);
+      return allVideos;
+    }
+
+    // Existing logic for fetching videos for a specific user
     console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for videos assigned to user ID: '${userIdForFilter}'`);
     const userAssignedLinksRef = collection(db, `youtube_videos/${userIdForFilter}/assigned_links`);
     const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc'));
 
     const querySnapshot = await getDocs(q);
     const videos = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as AssignedLinkData; 
+      const data = docSnap.data() as AssignedLinkData;
       return {
-        id: docSnap.id, 
+        id: docSnap.id,
         url: data.url,
         title: data.title,
         thumbnailUrl: data.thumbnailUrl,
@@ -178,26 +210,24 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
         commentCount: data.commentCount,
         shareCount: data.shareCount,
         channelTitle: data.channelTitle,
-        assignedToUserId: userIdForFilter, 
-        createdAt: data.createdAt.toDate().toISOString(), 
+        assignedToUserId: userIdForFilter,
+        createdAt: data.createdAt.toDate().toISOString(),
       } as YoutubeVideo;
     });
 
     console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${videos.length} videos for user '${userIdForFilter}'.`);
     if (videos.length > 0) {
-        console.log(`[youtube-video-service] First video returned for user '${userIdForFilter}': `, { id: videos[0].id, title: videos[0].title, assignedTo: videos[0].assignedToUserId });
+        console.log(`[youtube-video-service] First video returned for user '${userIdForFilter}': `, {id: videos[0].id, title: videos[0].title, assignedTo: videos[0].assignedToUserId });
     }
     return videos;
 
   } catch (error) {
-    console.error(`[youtube-video-service] getYoutubeVideosFromFirestore: Error fetching videos for user '${userIdForFilter}': `, error);
+    console.error(`[youtube-video-service] getYoutubeVideosFromFirestore: Error fetching videos for filter '${userIdForFilter}': `, error);
     if (error instanceof Error && error.message && error.message.includes('composite index')) {
       console.error("[youtube-video-service] Firestore is likely missing a composite index for the subcollection query. Path: youtube_videos/{userId}/assigned_links, ordered by 'createdAt'. Please check Firebase console.");
     } else if (error instanceof Error && error.message && (error.message.includes('Fetched document to delete does not exist') || error.message.includes('No document to update'))) {
         console.warn(`[youtube-video-service] Potential issue with path for user '${userIdForFilter}'. The user document might not exist at 'youtube_videos/${userIdForFilter}'.`);
     }
-    return []; 
+    return [];
   }
 }
-
-    
