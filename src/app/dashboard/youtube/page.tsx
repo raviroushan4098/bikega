@@ -7,7 +7,7 @@ import { GenericDataTable, renderImageCell } from '@/components/analytics/generi
 import { useAuth } from '@/contexts/auth-context';
 import type { ColumnConfig, YoutubeVideo, User } from '@/types';
 import { getUsers } from '@/lib/user-service';
-import { addYoutubeVideoToFirestore, getYoutubeVideosFromFirestore } from '@/lib/youtube-video-service';
+import { addYoutubeVideoToFirestore, getYoutubeVideosFromFirestore, getVideosForUserFromFirestore } from '@/lib/youtube-video-service';
 import {
   Select,
   SelectContent,
@@ -136,41 +136,38 @@ export default function YouTubeAnalyticsPage() {
     if (!currentUser) {
       console.log("[YouTubePage] currentUser not available, skipping fetchVideos.");
       setIsLoadingVideos(false);
-      setVideos([]); 
+      setVideos([]);
       return;
     }
 
-    let filterIdForService: string | undefined = undefined;
-    if (currentUser.role === 'admin') {
-      if (selectedUserIdForFilter && selectedUserIdForFilter !== '') { 
-        filterIdForService = selectedUserIdForFilter;
-      } else { 
-        console.log("[YouTubePage] Admin view: No specific user or 'all' selected for filter. Clearing videos.");
-        setVideos([]);
-        setIsLoadingVideos(false);
-        return;
-      }
-    } else if (currentUser.role === 'user') {
-      filterIdForService = currentUser.id;
-    }
-
-    if (!filterIdForService) { 
-        console.log("[YouTubePage] fetchVideos: No valid filterIdForService determined. Skipping fetch.");
-        setVideos([]);
-        setIsLoadingVideos(false);
-        return;
-    }
-    
     setIsLoadingVideos(true);
-    console.log(`[YouTubePage] fetchVideos called. Role: ${currentUser.role}, SelectedFilter (dropdown state): '${selectedUserIdForFilter}', Actual filterIdForService for query: '${filterIdForService}'`);
-    
+    let fetchedVideosResult: YoutubeVideo[] = [];
+
     try {
-      const fetchedVideos = await getYoutubeVideosFromFirestore(filterIdForService);
-      console.log(`[YouTubePage] Fetched ${fetchedVideos.length} videos from Firestore using filterIdForService '${filterIdForService}'.`);
-      if (fetchedVideos.length > 0) {
-        console.log(`[YouTubePage] Sample of first video fetched for '${filterIdForService}':`, {id: fetchedVideos[0].id, title: fetchedVideos[0].title, assignedTo: fetchedVideos[0].assignedToUserId});
+      if (currentUser.role === 'admin') {
+        if (selectedUserIdForFilter === 'all') {
+          console.log(`[YouTubePage] fetchVideos: Admin view, 'all' selected. Calling getYoutubeVideosFromFirestore('all').`);
+          fetchedVideosResult = await getYoutubeVideosFromFirestore('all');
+        } else if (selectedUserIdForFilter && selectedUserIdForFilter !== '') {
+          console.log(`[YouTubePage] fetchVideos: Admin view, specific user '${selectedUserIdForFilter}' selected. Calling getVideosForUserFromFirestore.`);
+          fetchedVideosResult = await getVideosForUserFromFirestore(selectedUserIdForFilter);
+        } else {
+          console.log("[YouTubePage] fetchVideos: Admin view, no specific user or 'all' selected. Clearing videos.");
+          setVideos([]);
+          setIsLoadingVideos(false);
+          return;
+        }
+      } else if (currentUser.role === 'user') {
+        console.log(`[YouTubePage] fetchVideos: User view for '${currentUser.id}'. Calling getVideosForUserFromFirestore.`);
+        fetchedVideosResult = await getVideosForUserFromFirestore(currentUser.id);
       }
-      setVideos(fetchedVideos);
+
+      console.log(`[YouTubePage] Fetched ${fetchedVideosResult.length} videos. (Filter/User: ${currentUser.role === 'admin' ? selectedUserIdForFilter : currentUser.id})`);
+      if (fetchedVideosResult.length > 0) {
+        console.log(`[YouTubePage] Sample of first video fetched:`, {id: fetchedVideosResult[0].id, title: fetchedVideosResult[0].title, assignedTo: fetchedVideosResult[0].assignedToUserId});
+      }
+      setVideos(fetchedVideosResult);
+
     } catch (error) {
       console.error("[YouTubePage] Error in fetchVideos:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to fetch videos from Firestore." });
@@ -182,23 +179,13 @@ export default function YouTubeAnalyticsPage() {
 
   useEffect(() => {
     if (currentUser) {
-        if (currentUser.role === 'user') { 
-            fetchVideos(); 
-        } else if (currentUser.role === 'admin') { 
-            if (selectedUserIdForFilter && selectedUserIdForFilter !== '') { 
-                fetchVideos();
-            } else { 
-                setVideos([]);
-                setIsLoadingVideos(false); 
-                console.log("[YouTubePage] Admin view: '-- Select View Option --' active. Videos cleared.");
-            }
-        }
+        fetchVideos();
     } else {
         console.log("[YouTubePage] currentUser not available, skipping fetchVideos in effect.");
         setVideos([]);
         setIsLoadingVideos(false);
     }
-  }, [fetchVideos, currentUser, selectedUserIdForFilter]);
+  }, [fetchVideos, currentUser, selectedUserIdForFilter]); // selectedUserIdForFilter is crucial here for admin changes
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
@@ -214,6 +201,7 @@ export default function YouTubeAnalyticsPage() {
         })
         .finally(() => setIsLoadingUsers(false));
     } else if (currentUser?.role === 'user' && currentUser.id && currentUser.name) {
+      // For a 'user' role, 'allUsers' list can be just themselves for rendering 'Assigned To' badge.
       setAllUsers([{ ...currentUser }]); 
     }
   }, [currentUser, toast]);
@@ -321,9 +309,7 @@ export default function YouTubeAnalyticsPage() {
                 onValueChange={(value) => {
                     console.log("[YouTubePage] Admin selected option from filter dropdown. New selectedUserIdForFilter:", value);
                     setSelectedUserIdForFilter(value); 
-                    if (value === '') { 
-                        setVideos([]); 
-                    }
+                    // No need to clear videos here, useEffect for fetchVideos will handle it
                 }}
               >
                 <SelectTrigger id="user-select-filter" className="w-full sm:w-[320px] bg-background shadow-sm">

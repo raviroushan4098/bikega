@@ -8,7 +8,6 @@ import { getApiKeys } from './api-key-service';
 
 const YOUTUBE_API_KEY_SERVICE_NAME = "YouTube Data API Key";
 
-// This interface represents the data stored directly in the 'youtube_videos' collection
 export interface StoredYoutubeVideoData {
   url: string;
   title: string;
@@ -20,7 +19,7 @@ export interface StoredYoutubeVideoData {
   channelTitle: string;
   createdAt: Timestamp;
   fetchedFromApi: boolean;
-  assignedToUserId: string; // Now a direct field
+  assignedToUserId: string;
 }
 
 function extractYouTubeVideoId(url: string): string | null {
@@ -75,7 +74,7 @@ async function fetchVideoDetailsFromYouTubeAPI(videoId: string): Promise<Partial
         channelTitle: snippet.channelTitle || 'N/A',
         likeCount: parseInt(statistics.likeCount, 10) || 0,
         commentCount: parseInt(statistics.commentCount, 10) || 0,
-        shareCount: 0, // YouTube API v3 does not provide share count directly for videos
+        shareCount: 0,
         dataAiHint: `youtube video ${snippet.title?.substring(0,20) || ''}`,
         fetchedFromApi: true,
       };
@@ -117,14 +116,13 @@ export async function addYoutubeVideoToFirestore(
       dataAiHint: videoDetails?.dataAiHint || 'video placeholder',
       likeCount: videoDetails?.likeCount || 0,
       commentCount: videoDetails?.commentCount || 0,
-      shareCount: videoDetails?.shareCount || 0, // Assuming 0 as API doesn't provide it
+      shareCount: videoDetails?.shareCount || 0,
       channelTitle: videoDetails?.channelTitle || 'N/A',
       createdAt: createdAtTimestamp,
       fetchedFromApi: videoDetails?.fetchedFromApi || false,
-      assignedToUserId: assignedToUserId, // Store assignedToUserId directly
+      assignedToUserId: assignedToUserId,
     };
 
-    // Add directly to the 'youtube_videos' collection
     const videosCollectionRef = collection(db, `youtube_videos`);
     const docRef = await addDoc(videosCollectionRef, newVideoData);
 
@@ -145,48 +143,38 @@ export async function addYoutubeVideoToFirestore(
   }
 }
 
-export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
+/**
+ * Fetches videos assigned to a specific user from Firestore.
+ * This query requires a composite index on 'assignedToUserId' (ASC) and 'createdAt' (DESC).
+ */
+export async function getVideosForUserFromFirestore(userId: string): Promise<YoutubeVideo[]> {
   const videosCollectionRef = collection(db, 'youtube_videos');
-  let q;
+  console.log(`[youtube-video-service] getVideosForUserFromFirestore: Querying for videos ASSIGNED TO USER ID: '${userId}'.`);
+  
+  const q = query(
+    videosCollectionRef,
+    where('assignedToUserId', '==', userId),
+    orderBy('createdAt', 'desc')
+  );
 
+  const videos: YoutubeVideo[] = [];
   try {
-    if (!userIdForFilter || userIdForFilter === '') {
-      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID selected for filtering. Returning empty array.`);
-      return [];
-    }
-
-    if (userIdForFilter === 'all') {
-      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos from ALL users from 'youtube_videos' collection.`);
-      q = query(videosCollectionRef, orderBy('createdAt', 'desc'));
-    } else {
-      // Specific user filter
-      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for videos assigned to user ID: '${userIdForFilter}' from 'youtube_videos' collection.`);
-      // This query will require a composite index: youtube_videos collection, assignedToUserId (ASC), createdAt (DESC)
-      q = query(
-        videosCollectionRef,
-        where('assignedToUserId', '==', userIdForFilter),
-        orderBy('createdAt', 'desc')
-      );
-    }
-
     const querySnapshot = await getDocs(q);
-    const videos: YoutubeVideo[] = [];
-
     querySnapshot.forEach(docSnap => {
       try {
         const data = docSnap.data() as StoredYoutubeVideoData;
         if (!data.createdAt || typeof data.createdAt.toDate !== 'function') {
-          console.warn(`[youtube-video-service] Video ID '${docSnap.id}' (Filter: ${userIdForFilter}) has missing or invalid 'createdAt' field. Skipping this video. Data:`, JSON.stringify(data));
+          console.warn(`[youtube-video-service][USER_FILTER] Video ID '${docSnap.id}' (User: ${userId}) has missing or invalid 'createdAt'. Skipping. Data:`, JSON.stringify(data));
           return;
         }
         if (!data.assignedToUserId) {
-           console.warn(`[youtube-video-service] Video ID '${docSnap.id}' (Filter: ${userIdForFilter}) is missing 'assignedToUserId'. Skipping. Data:`, JSON.stringify(data));
+           console.warn(`[youtube-video-service][USER_FILTER] Video ID '${docSnap.id}' (User: ${userId}) is missing 'assignedToUserId'. Skipping. Data:`, JSON.stringify(data));
            return;
         }
         videos.push({
           id: docSnap.id,
           url: data.url,
-          title: data.title,
+          title: data.title || 'Untitled Video',
           thumbnailUrl: data.thumbnailUrl,
           dataAiHint: data.dataAiHint,
           likeCount: data.likeCount,
@@ -197,29 +185,92 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
           createdAt: data.createdAt.toDate().toISOString(),
         });
       } catch (processError) {
-        console.error(`[youtube-video-service] Error processing video ID '${docSnap.id}' (Filter: ${userIdForFilter}):`, processError, "Problematic video data:", JSON.stringify(docSnap.data()));
+        console.error(`[youtube-video-service][USER_FILTER] Error processing video ID '${docSnap.id}' (User: ${userId}):`, processError, "Problematic video data:", JSON.stringify(docSnap.data()));
+      }
+    });
+    console.log(`[youtube-video-service] getVideosForUserFromFirestore: Found ${videos.length} videos for user '${userId}'.`);
+    if (videos.length > 0) {
+        console.log(`[youtube-video-service] First video for user '${userId}': `, {id: videos[0].id, title: videos[0].title ? videos[0].title.substring(0,30) : 'N/A', assignedTo: videos[0].assignedToUserId });
+    }
+    return videos;
+  } catch (error) {
+    console.error(`[youtube-video-service] getVideosForUserFromFirestore: Error fetching videos for user '${userId}': `, error);
+    if (error instanceof Error && (error.message.includes('composite index') || error.message.includes('requires an index'))) {
+        console.error(`[youtube-video-service] FIRESTORE INDEX REQUIRED for user query: The query for user '${userId}' needs a composite index.`);
+        console.error(`  Go to your Firebase console -> Firestore Database -> Indexes.`);
+        console.error(`  Create an index for the 'youtube_videos' collection with fields:`);
+        console.error(`    1. 'assignedToUserId' (Ascending)`);
+        console.error(`    2. 'createdAt' (Descending)`);
+    }
+    return [];
+  }
+}
+
+
+/**
+ * Fetches ALL videos from Firestore, typically for the "Show All Videos" admin view.
+ * This function's behavior for "Show All" should remain consistent.
+ */
+export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
+  const videosCollectionRef = collection(db, 'youtube_videos');
+  
+  // If this function is called with a specific user ID, log a warning and return empty.
+  // The frontend should use `getVideosForUserFromFirestore` for specific users.
+  if (userIdForFilter && userIdForFilter !== 'all') {
+    console.warn(`[youtube-video-service] getYoutubeVideosFromFirestore was called with specific user ID '${userIdForFilter}'. This function is intended for 'all' videos. Use 'getVideosForUserFromFirestore' for specific user queries. Returning empty list.`);
+    return [];
+  }
+
+  console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos from 'youtube_videos' collection (filter was '${userIdForFilter}', treated as 'all').`);
+  const q = query(videosCollectionRef, orderBy('createdAt', 'desc'));
+  
+  const allVideos: YoutubeVideo[] = [];
+  try {
+    const querySnapshot = await getDocs(q);
+    console.log(`[youtube-video-service][ALL_FILTER] Found ${querySnapshot.docs.length} total video document(s) in 'youtube_videos' collection.`);
+    
+    const docIds = querySnapshot.docs.map(doc => doc.id);
+    if (docIds.length > 0) {
+      console.log(`[youtube-video-service][ALL_FILTER] IDs of video documents found in 'youtube_videos' collection: ${docIds.join(', ')}`);
+    }
+
+    querySnapshot.forEach(docSnap => {
+      try {
+        const data = docSnap.data() as StoredYoutubeVideoData;
+        if (!data.createdAt || typeof data.createdAt.toDate !== 'function') {
+          console.warn(`[youtube-video-service][ALL_FILTER] Video ID '${docSnap.id}' has missing or invalid 'createdAt' field. Skipping this video. Data:`, JSON.stringify(data));
+          return;
+        }
+        if (!data.assignedToUserId) {
+           console.warn(`[youtube-video-service][ALL_FILTER] Video ID '${docSnap.id}' is missing 'assignedToUserId'. Skipping. Data:`, JSON.stringify(data));
+           return;
+        }
+        allVideos.push({
+          id: docSnap.id,
+          url: data.url,
+          title: data.title || 'Untitled Video',
+          thumbnailUrl: data.thumbnailUrl,
+          dataAiHint: data.dataAiHint,
+          likeCount: data.likeCount,
+          commentCount: data.commentCount,
+          shareCount: data.shareCount,
+          channelTitle: data.channelTitle,
+          assignedToUserId: data.assignedToUserId,
+          createdAt: data.createdAt.toDate().toISOString(),
+        });
+      } catch (processError) {
+        console.error(`[youtube-video-service][ALL_FILTER] Error processing video ID '${docSnap.id}':`, processError, "Problematic video data:", JSON.stringify(docSnap.data()));
       }
     });
 
-    console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${videos.length} videos for filter '${userIdForFilter}'.`);
-    if (videos.length > 0 && userIdForFilter !== 'all') {
-        console.log(`[youtube-video-service] First video returned for user '${userIdForFilter}': `, {id: videos[0].id, title: videos[0].title ? videos[0].title.substring(0,30) : 'N/A', assignedTo: videos[0].assignedToUserId });
-    } else if (videos.length > 0 && userIdForFilter === 'all') {
-        console.log(`[youtube-video-service] First video returned in 'all' view: `, {id: videos[0].id, title: videos[0].title ? videos[0].title.substring(0,30) : 'N/A', assignedTo: videos[0].assignedToUserId });
+    console.log(`[youtube-video-service][ALL_FILTER] Aggregated ${allVideos.length} videos in total for ALL users.`);
+    if (allVideos.length > 0) {
+        console.log(`[youtube-video-service][ALL_FILTER] First video in 'all' view: `, {id: allVideos[0].id, title: allVideos[0].title ? allVideos[0].title.substring(0,30) : 'N/A', assignedTo: allVideos[0].assignedToUserId });
     }
-    return videos;
+    return allVideos;
 
   } catch (error) {
-    console.error(`[youtube-video-service] getYoutubeVideosFromFirestore: Error fetching videos for filter '${userIdForFilter}': `, error);
-    if (error instanceof Error && error.message) {
-        if (error.message.includes('composite index') || error.message.includes('requires an index')) {
-            console.error(`[youtube-video-service] FIRESTORE INDEX REQUIRED: The query for user '${userIdForFilter}' needs a composite index.`);
-            console.error(`  Go to your Firebase console -> Firestore Database -> Indexes.`);
-            console.error(`  Create an index for the 'youtube_videos' collection with fields:`);
-            console.error(`    1. 'assignedToUserId' (Ascending)`);
-            console.error(`    2. 'createdAt' (Descending)`);
-        }
-    }
+    console.error(`[youtube-video-service][ALL_FILTER] Error fetching all videos: `, error);
     return [];
   }
 }
