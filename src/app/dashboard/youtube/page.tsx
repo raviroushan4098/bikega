@@ -7,7 +7,7 @@ import { GenericDataTable, renderImageCell } from '@/components/analytics/generi
 import { useAuth } from '@/contexts/auth-context';
 import type { ColumnConfig, YoutubeVideo, User as AuthUserType } from '@/types';
 import { getUsers, assignYoutubeUrlToUser, removeYoutubeUrlFromUser, getUserById } from '@/lib/user-service';
-import { fetchVideoDetailsFromYouTubeAPI, fetchBatchVideoDetailsFromYouTubeAPI } from '@/lib/youtube-video-service';
+import { fetchBatchVideoDetailsFromYouTubeAPI } from '@/lib/youtube-video-service';
 import {
   Select,
   SelectContent,
@@ -31,7 +31,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, Eye as ViewsIcon } from 'lucide-react'; // Added ViewsIcon
+import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, Eye as ViewsIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
@@ -47,9 +47,9 @@ export default function YouTubeAnalyticsPage() {
 
   const [displayedVideos, setDisplayedVideos] = useState<YoutubeVideo[]>([]);
   const [isLoadingPageData, setIsLoadingPageData] = useState<boolean>(true);
-  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false); 
-  const [allUsersForAdmin, setAllUsersForAdmin] = useState<AuthUserType[]>([]); 
-  
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+  const [allUsersForAdmin, setAllUsersForAdmin] = useState<AuthUserType[]>([]);
+
   const [selectedUserIdForFilter, setSelectedUserIdForFilter] = useState<string>('');
 
   const [isAddVideoDialogOpen, setIsAddVideoDialogOpen] = useState(false);
@@ -75,17 +75,17 @@ export default function YouTubeAnalyticsPage() {
     resolver: zodResolver(addVideoSchema),
     defaultValues: { url: "", assignedToUserId: "" },
   });
-  
+
   const processAndFetchVideoDetails = useCallback(async (
     urls: string[],
     assignmentMap: Record<string, { userId: string, userName?: string }>
   ): Promise<YoutubeVideo[]> => {
     if (!urls || urls.length === 0) return [];
-    
+
     const videoIds = urls.map(url => new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop()).filter(Boolean) as string[];
 
     if(videoIds.length === 0) return [];
-    
+
     const videoDetails = await fetchBatchVideoDetailsFromYouTubeAPI(videoIds, assignmentMap);
     return videoDetails;
 
@@ -94,26 +94,26 @@ export default function YouTubeAnalyticsPage() {
 
   const fetchAndSetVideos = useCallback(async () => {
     if (authLoading || !currentUser) {
-      setDisplayedVideos([]); 
+      setDisplayedVideos([]);
       setIsLoadingPageData(false);
       return;
     }
-  
-    console.log(`[YouTubePage] fetchVideos called. Role: ${currentUser.role}, Filter: ${selectedUserIdForFilter}, Users Loading: ${isLoadingUsers}`);
+
+    console.log(`[YouTubePage] fetchAndSetVideos called. Role: ${currentUser.role}, Filter: ${selectedUserIdForFilter}, Users Loading: ${isLoadingUsers}`);
     setIsLoadingPageData(true);
     let fetchedVideos: YoutubeVideo[] = [];
-    
+
     try {
       if (currentUser.role === 'admin') {
         if (isLoadingUsers && selectedUserIdForFilter === 'all' && allUsersForAdmin.length === 0) {
           console.log("[YouTubePage] Admin 'all': Users still loading. Deferring video fetch.");
           // isLoadingPageData remains true; the main loader will spin.
-          return; 
+          return;
         }
-  
+
         const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
         const urlsToFetch: string[] = [];
-  
+
         if (selectedUserIdForFilter === 'all') {
           console.log("[YouTubePage] Admin 'all': Fetching all users' videos.");
           if (!isLoadingUsers && allUsersForAdmin.length === 0) {
@@ -125,15 +125,15 @@ export default function YouTubeAnalyticsPage() {
           allUsersForAdmin.forEach(u => {
             u.assignedYoutubeUrls?.forEach(url => {
               const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
-              if (videoId) { // Ensure videoId is extracted
-                if (!videoIdToAssignmentMap[videoId]) { 
-                  urlsToFetch.push(url);
+              if (videoId) {
+                if (!videoIdToAssignmentMap[videoId]) {
+                  urlsToFetch.push(url); // Store original URL for potential re-use/display if needed
                   videoIdToAssignmentMap[videoId] = { userId: u.id, userName: u.name };
                 }
               }
             });
           });
-        } else if (selectedUserIdForFilter) { 
+        } else if (selectedUserIdForFilter) {
           console.log(`[YouTubePage] Admin specific user: '${selectedUserIdForFilter}'.`);
           const userDoc = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter) || await getUserById(selectedUserIdForFilter);
           if (userDoc && userDoc.assignedYoutubeUrls && userDoc.assignedYoutubeUrls.length > 0) {
@@ -148,14 +148,14 @@ export default function YouTubeAnalyticsPage() {
         } else {
           console.log("[YouTubePage] Admin: No specific user or 'all' selected yet. No videos to fetch.");
         }
-  
+
         if (urlsToFetch.length > 0) {
           fetchedVideos = await processAndFetchVideoDetails(urlsToFetch, videoIdToAssignmentMap);
         } else {
           fetchedVideos = [];
         }
-        console.log(`[YouTubePage] Admin view: Fetched ${fetchedVideos.length} videos. Filter: ${selectedUserIdForFilter || 'none'}`);
-  
+        console.log(`[YouTubePage] Admin view: Fetched ${fetchedVideos.length} videos. (Filter/User: ${selectedUserIdForFilter || 'none'})`);
+
       } else { // Regular user view
         console.log(`[YouTubePage] User view for ${currentUser.id}.`);
         const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
@@ -180,16 +180,18 @@ export default function YouTubeAnalyticsPage() {
       toast({ variant: "destructive", title: "Error", description: "Failed to load YouTube video data." });
       setDisplayedVideos([]);
     } finally {
-        setIsLoadingPageData(false); 
+        setIsLoadingPageData(false);
     }
   }, [currentUser, authLoading, selectedUserIdForFilter, processAndFetchVideoDetails, toast, allUsersForAdmin, isLoadingUsers]);
 
-  useEffect(() => {
-    fetchAndSetVideos();
-  }, [fetchAndSetVideos]);
 
   useEffect(() => {
-    if (currentUser?.role === 'admin' && !isLoadingUsers && allUsersForAdmin.length === 0) { 
+    // This effect now depends on isLoadingUsers to ensure users are loaded before fetching videos for 'all'
+    fetchAndSetVideos();
+  }, [fetchAndSetVideos, isLoadingUsers]); // Added isLoadingUsers
+
+  useEffect(() => {
+    if (currentUser?.role === 'admin' && !isLoadingUsers && allUsersForAdmin.length === 0) {
       setIsLoadingUsers(true);
       getUsers()
         .then(users => {
@@ -198,15 +200,15 @@ export default function YouTubeAnalyticsPage() {
         })
         .catch(error => {
           toast({ variant: "destructive", title: "Error", description: "Failed to fetch user list for admin." });
-          setAllUsersForAdmin([]); 
+          setAllUsersForAdmin([]);
         })
         .finally(() => {
             setIsLoadingUsers(false)
         });
     } else if (currentUser?.role === 'admin' && allUsersForAdmin.length > 0 && isLoadingUsers) {
-        setIsLoadingUsers(false); 
+        setIsLoadingUsers(false);
     }
-  }, [currentUser, toast, allUsersForAdmin.length, isLoadingUsers]); 
+  }, [currentUser, toast, allUsersForAdmin.length, isLoadingUsers]);
 
   async function onSubmitAddVideo(data: AddVideoFormValues) {
     setIsSubmittingVideo(true);
@@ -224,12 +226,13 @@ export default function YouTubeAnalyticsPage() {
         toast({ title: "Video Assigned", description: `Video URL has been assigned to the user.` });
         addVideoForm.reset();
         setIsAddVideoDialogOpen(false);
-        setAllUsersForAdmin(prevUsers => prevUsers.map(u => 
-            u.id === data.assignedToUserId 
-            ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), canonicalUrl].filter((v,i,a)=>a.indexOf(v)===i) } 
+        // Optimistically update local user data for admin view
+        setAllUsersForAdmin(prevUsers => prevUsers.map(u =>
+            u.id === data.assignedToUserId
+            ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), canonicalUrl].filter((v,i,a)=>a.indexOf(v)===i) }
             : u
         ));
-        await fetchAndSetVideos(); 
+        await fetchAndSetVideos();
       } else {
         toast({ variant: "destructive", title: "Assignment Failed", description: result.error || "Could not assign video URL." });
       }
@@ -245,7 +248,7 @@ export default function YouTubeAnalyticsPage() {
       setIsSubmittingVideo(false);
     }
   }
-  
+
   const handleRemoveVideo = async (videoToRemove: YoutubeVideo) => {
      if (!confirm(`Are you sure you want to remove the video "${videoToRemove.title || videoToRemove.url}" for user ${videoToRemove.assignedToUserName || videoToRemove.assignedToUserId}?`)) {
       return;
@@ -254,12 +257,18 @@ export default function YouTubeAnalyticsPage() {
       const result = await removeYoutubeUrlFromUser(videoToRemove.assignedToUserId, videoToRemove.url);
       if (result.success) {
         toast({ title: "Video Removed", description: `Video has been unassigned.` });
-        setAllUsersForAdmin(prevUsers => prevUsers.map(u => 
+        // Optimistically update local user data
+         setAllUsersForAdmin(prevUsers => prevUsers.map(u =>
             u.id === videoToRemove.assignedToUserId
             ? { ...u, assignedYoutubeUrls: (u.assignedYoutubeUrls || []).filter(url => url !== videoToRemove.url) }
             : u
         ));
-        await fetchAndSetVideos(); 
+        if(currentUser && currentUser.id === videoToRemove.assignedToUserId && currentUser.role === 'user') {
+            // If the current user removed their own video, update their auth context or refetch them
+            // For simplicity here, we just refetch all videos which will use the updated current user from auth context (if it's reactive)
+            // or rely on the admin's optimistic update above if admin is performing the action
+        }
+        await fetchAndSetVideos();
       } else {
         toast({ variant: "destructive", title: "Removal Failed", description: result.error || "Could not unassign video." });
       }
@@ -298,6 +307,34 @@ export default function YouTubeAnalyticsPage() {
       render: (item) => item.commentCount?.toLocaleString() ?? 'N/A', className: "text-right w-[120px]"
     },
     {
+      key: 'sentiment',
+      header: 'Sentiment',
+      render: (item) => {
+        if (!item.sentiment) {
+          return <Badge variant="outline">N/A</Badge>;
+        }
+        let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
+         // Customize colors further if needed, or rely on theme's primary/destructive
+        switch (item.sentiment) {
+          case 'positive':
+            badgeVariant = "default"; // Uses primary theme color
+            break;
+          case 'negative':
+            badgeVariant = "destructive";
+            break;
+          case 'neutral':
+            badgeVariant = "secondary";
+            break;
+        }
+        return (
+          <Badge variant={badgeVariant}>
+            {item.sentiment.charAt(0).toUpperCase() + item.sentiment.slice(1)}
+          </Badge>
+        );
+      },
+      className: "w-[120px]"
+    },
+    {
       key: 'actions',
       header: 'Actions',
       render: (item) => (
@@ -317,7 +354,7 @@ export default function YouTubeAnalyticsPage() {
       className: "text-center w-[100px]"
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [currentUser, handleRemoveVideo]); 
+  ], [currentUser, handleRemoveVideo]);
 
   const getTableCaption = () => {
     if (currentUser?.role === 'admin') {
@@ -334,9 +371,8 @@ export default function YouTubeAnalyticsPage() {
     if (isLoadingPageData) return "Loading your assigned videos...";
     return displayedVideos.length === 0 ? "No YouTube videos have been assigned to you yet." : "Your Assigned YouTube Videos";
   };
-  
-  const showMainLoader = authLoading || (isLoadingPageData && (!selectedUserIdForFilter || selectedUserIdForFilter === 'all' || (currentUser?.role === 'admin' && selectedUserIdForFilter === 'all' && isLoadingUsers && allUsersForAdmin.length === 0)));
 
+  const showMainLoader = authLoading || (isLoadingPageData && (currentUser?.role !== 'admin' || !selectedUserIdForFilter || (selectedUserIdForFilter === 'all' && (isLoadingUsers || allUsersForAdmin.length === 0))));
 
   if (showMainLoader) {
      return (
@@ -345,7 +381,7 @@ export default function YouTubeAnalyticsPage() {
       </div>
     );
   }
-  
+
   const noDataMessageText = !isLoadingPageData && displayedVideos.length === 0 && (currentUser?.role !== 'admin' || !!selectedUserIdForFilter) ? getTableCaption() : null;
 
   return (
@@ -361,11 +397,11 @@ export default function YouTubeAnalyticsPage() {
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
             <Label htmlFor="user-select-filter" className="text-sm font-medium shrink-0">View videos for:</Label>
-            {isLoadingUsers ? (
+            {isLoadingUsers && allUsersForAdmin.length === 0 ? (
               <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...</div>
             ) : (
-              <Select 
-                value={selectedUserIdForFilter} 
+              <Select
+                value={selectedUserIdForFilter}
                 onValueChange={(value) => {
                   console.log("[YouTubePage] Admin selected option from filter dropdown. New selectedUserIdForFilter:", value);
                   setSelectedUserIdForFilter(value);
@@ -444,19 +480,19 @@ export default function YouTubeAnalyticsPage() {
           </Dialog>
         </div>
       )}
-      
-      {!showMainLoader && noDataMessageText && ( 
+
+      {!showMainLoader && noDataMessageText && (
         <div className="text-center py-10 text-muted-foreground">
             <Rss className="mx-auto h-12 w-12 mb-3" />
             <p className="text-lg font-semibold mb-1">
-                {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" : 
+                {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" :
                  noDataMessageText.startsWith("Loading") ? "Loading..." : "No Videos Found"}
             </p>
             <p>{noDataMessageText}</p>
-            
-            {currentUser?.role === 'admin' && 
-             selectedUserIdForFilter && 
-             selectedUserIdForFilter !== 'all' && 
+
+            {currentUser?.role === 'admin' &&
+             selectedUserIdForFilter &&
+             selectedUserIdForFilter !== 'all' &&
              displayedVideos.length === 0 &&
              !isLoadingPageData && (
               <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 shadow">
@@ -465,15 +501,15 @@ export default function YouTubeAnalyticsPage() {
                   If you're certain this user has videos assigned, the "No Videos Found" message might be due to a missing Firestore index for this specific query.
                 </p>
                 <p className="mt-2">
-                  Please check your browser's developer console (usually F12, then click the "Console" tab) for any error messages from Firestore. 
-                  Look for a message that includes a link similar to: 
+                  Please check your browser's developer console (usually F12, then click the "Console" tab) for any error messages from Firestore.
+                  Look for a message that includes a link similar to:
                   <code className="block bg-blue-100 p-1 rounded text-xs my-1 break-all">https://console.firebase.google.com/project/.../firestore/indexes?create_composite=...</code>
                 </p>
                 <p className="mt-2">
-                  This link will guide you to create the required composite index (usually on the 'assignedToUserId' (Ascending) and 'createdAt' (Descending) fields in the 'users' collection, specifically for the `assignedYoutubeUrls` array if your queries imply ordering or filtering within that array which is not the case here - direct user document fetch is used).
+                  This link will guide you to create the required composite index. With the current data model (URLs in user docs), specific user video fetches are done by retrieving the user document directly, so Firestore indexes on a separate video collection are not applicable here. If videos are not showing for a user, verify their `assignedYoutubeUrls` array in their Firestore user document.
                 </p>
                  <p className="mt-2 text-xs">
-                    (Note: With the current model of storing URLs in the user document, fetching a specific user's videos relies on getting that user's document. If issues persist for a specific user and you've verified their `assignedYoutubeUrls` array is correctly populated in Firestore, and no console errors appear, the issue might be elsewhere in the data processing or YouTube API fetching step.)
+                    (Note: If issues persist for a specific user and you've verified their `assignedYoutubeUrls` array is correctly populated in Firestore, and no console errors appear related to fetching the user document itself, the issue might be in the YouTube API fetching step or data processing after fetching the URLs.)
                 </p>
               </div>
             )}
@@ -490,4 +526,3 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
-    

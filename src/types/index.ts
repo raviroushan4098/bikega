@@ -20,10 +20,11 @@ export interface YoutubeVideo {
   channelTitle?: string;
   likeCount?: number;
   commentCount?: number;
-  viewCount?: number; // Added view count
+  viewCount?: number;
   shareCount?: number; // Note: shareCount is often not available or zero from API
   assignedToUserId: string; // User to whom this URL is assigned
   assignedToUserName?: string; // Optional: Name of the user for display
+  sentiment?: 'positive' | 'neutral' | 'negative'; // Added for placeholder sentiment
 }
 
 export interface RedditPost {
