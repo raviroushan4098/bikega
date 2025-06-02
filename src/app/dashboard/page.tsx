@@ -32,10 +32,10 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight font-headline">
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-headline">
           Welcome, {user?.name || 'Analyst'}!
         </h2>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground mt-1">
           Here's a quick overview of your social media landscape.
         </p>
       </div>

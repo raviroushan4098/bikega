@@ -12,8 +12,8 @@ export function DataTableShell({ title, description, children }: DataTableShellP
   return (
     <Card className="shadow-lg w-full">
       <CardHeader>
-        <CardTitle className="text-2xl font-headline">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+        <CardTitle className="text-xl sm:text-2xl font-headline">{title}</CardTitle>
+        <CardDescription className="mt-1">{description}</CardDescription>
       </CardHeader>
       <CardContent>
         {children}

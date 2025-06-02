@@ -16,13 +16,13 @@ interface AnalyticsCardProps {
 export function AnalyticsCard({ title, value, description, icon: Icon, href, className }: AnalyticsCardProps) {
   return (
     <Card className={cn("shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col", className)}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-lg font-medium font-headline">{title}</CardTitle>
         <Icon className="h-6 w-6 text-accent" />
       </CardHeader>
       <CardContent className="flex-grow">
-        <div className="text-3xl font-bold text-primary">{value}</div>
-        <p className="text-xs text-muted-foreground pt-1">{description}</p>
+        <div className="text-2xl sm:text-3xl font-bold text-primary">{value}</div>
+        <p className="text-xs text-muted-foreground pt-1.5">{description}</p>
       </CardContent>
       <div className="p-4 pt-0">
         <Link href={href} passHref>

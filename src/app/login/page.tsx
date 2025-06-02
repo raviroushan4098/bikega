@@ -4,13 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-      <div className="mb-8">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4 sm:p-6 md:p-8">
+      <div className="mb-10">
         <AppLogo size="large" />
       </div>
-      <Card className="w-full max-w-md shadow-xl">
+      <Card className="w-full max-w-md sm:max-w-lg shadow-xl border">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-headline">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl sm:text-3xl font-headline">Welcome Back</CardTitle>
           <CardDescription>Sign in to access your Insight Stream dashboard.</CardDescription>
         </CardHeader>
         <CardContent>
