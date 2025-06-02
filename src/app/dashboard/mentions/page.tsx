@@ -1,3 +1,4 @@
+
 "use client";
 
 import { DataTableShell } from '@/components/analytics/data-table-shell';
@@ -7,14 +8,9 @@ import { getFilteredData, mockMentions } from '@/lib/mock-data';
 import type { ColumnConfig, Mention } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
-import { TrendingUp, TrendingDown, MinusCircle } from 'lucide-react';
+// Removed: TrendingUp, TrendingDown, MinusCircle from lucide-react
 
-const SentimentIcon = ({ sentiment }: { sentiment?: 'positive' | 'neutral' | 'negative' }) => {
-  if (sentiment === 'positive') return <TrendingUp className="h-4 w-4 text-green-500" />;
-  if (sentiment === 'negative') return <TrendingDown className="h-4 w-4 text-red-500" />;
-  return <MinusCircle className="h-4 w-4 text-muted-foreground" />;
-};
-
+// Removed SentimentIcon component as it's no longer used
 
 const columns: ColumnConfig<Mention>[] = [
   { key: 'source', header: 'Source', sortable: true, className: "w-[180px] font-medium" },
@@ -35,20 +31,37 @@ const columns: ColumnConfig<Mention>[] = [
   { 
     key: 'sentiment', 
     header: 'Sentiment', 
-    render: (item) => (
-      <div className="flex items-center gap-2">
-        <SentimentIcon sentiment={item.sentiment} />
-        {item.sentiment ? <Badge variant={
-            item.sentiment === 'positive' ? 'default' : item.sentiment === 'negative' ? 'destructive' : 'secondary'
-          } className={
-            item.sentiment === 'positive' ? 'bg-green-500/20 text-green-700' : 
-            item.sentiment === 'negative' ? 'bg-red-500/20 text-red-700' : ''
-          }>
-            {item.sentiment.charAt(0).toUpperCase() + item.sentiment.slice(1)}
-          </Badge> 
-        : <Badge variant="outline">N/A</Badge>}
-      </div>
-    ),
+    render: (item) => {
+      if (!item.sentiment) {
+        return <Badge variant="outline">N/A</Badge>;
+      }
+      
+      let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
+      let customClassName = "";
+
+      switch (item.sentiment) {
+        case 'positive':
+          badgeVariant = "default"; // Using default primary for positive
+          customClassName = "bg-green-500/20 text-green-700 border-green-300 hover:bg-green-500/30"; // More specific green
+          break;
+        case 'negative':
+          badgeVariant = "destructive"; // Destructive variant for negative
+          // customClassName = "bg-red-500/20 text-red-700 border-red-300 hover:bg-red-500/30"; // Default destructive is usually good
+          break;
+        case 'neutral':
+          badgeVariant = "secondary"; // Secondary variant for neutral
+          break;
+        default:
+          badgeVariant = "outline";
+          break;
+      }
+
+      return (
+        <Badge variant={badgeVariant} className={customClassName}>
+          {item.sentiment.charAt(0).toUpperCase() + item.sentiment.slice(1)}
+        </Badge>
+      );
+    },
     className: "w-[150px]"
   },
 ];
