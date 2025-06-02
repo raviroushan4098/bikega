@@ -1,27 +1,32 @@
 
 'use server';
 
-import { db } from './firebase';
-import { collection, addDoc, getDocs, query, Timestamp, orderBy, doc, where } from 'firebase/firestore';
 import type { YoutubeVideo } from '@/types';
 import { getApiKeys } from './api-key-service';
 
 const YOUTUBE_API_KEY_SERVICE_NAME = "YouTube Data API Key";
 
-export interface StoredYoutubeVideoData {
-  url: string;
-  title: string;
-  thumbnailUrl: string;
-  dataAiHint?: string;
-  likeCount: number;
-  commentCount: number;
-  shareCount: number;
-  channelTitle: string;
-  createdAt: Timestamp;
-  fetchedFromApi: boolean;
-  assignedToUserId: string;
+// Interface for the raw API response for video details
+interface YouTubeApiVideoItem {
+  id: string;
+  snippet: {
+    title: string;
+    thumbnails: {
+      default?: { url: string };
+      medium?: { url: string };
+      high?: { url: string };
+    };
+    channelTitle: string;
+    description?: string; // For dataAiHint
+  };
+  statistics?: {
+    likeCount?: string;
+    commentCount?: string;
+    viewCount?: string; // viewCount might be useful too
+  };
 }
 
+// This function is now a local helper, not exported, so it's not treated as a Server Action.
 function extractYouTubeVideoId(url: string): string | null {
   let videoId: string | null = null;
   try {
@@ -45,13 +50,32 @@ function extractYouTubeVideoId(url: string): string | null {
   return videoId;
 }
 
-async function fetchVideoDetailsFromYouTubeAPI(videoId: string): Promise<Partial<StoredYoutubeVideoData> | null> {
+export async function fetchVideoDetailsFromYouTubeAPI(
+  videoUrlOrId: string,
+  assignedToUserId: string, 
+  assignedToUserName?: string
+): Promise<YoutubeVideo | null> {
+  const videoId = extractYouTubeVideoId(videoUrlOrId) || videoUrlOrId; 
+  if (!videoId) {
+    console.error(`[youtube-video-service] Could not extract valid video ID from: ${videoUrlOrId}`);
+    return null;
+  }
+
   const apiKeys = await getApiKeys();
   const youtubeApiKeyEntry = apiKeys.find(k => k.serviceName === YOUTUBE_API_KEY_SERVICE_NAME);
 
   if (!youtubeApiKeyEntry || !youtubeApiKeyEntry.keyValue) {
-    console.warn(`[youtube-video-service] '${YOUTUBE_API_KEY_SERVICE_NAME}' not found or empty in API Management. Cannot fetch video details from API.`);
-    return null;
+    console.warn(`[youtube-video-service] '${YOUTUBE_API_KEY_SERVICE_NAME}' not found or empty in API Management. Cannot fetch video details for ID '${videoId}'.`);
+    return {
+      id: videoId,
+      url: videoUrlOrId.startsWith('http') ? videoUrlOrId : `https://www.youtube.com/watch?v=${videoId}`,
+      title: `Video ID: ${videoId} (Details unavailable - Check API Key)`,
+      thumbnailUrl: 'https://placehold.co/320x180.png?text=No+API+Key',
+      channelTitle: 'N/A',
+      assignedToUserId: assignedToUserId,
+      assignedToUserName: assignedToUserName,
+      dataAiHint: 'video placeholder',
+    };
   }
   const apiKey = youtubeApiKeyEntry.keyValue;
   const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${apiKey}&part=snippet,statistics`;
@@ -60,225 +84,188 @@ async function fetchVideoDetailsFromYouTubeAPI(videoId: string): Promise<Partial
     const response = await fetch(apiUrl);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error(`[youtube-video-service] YouTube API error (${response.status}):`, errorData.error?.message || response.statusText);
-      return null;
+      console.error(`[youtube-video-service] YouTube API error for video ID '${videoId}' (${response.status}):`, errorData.error?.message || response.statusText);
+      return { 
+        id: videoId,
+        url: videoUrlOrId.startsWith('http') ? videoUrlOrId : `https://www.youtube.com/watch?v=${videoId}`,
+        title: `Video ID: ${videoId} (API Error)`,
+        thumbnailUrl: 'https://placehold.co/320x180.png?text=API+Error',
+        channelTitle: 'N/A',
+        assignedToUserId: assignedToUserId,
+        assignedToUserName: assignedToUserName,
+        dataAiHint: 'video error',
+      };
     }
     const data = await response.json();
     if (data.items && data.items.length > 0) {
-      const item = data.items[0];
+      const item: YouTubeApiVideoItem = data.items[0];
       const snippet = item.snippet;
       const statistics = item.statistics;
+      
+      let hint = "youtube video";
+      if (snippet.description && snippet.description.length > 10) {
+        hint = snippet.description.split(" ").slice(0, 2).join(" ");
+      } else if (snippet.title) {
+         hint = snippet.title.split(" ").slice(0, 2).join(" ");
+      }
+
+
       return {
+        id: item.id,
+        url: `https://www.youtube.com/watch?v=${item.id}`,
         title: snippet.title || 'N/A',
         thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || 'https://placehold.co/320x180.png',
         channelTitle: snippet.channelTitle || 'N/A',
-        likeCount: parseInt(statistics.likeCount, 10) || 0,
-        commentCount: parseInt(statistics.commentCount, 10) || 0,
-        shareCount: 0,
-        dataAiHint: `youtube video ${snippet.title?.substring(0,20) || ''}`,
-        fetchedFromApi: true,
+        likeCount: statistics?.likeCount ? parseInt(statistics.likeCount, 10) : 0,
+        commentCount: statistics?.commentCount ? parseInt(statistics.commentCount, 10) : 0,
+        assignedToUserId: assignedToUserId,
+        assignedToUserName: assignedToUserName,
+        dataAiHint: hint.toLowerCase(),
       };
     }
     console.warn(`[youtube-video-service] Video ID '${videoId}' not found via YouTube API.`);
-    return null;
+    return { 
+        id: videoId,
+        url: videoUrlOrId.startsWith('http') ? videoUrlOrId : `https://www.youtube.com/watch?v=${videoId}`,
+        title: `Video ID: ${videoId} (Not found by API)`,
+        thumbnailUrl: 'https://placehold.co/320x180.png?text=Not+Found',
+        channelTitle: 'N/A',
+        assignedToUserId: assignedToUserId,
+        assignedToUserName: assignedToUserName,
+        dataAiHint: 'video notfound',
+      };
   } catch (error) {
-    console.error("[youtube-video-service] Error fetching from YouTube API: ", error);
-    return null;
+    console.error(`[youtube-video-service] Error fetching from YouTube API for video ID '${videoId}': `, error);
+     return { 
+        id: videoId,
+        url: videoUrlOrId.startsWith('http') ? videoUrlOrId : `https://www.youtube.com/watch?v=${videoId}`,
+        title: `Video ID: ${videoId} (Fetch Error)`,
+        thumbnailUrl: 'https://placehold.co/320x180.png?text=Fetch+Error',
+        channelTitle: 'N/A',
+        assignedToUserId: assignedToUserId,
+        assignedToUserName: assignedToUserName,
+        dataAiHint: 'video fetcherror',
+      };
   }
 }
 
-export async function addYoutubeVideoToFirestore(
-  videoUrl: string,
-  assignedToUserId: string
-): Promise<YoutubeVideo> {
-  try {
-    console.log(`[youtube-video-service] addYoutubeVideoToFirestore called. URL: '${videoUrl}', assignedToUserId: '${assignedToUserId}'`);
-
-    if (!assignedToUserId) {
-      throw new Error("assignedToUserId cannot be empty.");
-    }
-
-    const videoId = extractYouTubeVideoId(videoUrl);
-    let videoDetails: Partial<StoredYoutubeVideoData> | null = null;
-
-    if (videoId) {
-      videoDetails = await fetchVideoDetailsFromYouTubeAPI(videoId);
-    } else {
-      console.warn(`[youtube-video-service] Could not extract Video ID from URL: ${videoUrl}. Using placeholders.`);
-    }
-
-    const createdAtTimestamp = Timestamp.now();
-
-    const newVideoData: StoredYoutubeVideoData = {
-      url: videoUrl,
-      title: videoDetails?.title || `Video: ${videoUrl.substring(0, 40)}...`,
-      thumbnailUrl: videoDetails?.thumbnailUrl || 'https://placehold.co/320x180.png',
-      dataAiHint: videoDetails?.dataAiHint || 'video placeholder',
-      likeCount: videoDetails?.likeCount || 0,
-      commentCount: videoDetails?.commentCount || 0,
-      shareCount: videoDetails?.shareCount || 0,
-      channelTitle: videoDetails?.channelTitle || 'N/A',
-      createdAt: createdAtTimestamp,
-      fetchedFromApi: videoDetails?.fetchedFromApi || false,
-      assignedToUserId: assignedToUserId,
-    };
-
-    const videosCollectionRef = collection(db, `youtube_videos`);
-    const docRef = await addDoc(videosCollectionRef, newVideoData);
-
-    console.log(`[youtube-video-service] Video added to Firestore at path: youtube_videos/${docRef.id}. Assigned to user: ${assignedToUserId}. Fetched from API: ${newVideoData.fetchedFromApi}`);
-
-    return {
-      id: docRef.id,
-      ...newVideoData,
-      createdAt: createdAtTimestamp.toDate().toISOString(),
-    };
-
-  } catch (error) {
-    console.error("[youtube-video-service] Error adding YouTube video to Firestore: ", error);
-    if (error instanceof Error) {
-        throw new Error(`Failed to save video assignment: ${error.message}`);
-    }
-    throw new Error("Failed to save video assignment due to an unknown error.");
-  }
-}
-
-/**
- * Fetches videos assigned to a specific user from Firestore.
- * This query requires a composite index on 'assignedToUserId' (ASC) and 'createdAt' (DESC).
- */
-export async function getVideosForUserFromFirestore(userId: string): Promise<YoutubeVideo[]> {
-  const videosCollectionRef = collection(db, 'youtube_videos');
-  console.log(`[youtube-video-service][USER_FILTER] Attempting to fetch videos for USER ID: '${userId}'.`);
-  
-  const q = query(
-    videosCollectionRef,
-    where('assignedToUserId', '==', userId),
-    orderBy('createdAt', 'desc')
-  );
-
-  const videos: YoutubeVideo[] = [];
-  try {
-    const querySnapshot = await getDocs(q);
-    console.log(`[youtube-video-service][USER_FILTER] Firestore query for user '${userId}' returned ${querySnapshot.docs.length} document(s).`);
-
-    if (querySnapshot.docs.length > 0) {
-        console.log(`[youtube-video-service][USER_FILTER] First document data for user '${userId}':`, JSON.stringify(querySnapshot.docs[0].data()));
-    }
-
-
-    querySnapshot.forEach(docSnap => {
-      try {
-        const data = docSnap.data() as StoredYoutubeVideoData;
-        // console.log(`[youtube-video-service][USER_FILTER] Processing doc ID: ${docSnap.id}, assignedToUserId: ${data.assignedToUserId}`);
-        if (!data.createdAt || typeof data.createdAt.toDate !== 'function') {
-          console.warn(`[youtube-video-service][USER_FILTER] Video ID '${docSnap.id}' (User: ${userId}) has missing or invalid 'createdAt'. Skipping. Data:`, JSON.stringify(data));
-          return;
-        }
-        if (!data.assignedToUserId) {
-           console.warn(`[youtube-video-service][USER_FILTER] Video ID '${docSnap.id}' (User: ${userId}) is missing 'assignedToUserId'. Skipping. Data:`, JSON.stringify(data));
-           return;
-        }
-        videos.push({
-          id: docSnap.id,
-          url: data.url,
-          title: data.title || 'Untitled Video',
-          thumbnailUrl: data.thumbnailUrl,
-          dataAiHint: data.dataAiHint,
-          likeCount: data.likeCount,
-          commentCount: data.commentCount,
-          shareCount: data.shareCount,
-          channelTitle: data.channelTitle,
-          assignedToUserId: data.assignedToUserId,
-          createdAt: data.createdAt.toDate().toISOString(),
-        });
-      } catch (processError) {
-        console.error(`[youtube-video-service][USER_FILTER] Error processing video ID '${docSnap.id}' (User: ${userId}):`, processError, "Problematic video data:", JSON.stringify(docSnap.data()));
-      }
-    });
-    console.log(`[youtube-video-service][USER_FILTER] Successfully processed ${videos.length} videos for user '${userId}'.`);
-    return videos;
-  } catch (error) {
-    console.error(`[youtube-video-service][USER_FILTER] Error fetching videos for user '${userId}': `, error);
-    if (error instanceof Error && (error.message.includes('composite index') || error.message.includes('requires an index'))) {
-        console.error(`[youtube-video-service][USER_FILTER] FIRESTORE INDEX REQUIRED for user query: The query for user '${userId}' needs a composite index.`);
-        console.error(`  Go to your Firebase console -> Firestore Database -> Indexes.`);
-        console.error(`  Create an index for the 'youtube_videos' collection with fields:`);
-        console.error(`    1. 'assignedToUserId' (Ascending)`);
-        console.error(`    2. 'createdAt' (Descending)`);
-        console.error(`  The error message in your console might contain a direct link to create this index.`);
-    }
-    return []; // Return empty on error, error is logged.
-  }
-}
-
-
-/**
- * Fetches ALL videos from Firestore, typically for the "Show All Videos" admin view.
- * This function's behavior for "Show All" should remain consistent.
- */
-export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
-  if (userIdForFilter && userIdForFilter !== 'all') {
-    // This path should ideally not be hit if the frontend calls the correct new function for specific users.
-    console.warn(`[youtube-video-service] getYoutubeVideosFromFirestore (old path for specific user) was called with user ID '${userIdForFilter}'. This function is now primarily for 'all' videos. Use 'getVideosForUserFromFirestore(userId)' for specific user queries. Returning empty list to avoid incorrect data.`);
+export async function fetchBatchVideoDetailsFromYouTubeAPI(
+  videoIds: string[],
+  assignedToUserMap: Record<string, { userId: string, userName?: string }> 
+): Promise<YoutubeVideo[]> {
+  if (!videoIds || videoIds.length === 0) {
     return [];
   }
 
-  const videosCollectionRef = collection(db, 'youtube_videos');
-  console.log(`[youtube-video-service][ALL_FILTER] Querying for ALL videos from 'youtube_videos' collection (filter was '${userIdForFilter}', treated as 'all').`);
-  const q = query(videosCollectionRef, orderBy('createdAt', 'desc'));
-  
-  const allVideos: YoutubeVideo[] = [];
-  try {
-    const querySnapshot = await getDocs(q);
-    console.log(`[youtube-video-service][ALL_FILTER] Found ${querySnapshot.docs.length} total video document(s) in 'youtube_videos' collection (for 'all' view).`);
-    
-    const docIds = querySnapshot.docs.map(doc => doc.id);
-    if (docIds.length > 0) {
-      // console.log(`[youtube-video-service][ALL_FILTER] IDs of video documents found in 'youtube_videos' collection: ${docIds.join(', ')}`);
-    }
+  const apiKeys = await getApiKeys();
+  const youtubeApiKeyEntry = apiKeys.find(k => k.serviceName === YOUTUBE_API_KEY_SERVICE_NAME);
 
-    querySnapshot.forEach(docSnap => {
-      try {
-        const data = docSnap.data() as StoredYoutubeVideoData;
-        if (!data.createdAt || typeof data.createdAt.toDate !== 'function') {
-          console.warn(`[youtube-video-service][ALL_FILTER] Video ID '${docSnap.id}' has missing or invalid 'createdAt' field. Skipping this video. Data:`, JSON.stringify(data));
-          return;
-        }
-        if (!data.assignedToUserId) {
-           console.warn(`[youtube-video-service][ALL_FILTER] Video ID '${docSnap.id}' is missing 'assignedToUserId'. Skipping. Data:`, JSON.stringify(data));
-           return;
-        }
-        // Ensure title exists before substring
-        const displayTitle = data.title ? data.title : 'Untitled Video';
-
-        allVideos.push({
-          id: docSnap.id,
-          url: data.url,
-          title: displayTitle,
-          thumbnailUrl: data.thumbnailUrl,
-          dataAiHint: data.dataAiHint,
-          likeCount: data.likeCount,
-          commentCount: data.commentCount,
-          shareCount: data.shareCount,
-          channelTitle: data.channelTitle,
-          assignedToUserId: data.assignedToUserId,
-          createdAt: data.createdAt.toDate().toISOString(),
-        });
-      } catch (processError) {
-        console.error(`[youtube-video-service][ALL_FILTER] Error processing video ID '${docSnap.id}':`, processError, "Problematic video data:", JSON.stringify(docSnap.data()));
-      }
+  if (!youtubeApiKeyEntry || !youtubeApiKeyEntry.keyValue) {
+    console.warn(`[youtube-video-service] '${YOUTUBE_API_KEY_SERVICE_NAME}' not found. Cannot batch fetch details.`);
+    return videoIds.map(videoId => {
+      const assignment = assignedToUserMap[videoId] || { userId: 'unknown', userName: 'Unknown User' };
+      return {
+        id: videoId,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        title: `Video ID: ${videoId} (Details unavailable - Check API Key)`,
+        thumbnailUrl: 'https://placehold.co/320x180.png?text=No+API+Key',
+        channelTitle: 'N/A',
+        assignedToUserId: assignment.userId,
+        assignedToUserName: assignment.userName,
+        dataAiHint: 'video placeholder',
+      };
     });
-
-    console.log(`[youtube-video-service][ALL_FILTER] Successfully processed ${allVideos.length} videos in total for ALL users.`);
-    // if (allVideos.length > 0) {
-    //     console.log(`[youtube-video-service][ALL_FILTER] First video in 'all' view: `, {id: allVideos[0].id, title: allVideos[0].title ? allVideos[0].title.substring(0,30) : 'N/A', assignedTo: allVideos[0].assignedToUserId });
-    // }
-    return allVideos;
-
-  } catch (error) {
-    console.error(`[youtube-video-service][ALL_FILTER] Error fetching all videos: `, error);
-    return [];
   }
-}
+  const apiKey = youtubeApiKeyEntry.keyValue;
 
+  const CHUNK_SIZE = 50;
+  const detailedVideos: YoutubeVideo[] = [];
+
+  for (let i = 0; i < videoIds.length; i += CHUNK_SIZE) {
+    const chunk = videoIds.slice(i, i + CHUNK_SIZE);
+    const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${chunk.join(',')}&key=${apiKey}&part=snippet,statistics`;
+
+    try {
+      const response = await fetch(apiUrl);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error(`[youtube-video-service] Batch YouTube API error (${response.status}):`, errorData.error?.message || response.statusText);
+        chunk.forEach(videoId => {
+          const assignment = assignedToUserMap[videoId] || { userId: 'unknown', userName: 'Unknown User' };
+          detailedVideos.push({
+            id: videoId,
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            title: `Video ID: ${videoId} (API Error)`,
+            thumbnailUrl: 'https://placehold.co/320x180.png?text=API+Error',
+            channelTitle: 'N/A',
+            assignedToUserId: assignment.userId,
+            assignedToUserName: assignment.userName,
+            dataAiHint: 'video error',
+          });
+        });
+        continue; 
+      }
+      const data = await response.json();
+      if (data.items && data.items.length > 0) {
+        data.items.forEach((item: YouTubeApiVideoItem) => {
+          const snippet = item.snippet;
+          const statistics = item.statistics;
+          const assignment = assignedToUserMap[item.id] || { userId: 'unknown', userName: 'Unknown User' };
+          
+          let hint = "youtube video";
+          if (snippet.description && snippet.description.length > 10) {
+            hint = snippet.description.split(" ").slice(0, 2).join(" ");
+          } else if (snippet.title) {
+            hint = snippet.title.split(" ").slice(0, 2).join(" ");
+          }
+
+          detailedVideos.push({
+            id: item.id,
+            url: `https://www.youtube.com/watch?v=${item.id}`,
+            title: snippet.title || 'N/A',
+            thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || 'https://placehold.co/320x180.png',
+            channelTitle: snippet.channelTitle || 'N/A',
+            likeCount: statistics?.likeCount ? parseInt(statistics.likeCount, 10) : 0,
+            commentCount: statistics?.commentCount ? parseInt(statistics.commentCount, 10) : 0,
+            assignedToUserId: assignment.userId,
+            assignedToUserName: assignment.userName,
+            dataAiHint: hint.toLowerCase(),
+          });
+        });
+      }
+      const foundIds = new Set(data.items?.map((item: YouTubeApiVideoItem) => item.id) || []);
+      chunk.forEach(videoId => {
+        if (!foundIds.has(videoId)) {
+          const assignment = assignedToUserMap[videoId] || { userId: 'unknown', userName: 'Unknown User' };
+          detailedVideos.push({
+            id: videoId,
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            title: `Video ID: ${videoId} (Not found by API)`,
+            thumbnailUrl: 'https://placehold.co/320x180.png?text=Not+Found',
+            channelTitle: 'N/A',
+            assignedToUserId: assignment.userId,
+            assignedToUserName: assignment.userName,
+            dataAiHint: 'video notfound',
+          });
+        }
+      });
+
+    } catch (error) {
+      console.error(`[youtube-video-service] Error batch fetching from YouTube API: `, error);
+      chunk.forEach(videoId => {
+          const assignment = assignedToUserMap[videoId] || { userId: 'unknown', userName: 'Unknown User' };
+          detailedVideos.push({
+            id: videoId,
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            title: `Video ID: ${videoId} (Fetch Error)`,
+            thumbnailUrl: 'https://placehold.co/320x180.png?text=Fetch+Error',
+            channelTitle: 'N/A',
+            assignedToUserId: assignment.userId,
+            assignedToUserName: assignment.userName,
+            dataAiHint: 'video fetcherror',
+          });
+        });
+    }
+  }
+  return detailedVideos;
+}

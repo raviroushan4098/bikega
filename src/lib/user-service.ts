@@ -1,9 +1,8 @@
 
-import type { User, NewUserDetails as NewUserDetailsType } from '@/types'; // Renamed import to avoid conflict
+import type { User, NewUserDetails as NewUserDetailsType } from '@/types';
 import { db } from './firebase';
-import { collection, query, where, getDocs, addDoc, doc, setDoc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
-// Collection reference
 const usersCollectionRef = collection(db, 'users');
 
 export const login = async (email: string, passwordInput: string): Promise<User | null> => {
@@ -13,11 +12,7 @@ export const login = async (email: string, passwordInput: string): Promise<User 
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.warn(`Login Failed: No user found in Firestore with email '${email}'.
-      Please check:
-      1. The email is spelled correctly.
-      2. The user exists in your Firestore 'users' collection.
-      3. If you used the seed script (src/scripts/seed-initial-users.ts), ensure it ran successfully and populated the data.`);
+      console.warn(`Login Failed: No user found in Firestore with email '${email}'.`);
       return null;
     }
 
@@ -37,7 +32,6 @@ export const logout = async (): Promise<void> => {
   await new Promise(resolve => setTimeout(resolve, 300));
 };
 
-// Use the renamed import for NewUserDetails type
 export interface NewUserDetails extends NewUserDetailsType {}
 
 export const addUser = async (userData: NewUserDetails): Promise<User | { error: string }> => {
@@ -65,6 +59,7 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
       role: userData.role,
       profilePictureUrl: `https://placehold.co/100x100.png?text=${userData.name.substring(0,2)}`,
       assignedKeywords: keywordsArray,
+      assignedYoutubeUrls: [], // Initialize as empty array
     };
 
     await setDoc(newUserDocRef, newUser);
@@ -84,7 +79,7 @@ export const getUsers = async (): Promise<User[]> => {
   try {
     const querySnapshot = await getDocs(usersCollectionRef);
     const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords })));
+    console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords, YouTube URLs):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords, youtubeUrls: u.assignedYoutubeUrls })));
     return users;
   } catch (error) {
     console.error("Error fetching users from Firestore: ", error);
@@ -123,5 +118,47 @@ export const updateUserKeywords = async (userId: string, keywords: string[]): Pr
       return { success: false, error: `Failed to update keywords: ${error.message}` };
     }
     return { success: false, error: "An unknown error occurred while updating keywords." };
+  }
+};
+
+export const assignYoutubeUrlToUser = async (userId: string, videoUrl: string): Promise<{ success: boolean; error?: string }> => {
+  if (!userId || !videoUrl) {
+    return { success: false, error: "User ID and Video URL are required." };
+  }
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    // Use arrayUnion to add the URL only if it's not already present.
+    await updateDoc(userDocRef, {
+      assignedYoutubeUrls: arrayUnion(videoUrl)
+    });
+    console.log(`[user-service] Assigned YouTube URL "${videoUrl}" to user ${userId}.`);
+    return { success: true };
+  } catch (error) {
+    console.error(`[user-service] Error assigning YouTube URL to user ${userId}:`, error);
+    if (error instanceof Error) {
+      return { success: false, error: `Failed to assign URL: ${error.message}` };
+    }
+    return { success: false, error: "An unknown error occurred while assigning URL." };
+  }
+};
+
+export const removeYoutubeUrlFromUser = async (userId: string, videoUrl: string): Promise<{ success: boolean; error?: string }> => {
+  if (!userId || !videoUrl) {
+    return { success: false, error: "User ID and Video URL are required." };
+  }
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    // Use arrayRemove to remove the URL.
+    await updateDoc(userDocRef, {
+      assignedYoutubeUrls: arrayRemove(videoUrl)
+    });
+    console.log(`[user-service] Removed YouTube URL "${videoUrl}" from user ${userId}.`);
+    return { success: true };
+  } catch (error) {
+    console.error(`[user-service] Error removing YouTube URL from user ${userId}:`, error);
+    if (error instanceof Error) {
+      return { success: false, error: `Failed to remove URL: ${error.message}` };
+    }
+    return { success: false, error: "An unknown error occurred while removing URL." };
   }
 };

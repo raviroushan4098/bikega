@@ -6,20 +6,22 @@ export interface User {
   name: string;
   profilePictureUrl?: string;
   assignedKeywords?: string[]; // For filtering data for 'user' role
+  assignedYoutubeUrls?: string[]; // New: Array of YouTube video URLs
 }
 
+// Represents video details fetched from YouTube API for display
 export interface YoutubeVideo {
-  id: string;
-  title: string;
-  thumbnailUrl: string;
-  likeCount: number;
-  commentCount: number;
-  shareCount: number;
-  channelTitle?: string; // Added for context
+  id: string; // YouTube Video ID
   url: string;
-  assignedToUserId?: string;
+  title?: string;
+  thumbnailUrl?: string;
   dataAiHint?: string;
-  createdAt: string; // ISO date string
+  channelTitle?: string;
+  likeCount?: number;
+  commentCount?: number;
+  shareCount?: number; // Note: shareCount is often not available or zero from API
+  assignedToUserId: string; // User to whom this URL is assigned
+  assignedToUserName?: string; // Optional: Name of the user for display
 }
 
 export interface RedditPost {
