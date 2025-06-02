@@ -116,7 +116,7 @@ async function fetchRedditDataByType(
   params: RedditSearchParams,
   searchType: 'link' | 'comment'
 ): Promise<RedditPost[]> {
-  const { q, limit = 25, sort = 'relevance', t = 'all', subreddit } = params;
+  const { q, limit = 25, sort = 'relevance', t = 'all', subreddit } = params; // Default individual type limit
 
   let searchUrl = `https://oauth.reddit.com/`;
   if (subreddit) {
@@ -128,7 +128,7 @@ async function fetchRedditDataByType(
      searchUrl += `&restrict_sr=true`;
   }
 
-  console.log(`[Reddit API Service] Fetching ${searchType}s via OAuth: ${searchUrl.replace(q,encodeURIComponent(q))}`);
+  console.log(`[Reddit API Service] Fetching ${searchType}s via OAuth (limit ${limit}): ${searchUrl.replace(q,encodeURIComponent(q))}`);
 
   try {
     const response = await fetch(searchUrl, {
@@ -209,8 +209,8 @@ export async function searchReddit(
       console.warn(`[Reddit API Service] '${REDDIT_USER_AGENT_SERVICE_NAME}' not found in API Management. Using fallback. Please add it.`);
   }
 
-  const { limit = 50 } = params; // Default total limit for combined results
-  const perTypeLimit = Math.floor(limit / 2); // Fetch roughly half posts, half comments
+  const { limit = 100 } = params; // Default total limit for combined results
+  const perTypeLimit = Math.ceil(limit / 2); // Fetch roughly half posts, half comments
 
   try {
     const postsParams = { ...params, limit: perTypeLimit };
@@ -238,3 +238,4 @@ export async function searchReddit(
     return { data: null, error: 'An unknown error occurred while fetching from Reddit OAuth API.' };
   }
 }
+

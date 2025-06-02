@@ -228,8 +228,8 @@ export default function RedditPage() {
     setIsLoadingPosts(true);
     setDisplayedSearchTerm(query);
     try {
-      // Fetch latest posts and comments, aiming for up to 50 items
-      const { data, error } = await searchReddit({ q: query, limit: 50, sort: 'new' });
+      // Fetch latest posts and comments, aiming for up to 100 items
+      const { data, error } = await searchReddit({ q: query, limit: 100, sort: 'new' });
       if (error) {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
         setRedditPosts([]);
@@ -354,7 +354,7 @@ export default function RedditPage() {
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (displayedSearchTerm) {
-      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}".`;
+      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched up to 100 items.`;
     }
 
     return (
@@ -395,7 +395,7 @@ export default function RedditPage() {
           <GenericDataTable<RedditPost>
             data={redditPosts}
             columns={redditPostColumnsUserView} 
-            caption={displayedSearchTerm ? `Showing latest Reddit posts and comments related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Feed"}
+            caption={displayedSearchTerm ? `Showing latest Reddit posts and comments related to your keywords: "${displayedSearchTerm}". Fetched up to 100 items.` : "Your Reddit Feed"}
           />
         )}
       </DataTableShell>
@@ -409,3 +409,4 @@ export default function RedditPage() {
     </div>
   );
 }
+
