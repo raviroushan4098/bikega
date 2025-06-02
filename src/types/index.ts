@@ -6,7 +6,8 @@ export interface User {
   name: string;
   profilePictureUrl?: string;
   assignedKeywords?: string[]; // For filtering data for 'user' role
-  assignedYoutubeUrls?: string[]; // New: Array of YouTube video URLs
+  assignedYoutubeUrls?: string[]; // Array of YouTube video URLs
+  createdAt?: string; // ISO date string for when the user was created
 }
 
 // Represents video details fetched from YouTube API for display
@@ -90,3 +91,4 @@ export interface NewUserDetails {
   role: 'admin' | 'user';
   assignedKeywords?: string; // Comma-separated string
 }
+

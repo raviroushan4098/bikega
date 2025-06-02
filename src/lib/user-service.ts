@@ -60,10 +60,11 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
       profilePictureUrl: `https://placehold.co/100x100.png?text=${userData.name.substring(0,2)}`,
       assignedKeywords: keywordsArray,
       assignedYoutubeUrls: [], // Initialize as empty array
+      createdAt: new Date().toISOString(), // Add createdAt timestamp
     };
 
     await setDoc(newUserDocRef, newUser);
-    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}`);
+    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}, CreatedAt: ${newUser.createdAt}`);
     return { id: newUserDocRef.id, ...newUser };
 
   } catch (error) {
@@ -79,7 +80,7 @@ export const getUsers = async (): Promise<User[]> => {
   try {
     const querySnapshot = await getDocs(usersCollectionRef);
     const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords, YouTube URLs):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords, youtubeUrls: u.assignedYoutubeUrls })));
+    console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords, YouTube URLs, CreatedAt):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords, youtubeUrls: u.assignedYoutubeUrls, createdAt: u.createdAt })));
     return users;
   } catch (error) {
     console.error("Error fetching users from Firestore: ", error);
@@ -162,3 +163,4 @@ export const removeYoutubeUrlFromUser = async (userId: string, videoUrl: string)
     return { success: false, error: "An unknown error occurred while removing URL." };
   }
 };
+
