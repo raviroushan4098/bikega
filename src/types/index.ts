@@ -70,7 +70,7 @@ export interface Mention {
 export interface ColumnConfig<T> {
   key: keyof T | string; // Allow string for custom/action columns
   header: string;
-  render?: (item: T) => React.ReactNode; // Custom render function for a cell
+  render?: (item: T, index?: number) => React.ReactNode; // Custom render function for a cell
   sortable?: boolean;
   className?: string; // Optional className for th/td
 }
@@ -99,3 +99,11 @@ export interface NewUserDetails {
   assignedKeywords?: string; // Comma-separated string
 }
 
+// Search parameters for Reddit API
+export interface RedditSearchParams {
+  q: string; // query string
+  limit?: number; // number of items to return
+  sort?: 'relevance' | 'hot' | 'top' | 'new' | 'comments'; // sort order
+  t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'; // time period for 'top' or 'relevance'
+  after?: string; // fullname of an item to
+}

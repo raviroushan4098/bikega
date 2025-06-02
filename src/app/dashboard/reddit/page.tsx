@@ -6,12 +6,12 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
-import type { ColumnConfig, RedditPost, User } from '@/types';
+import type { ColumnConfig, RedditPost, User, RedditSearchParams } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, ChevronDown, RefreshCw } from 'lucide-react';
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, PopoverClose } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
-import { fetchAndStoreRedditDataForUser, getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
+import { searchReddit } from '@/lib/reddit-api-service'; // Changed back
 import {
   Select,
   SelectContent,
@@ -180,11 +180,7 @@ export default function RedditPage() {
   // User view state
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(false);
-  const [isRefreshingFeed, setIsRefreshingFeed] = useState<boolean>(false);
-  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
-  const [lastLoadedDocId, setLastLoadedDocId] = useState<string | null>(null);
-  const [hasMoreToLoad, setHasMoreToLoad] = useState<boolean>(true);
-  const ITEMS_PER_PAGE = 20; // Number of items to load per page from Firestore
+  // Removed Firestore cache related states
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
@@ -232,100 +228,47 @@ export default function RedditPage() {
     }
   };
 
-  const loadStoredFeed = useCallback(async (loadMore = false) => {
-    if (!currentUser || currentUser.role !== 'user' || authLoading) return;
+  const fetchUserRedditFeed = useCallback(async () => {
+    if (!currentUser || currentUser.role !== 'user' || authLoading || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
+      setRedditPosts([]);
+      setIsLoadingFeed(false);
+      return;
+    }
 
-    if (loadMore) setIsLoadingMore(true);
-    else setIsLoadingFeed(true);
-
+    setIsLoadingFeed(true);
     try {
-      const { data, lastDocId: newLastDocId } = await getStoredRedditFeedForUser(currentUser.id, {
-        limitNum: ITEMS_PER_PAGE,
-        startAfterDocId: loadMore ? lastLoadedDocId : null,
-      });
+      const query = currentUser.assignedKeywords.join(' OR ');
+      const searchParams: RedditSearchParams = { q: query, limit: 50, sort: 'new' }; // Example: fetch 50 items
+      const { data, error } = await searchReddit(searchParams);
 
-      if (data) {
-        setRedditPosts(prev => loadMore ? [...prev, ...data] : data);
-        setLastLoadedDocId(newLastDocId);
-        setHasMoreToLoad(data.length === ITEMS_PER_PAGE && !!newLastDocId);
-
-        if (!loadMore && data.length === 0) {
-          toast({
-            title: "Feed Empty or Not Yet Synced",
-            description: "Your Reddit feed is currently empty. Try refreshing or check back after initial sync.",
-            duration: 5000,
+      if (error) {
+        toast({ variant: "destructive", title: "Reddit Feed Error", description: error });
+        setRedditPosts([]);
+      } else if (data) {
+        setRedditPosts(data);
+        if (data.length === 0) {
+           toast({
+            title: "No Reddit Content Found",
+            description: `No posts or comments found for your keywords: "${currentUser.assignedKeywords.join('", "')}". Data is filtered from June 1, 2025.`,
+            duration: 7000,
           });
         }
       } else {
-        setHasMoreToLoad(false);
-         if (!loadMore) setRedditPosts([]); // Clear posts if initial load fails or returns null
+        setRedditPosts([]);
       }
-    } catch (error) {
-      console.error("Error loading stored Reddit feed:", error);
-      toast({ variant: "destructive", title: "Feed Load Error", description: "Could not load your Reddit feed from storage." });
-      if (!loadMore) setRedditPosts([]);
-      setHasMoreToLoad(false);
+    } catch (e) {
+      toast({ variant: "destructive", title: "Reddit Feed Error", description: "An unexpected error occurred while fetching your feed." });
+      setRedditPosts([]);
     } finally {
-      if (loadMore) setIsLoadingMore(false);
-      else setIsLoadingFeed(false);
+      setIsLoadingFeed(false);
     }
-  }, [currentUser, authLoading, toast, lastLoadedDocId]);
+  }, [currentUser, authLoading, toast]);
 
   useEffect(() => {
     if (currentUser?.role === 'user' && !authLoading) {
-      if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
-        loadStoredFeed();
-      } else {
-        setIsLoadingFeed(false);
-        setRedditPosts([]);
-        setHasMoreToLoad(false);
-      }
+      fetchUserRedditFeed();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, authLoading]); 
-
-  const handleRefreshFeed = async () => {
-    if (!currentUser || currentUser.role !== 'user' || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Cannot Refresh",
-        description: "No keywords assigned. Please contact an administrator.",
-      });
-      return;
-    }
-    setIsRefreshingFeed(true);
-    setRedditPosts([]); // Clear current posts
-    setLastLoadedDocId(null); // Reset pagination
-    setHasMoreToLoad(true); // Assume there might be data
-
-    try {
-      toast({
-        title: "Refreshing Feed...",
-        description: "Fetching latest data from Reddit and analyzing sentiments. This may take a moment.",
-      });
-      const result = await fetchAndStoreRedditDataForUser(currentUser.id, currentUser.assignedKeywords);
-      if (result.success) {
-        toast({
-          title: "Feed Refreshed",
-          description: `${result.count} items fetched and stored. Displaying updated feed.`,
-        });
-        await loadStoredFeed(); // Load the newly stored data
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Refresh Failed",
-          description: result.error || "Could not refresh feed from Reddit.",
-        });
-        await loadStoredFeed(); // Try to load existing stored data even if refresh failed
-      }
-    } catch (error) {
-      console.error("Error refreshing Reddit feed:", error);
-      toast({ variant: "destructive", title: "Refresh Error", description: "An unexpected error occurred." });
-      await loadStoredFeed(); // Try to load existing stored data on error
-    } finally {
-      setIsRefreshingFeed(false);
-    }
-  };
+  }, [currentUser, authLoading, fetchUserRedditFeed]);
 
 
   if (authLoading) {
@@ -343,7 +286,7 @@ export default function RedditPage() {
 
   if (currentUser.role === 'admin') {
     const selectedUserDetails = allUsers.find(u => u.id === selectedUserId);
-    const descriptionText = "Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed, which is fetched and stored in the database.";
+    const descriptionText = "Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed, fetched directly from Reddit API (not stored).";
 
     return (
       <DataTableShell
@@ -416,38 +359,28 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'user') {
-    let userPageDescription = "Your Reddit feed, powered by stored data. Click 'Refresh Feed' to fetch the latest from Reddit. Data is filtered from June 1, 2025.";
+    let userPageDescription = "Your live Reddit feed based on your keywords. Data is fetched from Reddit and filtered from June 1, 2025.";
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (isLoadingFeed) {
-      userPageDescription = `Loading your stored Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"...`;
-    } else if (isRefreshingFeed) {
-      userPageDescription = `Refreshing feed for keywords: "${currentUser.assignedKeywords.join(', ')}" from Reddit...`;
+      userPageDescription = `Loading your Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"...`;
     } else {
-      userPageDescription = `Showing stored Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown.`;
+      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown.`;
     }
-
 
     return (
       <DataTableShell
         title="Your Reddit Keyword Feed"
         description={userPageDescription}
       >
-        <div className="mb-4 flex justify-end">
-            <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0}>
-                {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Refresh Feed & Analyze Sentiments
-            </Button>
-        </div>
-
-        {(isLoadingFeed && !isRefreshingFeed) && (
+        {isLoadingFeed && (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="ml-3 text-muted-foreground">Loading your stored Reddit feed...</p>
+            <p className="ml-3 text-muted-foreground">Loading your Reddit feed...</p>
           </div>
         )}
 
-        {!isLoadingFeed && !isRefreshingFeed && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
+        {!isLoadingFeed && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
           <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Keywords Assigned</p>
@@ -459,41 +392,24 @@ export default function RedditPage() {
           </div>
         )}
         
-        {!isLoadingFeed && !isRefreshingFeed && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && (
+        {!isLoadingFeed && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && (
           <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
-              No items found in your stored feed for keywords: "{currentUser.assignedKeywords.join(', ')}".
-              <br/>
-              Try clicking "Refresh Feed" to fetch the latest from Reddit.
+              No items found from Reddit for keywords: "{currentUser.assignedKeywords.join(', ')}" (filtered from June 1, 2025).
             </p>
           </div>
         )}
 
-        {(!isLoadingFeed || isRefreshingFeed) && redditPosts.length > 0 && (
-          <>
-            <GenericDataTable<RedditPost>
-              data={redditPosts}
-              columns={redditPostColumnsUserView} 
-              caption={`Displaying ${redditPosts.length} stored Reddit items. Click "Refresh Feed" for latest.`}
-            />
-            {hasMoreToLoad && !isRefreshingFeed && (
-              <div className="mt-6 flex justify-center">
-                <Button 
-                  onClick={() => loadStoredFeed(true)} 
-                  disabled={isLoadingMore}
-                >
-                  {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChevronDown className="mr-2 h-4 w-4" />}
-                  Load More Stored Items
-                </Button>
-              </div>
-            )}
-             {!hasMoreToLoad && !isLoadingFeed && !isRefreshingFeed && redditPosts.length > 0 && (
-                <p className="text-center text-sm text-muted-foreground mt-6">End of stored feed.</p>
-            )}
-          </>
+        {!isLoadingFeed && redditPosts.length > 0 && (
+          <GenericDataTable<RedditPost>
+            data={redditPosts}
+            columns={redditPostColumnsUserView} 
+            caption={`Displaying ${redditPosts.length} live Reddit items for your keywords.`}
+          />
         )}
+        {/* Removed Load More button as direct API fetching usually gets a fixed batch per call without simple client-side pagination */}
       </DataTableShell>
     );
   }
@@ -504,5 +420,3 @@ export default function RedditPage() {
     </div>
   );
 }
-
-    
