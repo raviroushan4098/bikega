@@ -8,7 +8,7 @@ import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink } from 'lucide-react';
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, ChevronDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
 import { searchReddit } from '@/lib/reddit-api-service';
@@ -64,7 +64,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     render: (item) => <Badge variant="secondary">{item.subreddit}</Badge>
   },
   { 
-    key: 'title', // This column will display post title or comment content
+    key: 'title', 
     header: 'Title / Content', 
     sortable: true, 
     className: "min-w-[300px]",
@@ -98,7 +98,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
   },
   { 
     key: 'numComments', 
-    header: 'Comments', // For posts, shows num comments. For comments, typically 0 from search.
+    header: 'Comments', 
     sortable: true, 
     render: (item) => <span className="text-right block">{item.numComments.toLocaleString()}</span>,
     className: "text-right w-[120px]"
@@ -165,6 +165,8 @@ export default function RedditPage() {
   // --- User View State ---
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [nextAfterCursor, setNextAfterCursor] = useState<string | null>(null);
   const [displayedSearchTerm, setDisplayedSearchTerm] = useState<string | null>(null);
 
   // Fetch all users for admin dropdown
@@ -216,39 +218,64 @@ export default function RedditPage() {
     }
   };
 
-  // Handler for fetching Reddit posts (for user view)
-  const fetchRedditPostsForUser = useCallback(async (keywords: string[]) => {
+  // Handler for fetching Reddit posts (for user view) with pagination
+  const fetchRedditPostsForUser = useCallback(async (keywords: string[], currentAfterCursor?: string) => {
     if (keywords.length === 0) {
       setRedditPosts([]);
       setDisplayedSearchTerm(null);
+      setNextAfterCursor(null);
       setIsLoadingPosts(false);
+      setIsLoadingMore(false);
       return;
     }
     const query = keywords.join(' OR ');
-    setIsLoadingPosts(true);
+
+    if (currentAfterCursor) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoadingPosts(true);
+      setRedditPosts([]); // Clear previous results for a new initial search
+    }
+    
     setDisplayedSearchTerm(query);
+
     try {
-      // Fetch latest posts and comments, aiming for up to 100 items
-      const { data, error } = await searchReddit({ q: query, limit: 100, sort: 'new' });
+      const { data, error, nextAfter } = await searchReddit({ 
+        q: query, 
+        limit: 100, // Fetch 100 items per request
+        sort: 'new',
+        after: currentAfterCursor 
+      });
+
       if (error) {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
-        setRedditPosts([]);
+        if (!currentAfterCursor) setRedditPosts([]);
       } else if (data) {
-        const itemsWithSno = data.map((item, index) => ({ ...item, sno: index + 1 }));
-        setRedditPosts(itemsWithSno);
-        if (data.length === 0) {
+        const newItemsWithSno = data.map((item, index) => ({ 
+          ...item, 
+          sno: (currentAfterCursor ? redditPosts.length : 0) + index + 1 
+        }));
+
+        setRedditPosts(prevPosts => currentAfterCursor ? [...prevPosts, ...newItemsWithSno] : newItemsWithSno);
+        setNextAfterCursor(nextAfter || null);
+        
+        if (data.length === 0 && !currentAfterCursor) {
           toast({ title: "No Results", description: `No Reddit posts or comments found for your keywords: "${query}".` });
         }
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred during Reddit search." });
-      setRedditPosts([]);
+      if (!currentAfterCursor) setRedditPosts([]);
     } finally {
-      setIsLoadingPosts(false);
+      if (currentAfterCursor) {
+        setIsLoadingMore(false);
+      } else {
+        setIsLoadingPosts(false);
+      }
     }
-  }, [toast]);
+  }, [toast, redditPosts.length]); // redditPosts.length is needed for sno calculation
 
-  // Effect for user view: fetch posts based on their keywords
+  // Effect for user view: fetch posts based on their keywords (initial load)
   useEffect(() => {
     if (!authLoading && currentUser?.role === 'user') {
       if (currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0) {
@@ -257,9 +284,11 @@ export default function RedditPage() {
         setIsLoadingPosts(false);
         setRedditPosts([]);
         setDisplayedSearchTerm(null);
+        setNextAfterCursor(null);
       }
     }
-  }, [currentUser, authLoading, fetchRedditPostsForUser]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, authLoading]); // fetchRedditPostsForUser is memoized, fine to exclude
 
 
   if (authLoading) {
@@ -354,7 +383,7 @@ export default function RedditPage() {
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (displayedSearchTerm) {
-      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched up to 100 items.`;
+      userPageDescription = `Showing latest posts and comments related to your keywords: "${displayedSearchTerm}". Fetched ${redditPosts.length} items so far.`;
     }
 
     return (
@@ -392,11 +421,24 @@ export default function RedditPage() {
         )}
 
         {!isLoadingPosts && redditPosts.length > 0 && (
-          <GenericDataTable<RedditPost>
-            data={redditPosts}
-            columns={redditPostColumnsUserView} 
-            caption={displayedSearchTerm ? `Showing latest Reddit posts and comments related to your keywords: "${displayedSearchTerm}". Fetched up to 100 items.` : "Your Reddit Feed"}
-          />
+          <>
+            <GenericDataTable<RedditPost>
+              data={redditPosts}
+              columns={redditPostColumnsUserView} 
+              caption={displayedSearchTerm ? `Showing Reddit posts and comments related to: "${displayedSearchTerm}". Displaying ${redditPosts.length} items.` : "Your Reddit Feed"}
+            />
+            {nextAfterCursor && (
+              <div className="mt-6 flex justify-center">
+                <Button 
+                  onClick={() => fetchRedditPostsForUser(currentUser.assignedKeywords || [], nextAfterCursor)} 
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+                  Load More Results
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </DataTableShell>
     );
@@ -409,4 +451,3 @@ export default function RedditPage() {
     </div>
   );
 }
-
