@@ -25,7 +25,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format } from 'date-fns'; // Changed from formatDistanceToNow
+import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 
 // Schema for admin's keyword editing form
@@ -46,8 +46,14 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     key: 'timestamp', 
     header: 'Date', 
     sortable: true, 
-    render: (item) => format(new Date(item.timestamp), 'dd-MM-yyyy'), // Updated date format
-    className: "w-[180px]"
+    render: (item) => format(new Date(item.timestamp), 'dd-MM-yyyy'),
+    className: "w-[120px]"
+  },
+  {
+    key: 'type',
+    header: 'Type',
+    render: (item) => <Badge variant="outline">{item.type || 'N/A'}</Badge>,
+    className: "w-[100px]"
   },
   { 
     key: 'subreddit', 
@@ -197,7 +203,8 @@ export default function RedditPage() {
     setIsLoadingPosts(true);
     setDisplayedSearchTerm(query);
     try {
-      const { data, error } = await searchReddit({ q: query, limit: 25, sort: 'relevance' });
+      // Fetch latest posts by setting sort to 'new'
+      const { data, error } = await searchReddit({ q: query, limit: 25, sort: 'new' });
       if (error) {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
         setRedditPosts([]);
@@ -322,7 +329,7 @@ export default function RedditPage() {
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (displayedSearchTerm) {
-      userPageDescription = `Showing posts related to your keywords: "${displayedSearchTerm}".`;
+      userPageDescription = `Showing latest posts related to your keywords: "${displayedSearchTerm}".`;
     }
 
     return (
@@ -333,7 +340,7 @@ export default function RedditPage() {
         {isLoadingPosts && (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="ml-3 text-muted-foreground">Fetching Reddit posts for your keywords...</p>
+            <p className="ml-3 text-muted-foreground">Fetching latest Reddit posts for your keywords...</p>
           </div>
         )}
 
@@ -363,7 +370,7 @@ export default function RedditPage() {
           <GenericDataTable<RedditPost>
             data={redditPosts}
             columns={redditPostColumnsUserView} 
-            caption={displayedSearchTerm ? `Showing Reddit posts related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Posts"}
+            caption={displayedSearchTerm ? `Showing latest Reddit posts related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Posts"}
           />
         )}
       </DataTableShell>

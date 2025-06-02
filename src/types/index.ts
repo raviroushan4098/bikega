@@ -38,7 +38,8 @@ export interface RedditPost {
   numComments: number;
   url: string;
   flair?: string;
-  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; // Added for sentiment
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
+  type?: 'Post' | 'Comment'; // Added for type distinction
 }
 
 export interface Tweet {

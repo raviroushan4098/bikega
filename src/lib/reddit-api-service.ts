@@ -171,6 +171,7 @@ export async function searchReddit(
       url: `https://www.reddit.com${child.data.permalink}`,
       flair: child.data.link_flair_text || undefined,
       sentiment: 'unknown', // Placeholder sentiment
+      type: 'Post', // Set type as 'Post'
     }));
 
     return { data: posts };
@@ -182,3 +183,4 @@ export async function searchReddit(
     return { data: null, error: 'An unknown error occurred while fetching from Reddit OAuth API.' };
   }
 }
+
