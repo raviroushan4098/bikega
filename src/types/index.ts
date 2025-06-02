@@ -41,6 +41,7 @@ export interface RedditPost {
   flair?: string;
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
   type: 'Post' | 'Comment'; // Added for type distinction
+  matchedKeyword?: string; // Keyword that this post/comment matched
 }
 
 export interface Tweet {

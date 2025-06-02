@@ -60,17 +60,23 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     key: 'subreddit', 
     header: 'Subreddit', 
     sortable: true, 
-    className: "w-[180px] font-medium",
+    className: "w-[150px] font-medium",
     render: (item) => <Badge variant="secondary">{item.subreddit}</Badge>
+  },
+  {
+    key: 'matchedKeyword',
+    header: 'Keyword',
+    render: (item) => item.matchedKeyword ? <Badge variant="outline">{item.matchedKeyword}</Badge> : <span className="text-xs text-muted-foreground">N/A</span>,
+    className: "w-[120px]",
   },
   { 
     key: 'title', 
     header: 'Title / Content', 
     sortable: true, 
-    className: "min-w-[300px]",
+    className: "min-w-[250px] max-w-sm",
     render: (item) => {
       if (item.type === 'Post') {
-        return <p className="font-medium">{item.title}</p>;
+        return <p className="font-medium line-clamp-3">{item.title}</p>;
       } else { // Comment
         return (
           <Popover>
@@ -88,20 +94,20 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
       }
     }
   },
-  { key: 'author', header: 'Author', sortable: true, className: "w-[150px]" },
+  { key: 'author', header: 'Author', sortable: true, className: "w-[130px]" },
   { 
     key: 'score', 
     header: 'Score', 
     sortable: true, 
     render: (item) => <span className="text-right block">{item.score.toLocaleString()}</span>,
-    className: "text-right w-[100px]"
+    className: "text-right w-[80px]"
   },
   { 
     key: 'numComments', 
-    header: 'Comments', 
+    header: 'Replies', // Renamed for clarity, as for posts this is "comments", for comments it's its own replies (usually 0 for top-level)
     sortable: true, 
     render: (item) => <span className="text-right block">{item.type === 'Post' ? item.numComments.toLocaleString() : '-'}</span>,
-    className: "text-right w-[120px]"
+    className: "text-right w-[100px]"
   },
   { 
     key: 'sentiment', 
@@ -129,7 +135,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
       }
       return <Badge variant={badgeVariant}>{text}</Badge>;
     },
-    className: "w-[120px]"
+    className: "w-[100px]"
   },
   { 
     key: 'link', 
@@ -141,7 +147,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
         </a>
       </Button>
     ),
-    className: "text-center w-[80px]"
+    className: "text-center w-[60px]"
   },
 ];
 
@@ -234,9 +240,10 @@ export default function RedditPage() {
     setDisplayedSearchTerm(query);
 
     try {
+      // Requesting 50 items per call (split between posts and comments by the service)
       const { data, error, nextAfter } = await searchReddit({ 
         q: query, 
-        limit: 100, 
+        limit: 50, // This limit is for posts, comments are fetched additionally per post
         sort: 'new',
         after: currentAfterCursor 
       });
@@ -245,12 +252,26 @@ export default function RedditPage() {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
         if (!currentAfterCursor) setRedditPosts([]);
       } else if (data) {
-        const newItemsWithSno = data.map((item, index) => ({ 
-          ...item, 
-          sno: (currentAfterCursor ? redditPosts.length : 0) + index + 1 
-        }));
+        // Client-side assignment of matchedKeyword and sno
+        const processedData = data.map((item, index) => {
+          let matchedKeyword: string | undefined = undefined;
+          if (currentUser?.assignedKeywords) {
+            for (const kw of currentUser.assignedKeywords) {
+              const contentToCheck = item.type === 'Post' ? item.title + " " + (item.content || "") : (item.content || "");
+              if (contentToCheck.toLowerCase().includes(kw.toLowerCase())) {
+                matchedKeyword = kw;
+                break; 
+              }
+            }
+          }
+          return { 
+            ...item,
+            matchedKeyword,
+            sno: (currentAfterCursor ? redditPosts.length : 0) + index + 1 
+          };
+        });
 
-        setRedditPosts(prevPosts => currentAfterCursor ? [...prevPosts, ...newItemsWithSno] : newItemsWithSno);
+        setRedditPosts(prevPosts => currentAfterCursor ? [...prevPosts, ...processedData] : processedData);
         setNextAfterCursor(nextAfter || null);
         
         if (data.length === 0 && !currentAfterCursor) {
@@ -267,7 +288,7 @@ export default function RedditPage() {
         setIsLoadingPosts(false);
       }
     }
-  }, [toast, redditPosts.length]); 
+  }, [toast, redditPosts.length, currentUser?.assignedKeywords]); 
 
   useEffect(() => {
     if (!authLoading && currentUser?.role === 'user') {
@@ -407,7 +428,8 @@ export default function RedditPage() {
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
               No items matched your assigned keywords: "{displayedSearchTerm}".
-              Try broadening your keywords or check back later.
+              This may be due to very specific keywords, or Reddit's search algorithm finding no recent matching content.
+              Try broadening your keywords with an admin, or check back later.
             </p>
           </div>
         )}
