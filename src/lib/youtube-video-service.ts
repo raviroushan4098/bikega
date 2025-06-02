@@ -153,21 +153,30 @@ export async function addYoutubeVideoToFirestore(
 
 export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): Promise<YoutubeVideo[]> {
   try {
-    if (!userIdForFilter) { // If userIdForFilter is empty string or undefined (meaning "Select an option..." is chosen)
+    if (!userIdForFilter) { 
       console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: No specific user ID or 'all' selected for filtering. Returning empty array.`);
       return [];
     }
 
-    if (userIdForFilter === 'all') { // Handle fetching all videos
+    if (userIdForFilter === 'all') { 
       console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for ALL videos from ALL users.`);
       const allVideos: YoutubeVideo[] = [];
-      const usersSnapshot = await getDocs(collection(db, `youtube_videos`));
+      const usersCollectionRef = collection(db, `youtube_videos`);
+      const usersSnapshot = await getDocs(usersCollectionRef);
+      console.log(`[youtube-video-service][ALL_FILTER] Found ${usersSnapshot.docs.length} document(s) in 'youtube_videos' collection (these should be user IDs).`);
+
+      if (usersSnapshot.empty) {
+          console.log("[youtube-video-service][ALL_FILTER] 'youtube_videos' collection is empty. No users have had videos assigned or the collection structure is unexpected.");
+          return [];
+      }
 
       for (const userDoc of usersSnapshot.docs) {
         const currentUserId = userDoc.id;
+        console.log(`[youtube-video-service][ALL_FILTER] Processing user ID: ${currentUserId}`);
         const userAssignedLinksRef = collection(db, `youtube_videos/${currentUserId}/assigned_links`);
-        const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc')); // Order within each user's videos
+        const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
+        console.log(`[youtube-video-service][ALL_FILTER] Found ${querySnapshot.docs.length} videos for user ${currentUserId}.`);
 
         querySnapshot.docs.forEach(docSnap => {
           const data = docSnap.data() as AssignedLinkData;
@@ -186,13 +195,11 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
           });
         });
       }
-      // Sort all collected videos by createdAt
       allVideos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Found ${allVideos.length} videos in total for ALL users.`);
+      console.log(`[youtube-video-service][ALL_FILTER] Aggregated ${allVideos.length} videos in total for ALL users.`);
       return allVideos;
     }
 
-    // Existing logic for fetching videos for a specific user
     console.log(`[youtube-video-service] getYoutubeVideosFromFirestore: Querying for videos assigned to user ID: '${userIdForFilter}'`);
     const userAssignedLinksRef = collection(db, `youtube_videos/${userIdForFilter}/assigned_links`);
     const q = query(userAssignedLinksRef, orderBy('createdAt', 'desc'));
@@ -231,3 +238,4 @@ export async function getYoutubeVideosFromFirestore(userIdForFilter?: string): P
     return [];
   }
 }
+

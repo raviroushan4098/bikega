@@ -31,7 +31,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Loader2 } from 'lucide-react';
+import { PlusCircle, Loader2, Rss } from 'lucide-react'; // Added Rss icon
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
@@ -142,9 +142,9 @@ export default function YouTubeAnalyticsPage() {
 
     let filterIdForService: string | undefined = undefined;
     if (currentUser.role === 'admin') {
-      if (selectedUserIdForFilter && selectedUserIdForFilter !== '') { // Can be 'all' or a specific ID
+      if (selectedUserIdForFilter && selectedUserIdForFilter !== '') { 
         filterIdForService = selectedUserIdForFilter;
-      } else { // Admin has placeholder selected (selectedUserIdForFilter is '')
+      } else { 
         console.log("[YouTubePage] Admin view: No specific user or 'all' selected for filter. Clearing videos.");
         setVideos([]);
         setIsLoadingVideos(false);
@@ -154,7 +154,7 @@ export default function YouTubeAnalyticsPage() {
       filterIdForService = currentUser.id;
     }
 
-    if (!filterIdForService) { // Should not happen if logic above is correct
+    if (!filterIdForService) { 
         console.log("[YouTubePage] fetchVideos: No valid filterIdForService determined. Skipping fetch.");
         setVideos([]);
         setIsLoadingVideos(false);
@@ -185,9 +185,9 @@ export default function YouTubeAnalyticsPage() {
         if (currentUser.role === 'user') { 
             fetchVideos(); 
         } else if (currentUser.role === 'admin') { 
-            if (selectedUserIdForFilter && selectedUserIdForFilter !== '') { // Fetch if 'all' or a specific user ID is selected
+            if (selectedUserIdForFilter && selectedUserIdForFilter !== '') { 
                 fetchVideos();
-            } else { // selectedUserIdForFilter is '' (placeholder active)
+            } else { 
                 setVideos([]);
                 setIsLoadingVideos(false); 
                 console.log("[YouTubePage] Admin view: 'Select an option...' active. Videos cleared.");
@@ -214,9 +214,6 @@ export default function YouTubeAnalyticsPage() {
         })
         .finally(() => setIsLoadingUsers(false));
     } else if (currentUser?.role === 'user' && currentUser.id && currentUser.name) {
-      // For a regular user, 'allUsers' list is just themselves for rendering 'Assigned To' column if needed.
-      // However, since 'Assigned To' column might not be relevant for user view if they only see their own,
-      // this could be optimized. For now, keeping it simple.
       setAllUsers([{ ...currentUser }]); 
     }
   }, [currentUser, toast]);
@@ -238,7 +235,6 @@ export default function YouTubeAnalyticsPage() {
       form.reset();
       setIsAddVideoDialogOpen(false);
 
-      // Refresh videos if the current view matches the user to whom the video was assigned OR if 'all' is selected
       if (currentUser?.role === 'admin' && (selectedUserIdForFilter === data.assignedToUserId || selectedUserIdForFilter === 'all')) {
         fetchVideos();
       } else if (currentUser?.role === 'user' && currentUser.id === data.assignedToUserId) {
@@ -288,15 +284,15 @@ export default function YouTubeAnalyticsPage() {
       if (selectedUserIdForFilter === 'all') {
         return videos.length === 0 ? "No YouTube videos found assigned to any user." : "Showing all videos assigned across all users.";
       }
-      // Specific user selected by admin
       const selectedUserDetails = allUsers.find(u => u.id === selectedUserIdForFilter);
       const userName = selectedUserDetails ? selectedUserDetails.name : 'the selected user';
       return videos.length === 0 ? `No YouTube videos found assigned to ${userName}.` : `Showing videos assigned to ${userName}.`;
     }
-    // User role
     return videos.length === 0 ? "No YouTube videos have been assigned to you yet." : "Your Assigned YouTube Video Performance";
   };
 
+  const shouldShowTable = !isLoadingVideos && displayedVideos.length > 0;
+  const noDataMessageText = !isLoadingVideos && displayedVideos.length === 0 ? getTableCaption() : null;
 
   return (
     <DataTableShell
@@ -322,7 +318,7 @@ export default function YouTubeAnalyticsPage() {
                     console.log("[YouTubePage] Admin selected option from filter dropdown. New selectedUserIdForFilter:", value);
                     setSelectedUserIdForFilter(value); 
                     if (value === '') { 
-                        setVideos([]); // Clear videos if placeholder is chosen
+                        setVideos([]); 
                     }
                 }}
               >
@@ -429,8 +425,21 @@ export default function YouTubeAnalyticsPage() {
           </Dialog>
         </div>
       )}
-       {isLoadingVideos && <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-      {!isLoadingVideos && (
+      {isLoadingVideos && <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+      
+      {noDataMessageText && !shouldShowTable && (
+        <div className="text-center py-10 text-muted-foreground">
+            <Rss className="mx-auto h-12 w-12 mb-3" /> {/* Placeholder icon */}
+            <p className="text-lg font-semibold mb-1">
+                {noDataMessageText.startsWith("Please select") ? "Awaiting User Selection" : 
+                 noDataMessageText.includes("No YouTube videos found") ? "No Videos Found" :
+                 "No Data"}
+            </p>
+            <p>{noDataMessageText}</p>
+        </div>
+      )}
+
+      {shouldShowTable && (
         <GenericDataTable<YoutubeVideo>
           data={displayedVideos}
           columns={columns}
@@ -440,4 +449,3 @@ export default function YouTubeAnalyticsPage() {
     </DataTableShell>
   );
 }
-
