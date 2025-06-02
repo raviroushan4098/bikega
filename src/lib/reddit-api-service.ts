@@ -170,6 +170,7 @@ export async function searchReddit(
       numComments: child.data.num_comments,
       url: `https://www.reddit.com${child.data.permalink}`,
       flair: child.data.link_flair_text || undefined,
+      sentiment: 'unknown', // Placeholder sentiment
     }));
 
     return { data: posts };

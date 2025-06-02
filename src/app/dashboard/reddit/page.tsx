@@ -8,10 +8,10 @@ import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save } from 'lucide-react'; // Removed: Edit3, Search (no longer used)
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
-import { searchReddit, RedditSearchParams } from '@/lib/reddit-api-service'; // For user view
+import { searchReddit } from '@/lib/reddit-api-service';
 import {
   Select,
   SelectContent,
@@ -35,7 +35,20 @@ const editKeywordsSchema = z.object({
 type EditKeywordsFormValues = z.infer<typeof editKeywordsSchema>;
 
 // Columns for Reddit posts (for user view)
-const redditPostColumns: ColumnConfig<RedditPost>[] = [
+const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
+  { 
+    key: 'sno', 
+    header: 'S.No', 
+    className: "w-[60px] text-center",
+    render: (item) => <span className="text-sm text-muted-foreground">{item.sno}</span>,
+  },
+  { 
+    key: 'timestamp', 
+    header: 'Date', 
+    sortable: true, 
+    render: (item) => formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
+    className: "w-[180px]"
+  },
   { 
     key: 'subreddit', 
     header: 'Subreddit', 
@@ -45,13 +58,6 @@ const redditPostColumns: ColumnConfig<RedditPost>[] = [
   },
   { key: 'title', header: 'Title', sortable: true, className: "min-w-[300px]" },
   { key: 'author', header: 'Author', sortable: true, className: "w-[150px]" },
-  { 
-    key: 'timestamp', 
-    header: 'Date', 
-    sortable: true, 
-    render: (item) => formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
-    className: "w-[180px]"
-  },
   { 
     key: 'score', 
     header: 'Score', 
@@ -67,12 +73,47 @@ const redditPostColumns: ColumnConfig<RedditPost>[] = [
     className: "text-right w-[120px]"
   },
   { 
-    key: 'flair', 
-    header: 'Flair',
-    render: (item) => item.flair ? <Badge variant="outline">{item.flair}</Badge> : <span className="text-muted-foreground text-xs">N/A</span>,
+    key: 'sentiment', 
+    header: 'Sentiment', 
+    render: (item) => {
+      let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "outline";
+      let text = "Unknown";
+      switch (item.sentiment) {
+        case 'positive':
+          badgeVariant = "default"; // Using default primary for positive (usually green if theme supports)
+          text = "Positive";
+          break;
+        case 'negative':
+          badgeVariant = "destructive";
+          text = "Negative";
+          break;
+        case 'neutral':
+          badgeVariant = "secondary";
+          text = "Neutral";
+          break;
+        default: // unknown or undefined
+          badgeVariant = "outline";
+          text = "N/A";
+          break;
+      }
+      return <Badge variant={badgeVariant}>{text}</Badge>;
+    },
     className: "w-[120px]"
   },
+  { 
+    key: 'link', 
+    header: 'Link',
+    render: (item) => (
+      <Button variant="ghost" size="icon" asChild className="h-8 w-8">
+        <a href={item.url} target="_blank" rel="noopener noreferrer" title="Open post on Reddit">
+          <ExternalLink className="h-4 w-4 text-primary" />
+        </a>
+      </Button>
+    ),
+    className: "text-center w-[80px]"
+  },
 ];
+
 
 export default function RedditPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -162,7 +203,8 @@ export default function RedditPage() {
         toast({ variant: "destructive", title: "Reddit Search Failed", description: error });
         setRedditPosts([]);
       } else if (data) {
-        setRedditPosts(data);
+        const postsWithSno = data.map((post, index) => ({ ...post, sno: index + 1 }));
+        setRedditPosts(postsWithSno);
         if (data.length === 0) {
           toast({ title: "No Results", description: `No Reddit posts found for your keywords: "${query}".` });
         }
@@ -278,7 +320,6 @@ export default function RedditPage() {
   }
 
   // User View: Display Reddit Posts based on their assigned keywords
-  // (Search bar/button are hidden for users with assigned keywords)
   if (currentUser.role === 'user') {
     let userPageDescription = "Your Reddit feed based on assigned keywords.";
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
@@ -324,7 +365,7 @@ export default function RedditPage() {
         {!isLoadingPosts && redditPosts.length > 0 && (
           <GenericDataTable<RedditPost>
             data={redditPosts}
-            columns={redditPostColumns}
+            columns={redditPostColumnsUserView} // Using the new user-specific columns
             caption={displayedSearchTerm ? `Showing Reddit posts related to your keywords: "${displayedSearchTerm}"` : "Your Reddit Posts"}
           />
         )}
