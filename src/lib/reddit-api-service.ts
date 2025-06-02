@@ -14,6 +14,12 @@ let tokenExpiry: number | null = null;
 
 const sentimentAnalyzer = new Sentiment();
 
+const CUTOFF_DATE_STRING = '2025-06-01T00:00:00.000Z';
+const CUTOFF_TIMESTAMP = new Date(CUTOFF_DATE_STRING).getTime();
+
+const COMMENTS_PER_POST_LIMIT = 10; // Max comments to fetch per post
+const COMMENT_FETCH_DEPTH = 1; // Fetch only top-level comments
+
 async function getRedditAccessToken(): Promise<string | null> {
   if (accessToken && tokenExpiry && Date.now() < tokenExpiry) {
     return accessToken;
@@ -24,7 +30,7 @@ async function getRedditAccessToken(): Promise<string | null> {
   const clientSecretEntry = apiKeys.find(k => k.serviceName === REDDIT_CLIENT_SECRET_SERVICE_NAME);
 
   if (!clientIdEntry || !clientSecretEntry) {
-    console.error(`[Reddit API Service] Critical: '${REDDIT_CLIENT_ID_SERVICE_NAME}' or '${REDDIT_CLIENT_SECRET_SERVICE_NAME}' not found in API Management. Reddit functionality will be impaired.`);
+    console.error(`[Reddit API Service] Critical: '${REDDIT_CLIENT_ID_SERVICE_NAME}' or '${REDDIT_CLIENT_SECRET_SERVICE_NAME}' not found. Reddit functionality impaired.`);
     return null;
   }
   const clientId = clientIdEntry.keyValue;
@@ -50,7 +56,7 @@ async function getRedditAccessToken(): Promise<string | null> {
 
     const tokenData = await response.json();
     accessToken = tokenData.access_token;
-    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000;
+    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000; // -300 for buffer
     return accessToken;
   } catch (error) {
     console.error('[Reddit API Service] Exception fetching access token:', error);
@@ -62,27 +68,30 @@ async function getRedditAccessToken(): Promise<string | null> {
 export type { ClientRedditSearchParams as RedditSearchParams };
 
 interface RedditApiItemData {
-  id: string;
+  id: string; // Just the ID part, e.g., "xxxxxx"
   name: string; // Fullname (e.g., t3_xxxxxx or t1_xxxxxx)
   author: string;
   created_utc: number;
   score: number;
   permalink: string;
   subreddit_name_prefixed?: string;
-  subreddit?: string; // Subreddit name without 'r/' prefix
+  subreddit?: string;
   title?: string; // For posts (t3)
-  link_title?: string; // For comments (t1), this is the parent post's title
+  link_title?: string; // For comments (t1 on a post page)
   num_comments?: number; // For posts (t3)
   link_flair_text?: string | null;
   selftext?: string; // For posts (t3)
   body?: string; // For comments (t1)
-  url?: string; // For posts (t3), direct link if not self-post
+  url?: string; // For posts (t3)
   over_18?: boolean;
+  // For comments from /comments/POST_ID.json
+  replies?: RedditApiResponse | string; // Can be empty string if no replies, or another Listing
+  body_html?: string;
 }
 
 interface RedditApiChild {
-  kind: 't1' | 't3' | 'more'; // t1: comment, t3: link (post)
-  data: RedditApiItemData;
+  kind: 't1' | 't3' | 'more' | 'Listing';
+  data: RedditApiItemData | RedditApiResponseData; // 'data' can be item or another listing for replies
 }
 
 interface RedditApiResponseData {
@@ -90,12 +99,92 @@ interface RedditApiResponseData {
   dist: number;
   children: RedditApiChild[];
   before: string | null;
+  modhash?: string; // Present in comment listings
 }
 
 interface RedditApiResponse {
-  kind: string;
+  kind: string; // "Listing"
   data: RedditApiResponseData;
 }
+
+// Type for the response from /api/comments/ARTICLE_ID.json
+// It's an array: [Listing_of_Post_Details, Listing_of_Comments]
+type RedditCommentsApiResponse = [RedditApiResponse, RedditApiResponse];
+
+
+async function fetchCommentsForPost(
+  postFullname: string,
+  postTitle: string,
+  postSubredditPrefixed: string,
+  token: string,
+  userAgent: string
+): Promise<RedditPost[]> {
+  const postId = postFullname.startsWith('t3_') ? postFullname.substring(3) : postFullname;
+  if (!postId) {
+    console.warn(`[Reddit API Service] Invalid post fullname for fetching comments: ${postFullname}`);
+    return [];
+  }
+
+  const commentsUrl = `https://oauth.reddit.com/comments/${postId}.json?sort=new&limit=${COMMENTS_PER_POST_LIMIT}&depth=${COMMENT_FETCH_DEPTH}&show_more=false&show_edits=false`;
+  console.log(`[Reddit API Service] Fetching comments for post ${postId} (limit ${COMMENTS_PER_POST_LIMIT}, depth ${COMMENT_FETCH_DEPTH}): ${commentsUrl}`);
+
+  try {
+    const response = await fetch(commentsUrl, {
+      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': userAgent },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => `Status: ${response.status}`);
+      console.error(`[Reddit API Service] Error fetching comments for post ${postId} (${response.status}): ${errorText}`);
+      return [];
+    }
+
+    const responseData: RedditCommentsApiResponse = await response.json();
+    if (!responseData || !Array.isArray(responseData) || responseData.length < 2) {
+        console.error(`[Reddit API Service] Unexpected response structure for comments of post ${postId}.`);
+        return [];
+    }
+    
+    const commentsListing = responseData[1]; // Second element is the comments listing
+    const rawCommentItems = commentsListing?.data?.children || [];
+    
+    console.log(`[Reddit API Service] Received ${rawCommentItems.length} raw comment items for post ${postId}. Kinds: ${rawCommentItems.map(c => c.kind).join(', ')}`);
+
+    const mappedComments: RedditPost[] = [];
+    for (const child of rawCommentItems) {
+      if (child.kind === 't1' && child.data && typeof child.data === 'object' && 'body' in child.data) {
+        const commentData = child.data as RedditApiItemData;
+        const sentimentResult = sentimentAnalyzer.analyze(commentData.body || '');
+        let sentiment: RedditPost['sentiment'] = 'neutral';
+        if (sentimentResult.score > 0.5) sentiment = 'positive';
+        else if (sentimentResult.score < -0.5) sentiment = 'negative';
+
+        mappedComments.push({
+          id: commentData.name, // Fullname, e.g., t1_xxxxxx
+          title: postTitle, // Parent post's title
+          content: commentData.body || '',
+          subreddit: postSubredditPrefixed, // Parent post's subreddit
+          author: commentData.author || '[deleted]',
+          timestamp: new Date((commentData.created_utc || 0) * 1000).toISOString(),
+          score: commentData.score || 0,
+          numComments: 0, // This is a comment itself
+          url: `https://www.reddit.com${commentData.permalink}`,
+          flair: undefined,
+          sentiment: sentiment,
+          type: 'Comment',
+        });
+      }
+    }
+    console.log(`[Reddit API Service] Mapped ${mappedComments.length} comments for post ${postId}.`);
+    return mappedComments;
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown fetch error.';
+    console.error(`[Reddit API Service] Exception fetching/processing comments for post ${postId}:`, error);
+    return [];
+  }
+}
+
 
 export async function searchReddit(
   params: ClientRedditSearchParams
@@ -113,126 +202,100 @@ export async function searchReddit(
   }
 
   const { q, sort = 'new', t = 'all', subreddit, limit = 25, after } = params;
-  
-  let apiUrl = `https://oauth.reddit.com/`;
+  const postsToFetchLimit = limit; // `limit` from params now controls number of posts
+
+  let postSearchUrl = `https://oauth.reddit.com/`;
   if (subreddit) {
     const cleanSubreddit = subreddit.startsWith('r/') ? subreddit.substring(2) : subreddit;
-    apiUrl += `r/${cleanSubreddit}/`;
+    postSearchUrl += `r/${cleanSubreddit}/`;
   }
-  // Request both posts (t3) and comments (t1)
-  apiUrl += `search.json?q=${encodeURIComponent(q)}&limit=${limit}&sort=${sort}&t=${t}&type=t3,t1&show=all&restrict_sr=${!!subreddit}&include_over_18=on`;
+  postSearchUrl += `search.json?q=${encodeURIComponent(q)}&limit=${postsToFetchLimit}&sort=${sort}&t=${t}&type=t3&restrict_sr=${!!subreddit}&include_over_18=on`;
   if (after) {
-    apiUrl += `&after=${after}`;
+    postSearchUrl += `&after=${after}`;
   }
 
-  console.log(`[Reddit API Service] Querying Reddit for posts AND comments: ${apiUrl.replace(q, `'${q}'`)}`);
-  let firstCommentLogged = false; // Initialize for each call
+  console.log(`[Reddit API Service] Phase 1: Fetching ${postsToFetchLimit} POSTS using URL: ${postSearchUrl.replace(q, `'${q}'`)}`);
 
   try {
-    const response = await fetch(apiUrl, {
+    const postResponse = await fetch(postSearchUrl, {
       headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': userAgent },
     });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => `Status: ${response.status}`);
-      console.error(`[Reddit API Service] Error fetching from Reddit (${response.status}): ${errorText}`);
-      return { data: null, error: `Reddit API Error (${response.status}). Check server logs.`, nextAfter: null };
+    if (!postResponse.ok) {
+      const errorText = await postResponse.text().catch(() => `Status: ${postResponse.status}`);
+      console.error(`[Reddit API Service] Error fetching posts from Reddit (${postResponse.status}): ${errorText}`);
+      return { data: null, error: `Reddit API Error for posts (${postResponse.status}). Check server logs.`, nextAfter: null };
     }
 
-    const rawResponseData: RedditApiResponse = await response.json();
-    const rawItems = rawResponseData.data?.children || [];
-    
-    const rawPostCount = rawItems.filter(child => child.kind === 't3').length;
-    const rawCommentCount = rawItems.filter(child => child.kind === 't1').length;
-    const rawOtherCount = rawItems.length - rawPostCount - rawCommentCount;
+    const rawPostResponseData: RedditApiResponse = await postResponse.json();
+    const rawPostItems = rawPostResponseData.data?.children || [];
+    console.log(`[Reddit API Service] Received ${rawPostItems.length} raw post items from API. Kinds: ${rawPostItems.map(child => child.kind).join(', ')}`);
 
-    console.log(`[Reddit API Service] Received ${rawItems.length} raw items from API. (Posts: ${rawPostCount}, Comments: ${rawCommentCount}, Others: ${rawOtherCount})`);
-    if (rawItems.length > 0) {
-      console.log(`[Reddit API Service] Item kinds received from API: ${rawItems.map(child => child.kind).join(', ')}`);
-    }
+    const allFetchedItems: RedditPost[] = [];
 
-    const mappedItems: RedditPost[] = [];
-    console.log(`[Reddit API Service] Starting to process ${rawItems.length} raw items for mapping...`);
-    for (const child of rawItems) {
-      const data = child.data;
-      if (child.kind === 't3') { // Post
-        const postTextToAnalyze = `${data.title || ''} ${data.selftext || ''}`;
+    // Map Posts
+    for (const child of rawPostItems) {
+      if (child.kind === 't3' && child.data && typeof child.data === 'object' && 'title' in child.data) {
+        const postData = child.data as RedditApiItemData;
+        const postTextToAnalyze = `${postData.title || ''} ${postData.selftext || ''}`;
         const postSentimentResult = sentimentAnalyzer.analyze(postTextToAnalyze);
         let postSentiment: RedditPost['sentiment'] = 'neutral';
-        if (postSentimentResult.score > 0) postSentiment = 'positive';
-        else if (postSentimentResult.score < 0) postSentiment = 'negative';
-
-        mappedItems.push({
-          id: data.name,
-          title: data.title || 'No Title',
-          content: data.selftext || '',
-          subreddit: data.subreddit_name_prefixed || `r/${data.subreddit}` || 'N/A',
-          author: data.author || '[deleted]',
-          timestamp: new Date((data.created_utc || 0) * 1000).toISOString(),
-          score: data.score || 0,
-          numComments: data.num_comments || 0,
-          url: (data.url && data.url.startsWith('http')) ? data.url : `https://www.reddit.com${data.permalink}`,
-          flair: data.link_flair_text || undefined,
+        if (postSentimentResult.score > 0.5) postSentiment = 'positive';
+        else if (postSentimentResult.score < -0.5) postSentiment = 'negative';
+        
+        const mappedPost: RedditPost = {
+          id: postData.name, // Fullname, e.g. t3_xxxxxx
+          title: postData.title || 'No Title',
+          content: postData.selftext || '',
+          subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
+          author: postData.author || '[deleted]',
+          timestamp: new Date((postData.created_utc || 0) * 1000).toISOString(),
+          score: postData.score || 0,
+          numComments: postData.num_comments || 0,
+          url: (postData.url && postData.url.startsWith('http')) ? postData.url : `https://www.reddit.com${postData.permalink}`,
+          flair: postData.link_flair_text || undefined,
           sentiment: postSentiment,
           type: 'Post',
-        });
-      } else if (child.kind === 't1') { // Comment
-        if (!firstCommentLogged) {
-          console.log('[Reddit API Service] Raw data for FIRST comment item being processed:', JSON.stringify(data, null, 2));
-          firstCommentLogged = true;
-        }
-        const commentTextToAnalyze = `${data.link_title || ''} ${data.body || ''}`;
-        const commentSentimentResult = sentimentAnalyzer.analyze(commentTextToAnalyze);
-        let commentSentiment: RedditPost['sentiment'] = 'neutral';
-        if (commentSentimentResult.score > 0) postSentiment = 'positive';
-        else if (commentSentimentResult.score < 0) commentSentiment = 'negative';
-        
-        mappedItems.push({
-          id: data.name,
-          title: data.link_title || 'Comment (No Parent Title)',
-          content: data.body || '',
-          subreddit: data.subreddit_name_prefixed || `r/${data.subreddit}` || 'N/A',
-          author: data.author || '[deleted]',
-          timestamp: new Date((data.created_utc || 0) * 1000).toISOString(),
-          score: data.score || 0,
-          numComments: 0, 
-          url: `https://www.reddit.com${data.permalink}`,
-          flair: undefined,
-          sentiment: commentSentiment,
-          type: 'Comment',
-        });
+        };
+        allFetchedItems.push(mappedPost);
+
+        // Phase 2: Fetch comments for this post
+        const commentsForThisPost = await fetchCommentsForPost(
+          postData.name, // Fullname, e.g., t3_xxxxxx
+          postData.title || 'No Title',
+          postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
+          token,
+          userAgent
+        );
+        allFetchedItems.push(...commentsForThisPost);
       }
     }
-    console.log(`[Reddit API Service] Finished processing raw items. ${mappedItems.length} items mapped before date filtering.`);
-    const postsBeforeFilter = mappedItems.filter(item => item.type === 'Post').length;
-    const commentsBeforeFilter = mappedItems.filter(item => item.type === 'Comment').length;
-    console.log(`[Reddit API Service] Mapped item counts before date filtering: Posts: ${postsBeforeFilter}, Comments: ${commentsBeforeFilter}`);
-
+    console.log(`[Reddit API Service] Total items (posts + comments) BEFORE date filtering: ${allFetchedItems.length}`);
+    
     // Date Filtering Logic
-    const CUTOFF_DATE_STRING = '2025-06-01T00:00:00.000Z';
-    const cutoffTimestamp = new Date(CUTOFF_DATE_STRING).getTime();
-    console.log(`[Reddit API Service] Date filter active: Items must be on or after ${CUTOFF_DATE_STRING} (Cutoff Timestamp: ${cutoffTimestamp})`);
-
+    console.log(`[Reddit API Service] Applying date filter: Items must be on or after ${CUTOFF_DATE_STRING} (Cutoff Timestamp: ${CUTOFF_TIMESTAMP})`);
     let itemsProcessedByFilter = 0;
-    const itemsAfterDateFilter = mappedItems.filter((item, index) => {
+    const itemsAfterDateFilter = allFetchedItems.filter((item, index) => {
       const itemDate = new Date(item.timestamp);
       const itemNumericTimestamp = itemDate.getTime();
-      const isKept = itemNumericTimestamp >= cutoffTimestamp;
+      const isKept = itemNumericTimestamp >= CUTOFF_TIMESTAMP;
       
       itemsProcessedByFilter++;
-      if (index < 5 || (index < 20 && !isKept && itemsProcessedByFilter <=20) ) { // Log first 5, and any discarded among first 20 (up to 20 logs for this section)
-        console.log(`[Reddit API Filter Detail #${index+1}] Item ID: ${item.id}, Type: ${item.type}, Item Date: ${item.timestamp} (Num: ${itemNumericTimestamp}), Cutoff: ${cutoffTimestamp}, Kept: ${isKept}`);
+      if (index < 5 || (index < 20 && !isKept && itemsProcessedByFilter <=20) ) {
+        // console.log(`[Reddit API Filter Detail #${index+1}] Item ID: ${item.id}, Type: ${item.type}, Item Date: ${item.timestamp} (Num: ${itemNumericTimestamp}), Cutoff: ${CUTOFF_TIMESTAMP}, Kept: ${isKept}`);
       }
       return isKept;
     });
-
+    
     const postsAfterFilter = itemsAfterDateFilter.filter(item => item.type === 'Post').length;
     const commentsAfterFilter = itemsAfterDateFilter.filter(item => item.type === 'Comment').length;
     console.log(`[Reddit API Service] After date filtering (>= ${CUTOFF_DATE_STRING}), ${itemsAfterDateFilter.length} items remain. (Posts: ${postsAfterFilter}, Comments: ${commentsAfterFilter})`);
 
+    // Sort final combined list by timestamp (newest first)
     const finalSortedData = itemsAfterDateFilter.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    const nextAfterCursor = rawResponseData.data?.after || null;
+    const nextAfterCursor = rawPostResponseData.data?.after || null;
+    console.log(`[Reddit API Service] Returning ${finalSortedData.length} items to client. Next cursor for posts: ${nextAfterCursor}`);
 
     return { data: finalSortedData, error: undefined, nextAfter: nextAfterCursor };
 
@@ -242,4 +305,3 @@ export async function searchReddit(
     return { data: null, error: `Network or processing error: ${errorMessage}`, nextAfter: null };
   }
 }
-
