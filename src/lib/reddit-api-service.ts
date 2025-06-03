@@ -5,7 +5,7 @@ import type { RedditPost } from '@/types';
 import { getApiKeys } from './api-key-service';
 import Sentiment from 'sentiment';
 import { db } from './firebase';
-import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, deleteDoc, getDoc } from 'firebase/firestore'; // Renamed serverTimestamp to avoid conflict
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -16,12 +16,12 @@ let tokenExpiry: number | null = null;
 
 const sentimentAnalyzer = new Sentiment();
 
-const FILTER_PERIOD_DAYS = 30; 
+const FILTER_PERIOD_DAYS = 30;
 
 const getCutoffTimestamp = (): number => {
   const date = new Date();
   date.setDate(date.getDate() - FILTER_PERIOD_DAYS);
-  date.setHours(0, 0, 0, 0); 
+  date.setHours(0, 0, 0, 0);
   return date.getTime();
 };
 
@@ -157,7 +157,7 @@ async function fetchCommentsForPostInternal(
     if (!response.ok) {
       const errorText = await response.text().catch(() => `Status: ${response.status}`);
       console.error(`[Reddit API Service] fetchCommentsForPostInternal: Error fetching comments for post ${postId} (${response.status}): ${errorText}`);
-      return []; 
+      return [];
     }
 
     const responseData: RedditCommentsApiResponse = await response.json();
@@ -165,7 +165,7 @@ async function fetchCommentsForPostInternal(
         console.warn(`[Reddit API Service] fetchCommentsForPostInternal: Unexpected response structure for comments of post ${postId}. Data:`, JSON.stringify(responseData).substring(0, 500));
         return [];
     }
-    
+
     const commentsListing = responseData[1];
     const rawCommentItems = commentsListing.data.children || [];
     const mappedComments: RedditPost[] = [];
@@ -194,9 +194,9 @@ async function fetchCommentsForPostInternal(
               author: commentData.author || '[deleted]',
               timestamp: new Date(commentTimestampMs).toISOString(),
               score: commentData.score || 0,
-              numComments: 0,
+              numComments: 0, // Comments don't have their own 'numComments' in this context
               url: `https://www.reddit.com${commentData.permalink}`,
-              flair: null, // Comments don't have flair, explicitly set to null
+              flair: null,
               sentiment: sentiment,
               type: 'Comment',
               matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
@@ -222,8 +222,8 @@ export async function syncUserRedditData(
 
   console.log('[Reddit API Service] syncUserRedditData: Checking Firebase connectivity...');
   try {
-    const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create'); 
-    await getDoc(testDocRef); 
+    const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create');
+    await getDoc(testDocRef);
     console.log('[Reddit API Service] syncUserRedditData: Firebase connectivity check successful.');
   } catch (fbError) {
     const errorMessage = fbError instanceof Error ? fbError.message : 'Unknown Firebase connection error.';
@@ -245,15 +245,15 @@ export async function syncUserRedditData(
   console.log("[Reddit API Service] syncUserRedditData: Reddit access token and user agent obtained.");
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = Math.min(100, userKeywords.length * 15); 
+  const limit = Math.min(100, userKeywords.length * 15);
   const sort = 'new';
-  const time = 'month'; 
+  const time = 'month';
 
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&t=${time}&type=t3&restrict_sr=false&include_over_18=on`;
-  
+
   console.log(`[Reddit API Service] syncUserRedditData: Searching Reddit. Query: "${queryString}". URL: ${searchUrl}`);
   const allFetchedItems: RedditPost[] = [];
-  const cutoffTimestamp = getCutoffTimestamp(); 
+  const cutoffTimestamp = getCutoffTimestamp();
   const processedAt = new Date().toISOString();
 
   try {
@@ -287,14 +287,14 @@ export async function syncUserRedditData(
           } catch (e) {
             console.warn(`[Reddit API Service] syncUserRedditData: Sentiment analysis failed for post ${postData.id}: ${(e as Error).message}. Defaulting to 'unknown'.`);
           }
-          
-          const matchedKw = userKeywords.find(kw => 
-                (postData.title?.toLowerCase().includes(kw.toLowerCase()) || 
+
+          const matchedKw = userKeywords.find(kw =>
+                (postData.title?.toLowerCase().includes(kw.toLowerCase()) ||
                  postData.selftext?.toLowerCase().includes(kw.toLowerCase()))
-            ) || userKeywords[0] || 'general'; 
+            ) || userKeywords[0] || 'general';
 
           allFetchedItems.push({
-            id: postData.name, 
+            id: postData.name,
             title: postData.title || 'No Title',
             content: postData.selftext || '',
             subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
@@ -303,14 +303,14 @@ export async function syncUserRedditData(
             score: postData.score || 0,
             numComments: postData.num_comments || 0,
             url: (postData.url && postData.url.startsWith('http')) ? postData.url : `https://www.reddit.com${postData.permalink}`,
-            flair: postData.link_flair_text === undefined ? null : postData.link_flair_text, // Ensure flair is null if undefined
+            flair: postData.link_flair_text === undefined ? null : postData.link_flair_text,
             type: 'Post',
             sentiment: postSentiment,
             matchedKeyword: matchedKw,
             processedAt: processedAt,
           });
 
-          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) { 
+          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) {
             console.log(`[Reddit API Service] syncUserRedditData: Post ${postData.name} has ${postData.num_comments} comments. Fetching relevant ones.`);
             const commentsForThisPost = await fetchCommentsForPostInternal(
                 postData.name,
@@ -331,7 +331,7 @@ export async function syncUserRedditData(
 
     const itemsSubcollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
     console.log(`[Reddit API Service] syncUserRedditData: Preparing to delete existing items for user ${userId} from ${itemsSubcollectionRef.path}.`);
-    
+
     try {
       const existingItemsSnapshot = await getDocs(itemsSubcollectionRef);
       if (!existingItemsSnapshot.empty) {
@@ -356,22 +356,21 @@ export async function syncUserRedditData(
                 const docId = item.id.includes('_') ? item.id.split('_')[1] : item.id;
                 if (!docId) {
                     console.warn("[Reddit API Service] syncUserRedditData: Skipping item with invalid ID structure for Firestore doc ID:", item.id);
-                    return; 
+                    return;
                 }
                 const itemRef = doc(itemsSubcollectionRef, docId);
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { sno, ...itemToSaveClean } = item; 
 
-                // Ensure flair is null if undefined
-                if (itemToSaveClean.flair === undefined) {
-                    itemToSaveClean.flair = null;
-                }
-                // Ensure content is at least an empty string if undefined/null (Firestore prefers empty string over null sometimes for text fields)
-                if (itemToSaveClean.content === undefined || itemToSaveClean.content === null) {
-                    itemToSaveClean.content = '';
-                }
-                
-                batch.set(itemRef, { ...itemToSaveClean, serverTimestamp: serverTimestamp() });
+                // Create a clean object for Firestore, ensuring no 'undefined' for flair
+                // and 'sno' is removed.
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { sno, ...restOfItem } = item;
+                const itemToSaveClean = {
+                  ...restOfItem,
+                  flair: restOfItem.flair === undefined ? null : restOfItem.flair,
+                  content: restOfItem.content === undefined || restOfItem.content === null ? '' : restOfItem.content,
+                };
+
+                batch.set(itemRef, { ...itemToSaveClean, serverTimestamp: firestoreServerTimestamp() });
             });
             await batch.commit();
             console.log(`[Reddit API Service] syncUserRedditData: Successfully stored ${allFetchedItems.length} new items for user ${userId}.`);
@@ -383,7 +382,7 @@ export async function syncUserRedditData(
     } else {
         console.log(`[Reddit API Service] syncUserRedditData: No new items to store for user ${userId} after API fetch and processing.`);
     }
-    
+
     console.log(`[Reddit API Service] syncUserRedditData: Sync completed for user ${userId}. Items fetched and stored: ${allFetchedItems.length}.`);
     return { success: true, itemsFetchedAndStored: allFetchedItems.length };
 
@@ -409,27 +408,27 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetching stored items for user ${userId}.`);
   try {
     const itemsCollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
-    const q = query(itemsCollectionRef, where('timestamp', '!=', null)); 
+    const q = query(itemsCollectionRef, where('timestamp', '!=', null));
     const querySnapshot = await getDocs(q);
-    
+
     const posts = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { serverTimestamp, ...restOfData } = data; // Exclude serverTimestamp
       return {
-        id: docSnap.id, 
-        ...data,
-        timestamp: data.timestamp || new Date(0).toISOString(), 
-        // Ensure flair is null if it was stored as undefined, though our write logic now prevents undefined.
-        // This is more for robust reading if old data exists.
-        flair: data.flair === undefined ? null : data.flair,
+        id: docSnap.id,
+        ...restOfData,
+        timestamp: restOfData.timestamp || new Date(0).toISOString(),
+        flair: restOfData.flair === undefined ? null : restOfData.flair,
       } as RedditPost;
     });
-    
+
     posts.sort((a, b) => {
         const dateA = new Date(a.timestamp).getTime();
         const dateB = new Date(b.timestamp).getTime();
-        return dateB - dateA; 
+        return dateB - dateA;
     });
-    
+
     console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetched ${posts.length} items for user ${userId} from Firestore.`);
     return posts;
   } catch (error) {
@@ -438,4 +437,3 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
     return [];
   }
 }
-
