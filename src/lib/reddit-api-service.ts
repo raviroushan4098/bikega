@@ -196,7 +196,7 @@ async function fetchCommentsForPostInternal(
               score: commentData.score || 0,
               numComments: 0,
               url: `https://www.reddit.com${commentData.permalink}`,
-              flair: undefined, 
+              flair: null, // Comments don't have flair, explicitly set to null
               sentiment: sentiment,
               type: 'Comment',
               matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
@@ -224,15 +224,11 @@ export async function syncUserRedditData(
   try {
     const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create'); 
     await getDoc(testDocRef); 
-    console.log('[Reddit API Service] syncUserRedditData: Firebase connectivity check successful (attempted read, no error thrown).');
+    console.log('[Reddit API Service] syncUserRedditData: Firebase connectivity check successful.');
   } catch (fbError) {
-    console.error('[Reddit API Service] syncUserRedditData: Firebase connectivity check FAILED.', fbError);
     const errorMessage = fbError instanceof Error ? fbError.message : 'Unknown Firebase connection error.';
-    // It's possible this error is expected if Firestore rules are strict and 'connectivity-test-doc' isn't allowed.
-    // However, a complete failure to connect (e.g. network issue, misconfig) would also manifest here.
-    // For now, we will proceed but log this carefully. A more robust check might require a specific readable doc.
-    console.warn('[Reddit API Service] syncUserRedditData: Firebase connectivity test threw an error. This might be due to Firestore rules or a genuine connection issue. Proceeding with sync attempt but be aware.');
-    // If this was critical, we would: return { success: false, itemsFetchedAndStored: 0, error: `Firebase Connection/Permission Error: ${errorMessage}. Please check server logs and Firestore rules.` };
+    console.error('[Reddit API Service] syncUserRedditData: Firebase connectivity check FAILED.', fbError);
+    return { success: false, itemsFetchedAndStored: 0, error: `Firebase Connection/Permission Error: ${errorMessage}. Please check server logs and Firestore rules.` };
   }
 
   if (!userKeywords || userKeywords.length === 0) {
@@ -248,16 +244,16 @@ export async function syncUserRedditData(
   const { token, userAgent } = authDetails;
   console.log("[Reddit API Service] syncUserRedditData: Reddit access token and user agent obtained.");
 
-  const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR '); // Ensure keywords with spaces are treated as phrases
-  const limit = Math.min(100, userKeywords.length * 15); // Slightly increased limit per keyword
+  const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
+  const limit = Math.min(100, userKeywords.length * 15); 
   const sort = 'new';
-  const time = 'month'; // Fetching from last month initially
+  const time = 'month'; 
 
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&t=${time}&type=t3&restrict_sr=false&include_over_18=on`;
   
   console.log(`[Reddit API Service] syncUserRedditData: Searching Reddit. Query: "${queryString}". URL: ${searchUrl}`);
   const allFetchedItems: RedditPost[] = [];
-  const cutoffTimestamp = getCutoffTimestamp(); // Filters to last FILTER_PERIOD_DAYS days
+  const cutoffTimestamp = getCutoffTimestamp(); 
   const processedAt = new Date().toISOString();
 
   try {
@@ -295,7 +291,7 @@ export async function syncUserRedditData(
           const matchedKw = userKeywords.find(kw => 
                 (postData.title?.toLowerCase().includes(kw.toLowerCase()) || 
                  postData.selftext?.toLowerCase().includes(kw.toLowerCase()))
-            ) || userKeywords[0] || 'general'; // Fallback to first keyword if specific match not found
+            ) || userKeywords[0] || 'general'; 
 
           allFetchedItems.push({
             id: postData.name, 
@@ -307,14 +303,14 @@ export async function syncUserRedditData(
             score: postData.score || 0,
             numComments: postData.num_comments || 0,
             url: (postData.url && postData.url.startsWith('http')) ? postData.url : `https://www.reddit.com${postData.permalink}`,
-            flair: postData.link_flair_text || undefined,
+            flair: postData.link_flair_text === undefined ? null : postData.link_flair_text, // Ensure flair is null if undefined
             type: 'Post',
             sentiment: postSentiment,
             matchedKeyword: matchedKw,
             processedAt: processedAt,
           });
 
-          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) { // Control total items
+          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) { 
             console.log(`[Reddit API Service] syncUserRedditData: Post ${postData.name} has ${postData.num_comments} comments. Fetching relevant ones.`);
             const commentsForThisPost = await fetchCommentsForPostInternal(
                 postData.name,
@@ -364,8 +360,18 @@ export async function syncUserRedditData(
                 }
                 const itemRef = doc(itemsSubcollectionRef, docId);
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { sno, ...itemToSave } = item; 
-                batch.set(itemRef, { ...itemToSave, serverTimestamp: serverTimestamp() });
+                const { sno, ...itemToSaveClean } = item; 
+
+                // Ensure flair is null if undefined
+                if (itemToSaveClean.flair === undefined) {
+                    itemToSaveClean.flair = null;
+                }
+                // Ensure content is at least an empty string if undefined/null (Firestore prefers empty string over null sometimes for text fields)
+                if (itemToSaveClean.content === undefined || itemToSaveClean.content === null) {
+                    itemToSaveClean.content = '';
+                }
+                
+                batch.set(itemRef, { ...itemToSaveClean, serverTimestamp: serverTimestamp() });
             });
             await batch.commit();
             console.log(`[Reddit API Service] syncUserRedditData: Successfully stored ${allFetchedItems.length} new items for user ${userId}.`);
@@ -403,8 +409,6 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetching stored items for user ${userId}.`);
   try {
     const itemsCollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
-    // Query for items and order by timestamp descending.
-    // Ensure 'timestamp' field exists and is properly indexed in Firestore if performance issues arise.
     const q = query(itemsCollectionRef, where('timestamp', '!=', null)); 
     const querySnapshot = await getDocs(q);
     
@@ -414,12 +418,12 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
         id: docSnap.id, 
         ...data,
         timestamp: data.timestamp || new Date(0).toISOString(), 
+        // Ensure flair is null if it was stored as undefined, though our write logic now prevents undefined.
+        // This is more for robust reading if old data exists.
+        flair: data.flair === undefined ? null : data.flair,
       } as RedditPost;
     });
-
-    // Client-side sort as Firestore compound queries might be complex with other filters.
-    // For simple timestamp sort, Firestore's orderBy is better.
-    // But if this function is only fetching then sorting, this is okay.
+    
     posts.sort((a, b) => {
         const dateA = new Date(a.timestamp).getTime();
         const dateB = new Date(b.timestamp).getTime();
@@ -434,3 +438,4 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
     return [];
   }
 }
+

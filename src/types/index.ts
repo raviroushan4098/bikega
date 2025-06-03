@@ -38,7 +38,7 @@ export interface RedditPost {
   score: number;
   numComments: number; // Primarily for posts. For comments, this might be 0 or link to post's comment count.
   url: string; // For posts: post URL. For comments: comment permalink.
-  flair?: string;
+  flair?: string | null; // Flair can be a string or null (if not present or explicitly set to null)
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
   type: 'Post' | 'Comment'; 
   matchedKeyword?: string; // Keyword that this post/comment matched
@@ -108,3 +108,4 @@ export interface RedditSearchParams {
   t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'; // time period for 'top' or 'relevance'
   after?: string; // fullname of an item to
 }
+
