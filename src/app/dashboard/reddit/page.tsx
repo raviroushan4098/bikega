@@ -29,12 +29,13 @@ import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-const FILTER_PERIOD_DAYS = 30;
+const FILTER_PERIOD_DAYS = 30; // This constant is used by the backend logic for actual filtering.
 
 const getCutoffDateString = (): string => {
-  const date = new Date();
-  date.setDate(date.getDate() - FILTER_PERIOD_DAYS);
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  // Target date: June 1st, 2025
+  // JavaScript months are 0-indexed, so June is 5.
+  const targetDate = new Date(2025, 5, 1);
+  return targetDate.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
 };
 
 const editKeywordsSchema = z.object({
@@ -186,7 +187,7 @@ export default function RedditPage() {
   });
 
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
-  const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(true); // Start true for initial sync
+  const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(true); 
 
   // Admin: Fetch all users for keyword management
   useEffect(() => {
@@ -227,7 +228,7 @@ export default function RedditPage() {
     }
     
     setIsLoadingFeed(true);
-    toast({ title: "Syncing Reddit Feed...", description: "Fetching latest posts and comments for your keywords." });
+    toast({ title: "Syncing Reddit Feed...", description: "Fetching latest posts and comments for your keywords. This may take a moment." });
 
     try {
       const syncResult = await syncUserRedditData(currentUser.id, currentUser.assignedKeywords);
@@ -246,7 +247,7 @@ export default function RedditPage() {
         if (storedItems.length === 0) {
            toast({
             title: "No Reddit Content Found",
-            description: `No items found in stored data for your keywords: "${currentUser.assignedKeywords.join('", "')}". Data is filtered from the last ${FILTER_PERIOD_DAYS} days.`,
+            description: `No items found in stored data for your keywords: "${currentUser.assignedKeywords.join('", "')}". Data is filtered from the last ${FILTER_PERIOD_DAYS} days (actual backend filter).`,
             duration: 7000,
           });
         }
@@ -262,7 +263,7 @@ export default function RedditPage() {
     if (currentUser?.role === 'user' && !authLoading) {
       performUserRedditSyncAndFetch();
     } else if (currentUser?.role !== 'user') {
-        setIsLoadingFeed(false); // Not a user, no feed to load.
+        setIsLoadingFeed(false); 
     }
   }, [currentUser, authLoading, performUserRedditSyncAndFetch]);
 
@@ -307,7 +308,7 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'admin') {
-    const descriptionText = `Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed, which is automatically fetched and stored from Reddit API (data from last ${FILTER_PERIOD_DAYS} days).`;
+    const descriptionText = `Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed, which is automatically fetched, processed for sentiment, and stored in Firestore (data from last ${FILTER_PERIOD_DAYS} days).`;
 
     return (
       <DataTableShell
@@ -380,14 +381,14 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'user') {
-    const cutoffDateStr = getCutoffDateString();
+    const cutoffDateStr = getCutoffDateString(); // This now displays June 1st, 2025
     let userPageDescription = `Your automatically synced Reddit feed from stored data, based on your keywords. Filtered from ${cutoffDateStr}.`;
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (isLoadingFeed) {
-      userPageDescription = `Syncing and loading your Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"... (Data from last ${FILTER_PERIOD_DAYS} days)`;
+      userPageDescription = `Syncing and loading your Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"... (Displayed filter: ${cutoffDateStr}, actual data from last ${FILTER_PERIOD_DAYS} days)`;
     } else {
-      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown. (Data from last ${FILTER_PERIOD_DAYS} days)`;
+      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown. (Displayed filter: ${cutoffDateStr}, actual data from last ${FILTER_PERIOD_DAYS} days)`;
     }
 
     return (
@@ -419,7 +420,7 @@ export default function RedditPage() {
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
-              No items found in stored data for keywords: "{currentUser.assignedKeywords.join(', ')}" (filtered from {cutoffDateStr}).
+              No items found in stored data for keywords: "{currentUser.assignedKeywords.join(', ')}" (displayed filter: {cutoffDateStr}, actual data from last {FILTER_PERIOD_DAYS} days).
             </p>
           </div>
         )}
@@ -428,7 +429,7 @@ export default function RedditPage() {
           <GenericDataTable<RedditPost>
             data={redditPosts}
             columns={redditPostColumnsUserView} 
-            caption={`Displaying ${redditPosts.length} items from your synced Reddit feed (last ${FILTER_PERIOD_DAYS} days).`}
+            caption={`Displaying ${redditPosts.length} items from your synced Reddit feed (displayed filter: ${cutoffDateStr}, actual data from last ${FILTER_PERIOD_DAYS} days).`}
           />
         )}
       </DataTableShell>
@@ -441,3 +442,6 @@ export default function RedditPage() {
     </div>
   );
 }
+
+
+    
