@@ -8,10 +8,10 @@ import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink } from 'lucide-react';
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
-import { syncUserRedditData, getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
+import { refreshUserRedditData, getStoredRedditFeedForUser } from '@/lib/reddit-api-service'; // Renamed sync to refresh
 import {
   Select,
   SelectContent,
@@ -29,14 +29,7 @@ import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-const FILTER_PERIOD_DAYS = 30; // This constant is used by the backend logic for actual filtering.
-
-const getCutoffDateString = (): string => {
-  // Target date: June 1st, 2025
-  // JavaScript months are 0-indexed, so June is 5.
-  const targetDate = new Date(2025, 5, 1);
-  return targetDate.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
-};
+const FETCH_PERIOD_DAYS = 30; // Used in description text
 
 const editKeywordsSchema = z.object({
   keywords: z.string().optional(),
@@ -188,8 +181,9 @@ export default function RedditPage() {
 
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(true); 
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState<boolean>(false);
 
-  // Admin: Fetch all users for keyword management
+
   useEffect(() => {
     if (currentUser?.role === 'admin') {
       setIsLoadingUsers(true);
@@ -200,7 +194,6 @@ export default function RedditPage() {
     }
   }, [currentUser, toast]);
 
-  // Admin: Populate keyword form when a user is selected
   useEffect(() => {
     if (currentUser?.role === 'admin' && selectedUserId) {
       const userToEdit = allUsers.find(u => u.id === selectedUserId);
@@ -212,60 +205,64 @@ export default function RedditPage() {
     }
   }, [selectedUserId, allUsers, currentUser, editKeywordsForm]);
 
-  // User: Automatic sync and fetch on load or when keywords change (implicitly through currentUser)
-  const performUserRedditSyncAndFetch = useCallback(async () => {
+
+  const fetchStoredUserRedditData = useCallback(async () => {
     if (!currentUser || currentUser.role !== 'user' || authLoading) {
       setRedditPosts([]);
       setIsLoadingFeed(false);
       return;
     }
-
-    if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
-      toast({ title: "No Keywords", description: "No keywords assigned to your profile for Reddit.", duration: 5000 });
-      setRedditPosts([]);
-      setIsLoadingFeed(false);
-      return;
-    }
-    
     setIsLoadingFeed(true);
-    toast({ title: "Syncing Reddit Feed...", description: "Fetching latest posts and comments for your keywords. This may take a moment." });
-
     try {
-      const syncResult = await syncUserRedditData(currentUser.id, currentUser.assignedKeywords);
-      if (syncResult.success) {
-        toast({ title: "Sync Complete", description: `${syncResult.itemsFetchedAndStored} items fetched and stored from Reddit.` });
-      } else {
-        toast({ variant: "destructive", title: "Sync Failed", description: syncResult.error || "Could not sync Reddit data." });
+      const storedItems = await getStoredRedditFeedForUser(currentUser.id);
+      setRedditPosts(storedItems);
+      if (storedItems.length === 0 && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0)) {
+        toast({ title: "No Keywords", description: "No keywords assigned for Reddit.", duration: 5000 });
+      } else if (storedItems.length === 0) {
+        toast({
+          title: "No Stored Reddit Content",
+          description: `No items found in local storage for your keywords. Try refreshing the feed.`,
+          duration: 7000,
+        });
       }
     } catch (e) {
-      toast({ variant: "destructive", title: "Sync Error", description: "An unexpected error occurred during sync." });
+       toast({ variant: "destructive", title: "Fetch Error", description: "Could not load stored Reddit items." });
+       setRedditPosts([]);
     } finally {
-      // Always fetch from local store after sync attempt
-      try {
-        const storedItems = await getStoredRedditFeedForUser(currentUser.id);
-        setRedditPosts(storedItems);
-        if (storedItems.length === 0) {
-           toast({
-            title: "No Reddit Content Found",
-            description: `No items found in stored data for your keywords: "${currentUser.assignedKeywords.join('", "')}". Data is filtered from the last ${FILTER_PERIOD_DAYS} days (actual backend filter).`,
-            duration: 7000,
-          });
-        }
-      } catch (e) {
-         toast({ variant: "destructive", title: "Fetch Error", description: "Could not load stored Reddit items." });
-         setRedditPosts([]);
-      }
       setIsLoadingFeed(false);
     }
   }, [currentUser, authLoading, toast]);
 
   useEffect(() => {
     if (currentUser?.role === 'user' && !authLoading) {
-      performUserRedditSyncAndFetch();
+      fetchStoredUserRedditData(); // Load initially from storage
     } else if (currentUser?.role !== 'user') {
         setIsLoadingFeed(false); 
     }
-  }, [currentUser, authLoading, performUserRedditSyncAndFetch]);
+  }, [currentUser, authLoading, fetchStoredUserRedditData]);
+
+  const handleRefreshFeed = async () => {
+    if (!currentUser || currentUser.role !== 'user' || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
+      toast({ variant: "destructive", title: "Cannot Refresh", description: "No keywords assigned or not logged in." });
+      return;
+    }
+    setIsRefreshingFeed(true);
+    toast({ title: "Refreshing Reddit Feed...", description: "Fetching latest posts and comments. This may take a moment." });
+
+    try {
+      const result = await refreshUserRedditData(currentUser.id, currentUser.assignedKeywords);
+      if (result.success) {
+        toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} items fetched/updated from Reddit.` });
+        await fetchStoredUserRedditData(); // Fetch updated data from storage
+      } else {
+        toast({ variant: "destructive", title: "Refresh Failed", description: result.error || "Could not refresh Reddit data." });
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Refresh Error", description: "An unexpected error occurred during refresh." });
+    } finally {
+      setIsRefreshingFeed(false);
+    }
+  };
 
 
   const onEditKeywordsSubmit = async (data: EditKeywordsFormValues) => {
@@ -308,7 +305,7 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'admin') {
-    const descriptionText = `Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed, which is automatically fetched, processed for sentiment, and stored in Firestore (data from last ${FILTER_PERIOD_DAYS} days).`;
+    const descriptionText = `Select a user to view and edit their assigned keywords. These keywords are used for their personalized Reddit feed, which is fetched and stored (data from last ${FETCH_PERIOD_DAYS} days on refresh).`;
 
     return (
       <DataTableShell
@@ -381,14 +378,13 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'user') {
-    const cutoffDateStr = getCutoffDateString(); // This now displays June 1st, 2025
-    let userPageDescription = `Your automatically synced Reddit feed from stored data, based on your keywords. Filtered from ${cutoffDateStr}.`;
+    let userPageDescription = `Your Reddit feed based on your keywords, loaded from stored data. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (isLoadingFeed) {
-      userPageDescription = `Syncing and loading your Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"... (Displayed filter: ${cutoffDateStr}, actual data from last ${FILTER_PERIOD_DAYS} days)`;
+      userPageDescription = `Loading your stored Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"...`;
     } else {
-      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown. (Displayed filter: ${cutoffDateStr}, actual data from last ${FILTER_PERIOD_DAYS} days)`;
+      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown from storage. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
     }
 
     return (
@@ -396,10 +392,17 @@ export default function RedditPage() {
         title="Your Reddit Keyword Feed"
         description={userPageDescription}
       >
+        <div className="mb-4 flex justify-end">
+            <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0}>
+                {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Refresh Feed
+            </Button>
+        </div>
+
         {isLoadingFeed && (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="ml-3 text-muted-foreground">Syncing and loading your Reddit feed...</p>
+            <p className="ml-3 text-muted-foreground">Loading your stored Reddit feed...</p>
           </div>
         )}
 
@@ -420,7 +423,8 @@ export default function RedditPage() {
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
-              No items found in stored data for keywords: "{currentUser.assignedKeywords.join(', ')}" (displayed filter: {cutoffDateStr}, actual data from last {FILTER_PERIOD_DAYS} days).
+              No items found in stored data for keywords: "{currentUser.assignedKeywords.join(', ')}".
+              Try the "Refresh Feed" button to fetch latest data.
             </p>
           </div>
         )}
@@ -429,7 +433,7 @@ export default function RedditPage() {
           <GenericDataTable<RedditPost>
             data={redditPosts}
             columns={redditPostColumnsUserView} 
-            caption={`Displaying ${redditPosts.length} items from your synced Reddit feed (displayed filter: ${cutoffDateStr}, actual data from last ${FILTER_PERIOD_DAYS} days).`}
+            caption={`Displaying ${redditPosts.length} items from your stored Reddit feed. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`}
           />
         )}
       </DataTableShell>
@@ -442,6 +446,4 @@ export default function RedditPage() {
     </div>
   );
 }
-
-
     
