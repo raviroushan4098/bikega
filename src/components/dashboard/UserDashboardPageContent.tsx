@@ -2,12 +2,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { User, RedditPost } from '@/types';
+import type { User } from '@/types'; // Removed RedditPost as it's not directly used for type here
 import UserAssignedKeywords from './UserAssignedKeywords';
 import UserAnalyticsOverview from './UserAnalyticsOverview';
 import UserRecentYouTubeActivity from './UserRecentYouTubeActivity';
 import UserTrendingMentions from './UserTrendingMentions';
-import { searchReddit } from '@/lib/reddit-api-service';
+import { getStoredRedditFeedForUser } from '@/lib/reddit-api-service'; // Correct import
 import { getFilteredData, mockTweets, mockMentions } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
 
@@ -23,19 +23,13 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
   const [twitterMentionsCount, setTwitterMentionsCount] = useState<number | null>(null);
   const [globalMentionsCount, setGlobalMentionsCount] = useState<number | null>(null);
   
-  const [isLoadingReddit, setIsLoadingReddit] = useState<boolean>(false);
-  // Other counts are derived synchronously or from user object directly
+  const [isLoadingRedditCount, setIsLoadingRedditCount] = useState<boolean>(false);
 
   const calculateCounts = useCallback(() => {
     if (!user) return;
 
-    // YouTube Tracked Count
     setYoutubeTrackedCount(user.assignedYoutubeUrls?.length ?? 0);
-
-    // Twitter/X Mentions Count
     setTwitterMentionsCount(getFilteredData(mockTweets, user).length);
-
-    // Global Mentions Count
     setGlobalMentionsCount(getFilteredData(mockMentions, user).length);
 
   }, [user]);
@@ -45,37 +39,30 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
   }, [calculateCounts]);
 
   useEffect(() => {
-    const fetchRedditData = async () => {
-      if (user && user.assignedKeywords && user.assignedKeywords.length > 0) {
-        setIsLoadingReddit(true);
-        setRedditMatchedCount(null); // Reset before fetching
+    const fetchRedditDataCount = async () => {
+      if (user && user.id) { // Ensure user and user.id are available
+        setIsLoadingRedditCount(true);
+        setRedditMatchedCount(null); 
         try {
-          const query = user.assignedKeywords.join(' OR ');
-          const { data, error } = await searchReddit({ q: query, limit: 100 }); // Fetch up to 100 to count
-          if (error) {
-            toast({ variant: "destructive", title: "Reddit Count Error", description: "Could not fetch Reddit post count." });
-            setRedditMatchedCount(0);
-          } else {
-            setRedditMatchedCount(data?.length ?? 0);
-          }
+          // Use getStoredRedditFeedForUser to get the items and then count them
+          const storedItems = await getStoredRedditFeedForUser(user.id);
+          setRedditMatchedCount(storedItems.length);
         } catch (e) {
-          toast({ variant: "destructive", title: "Reddit Count Error", description: "An unexpected error occurred." });
+          toast({ variant: "destructive", title: "Reddit Count Error", description: "Could not fetch Reddit post count." });
           setRedditMatchedCount(0);
         } finally {
-          setIsLoadingReddit(false);
+          setIsLoadingRedditCount(false);
         }
       } else {
-        setRedditMatchedCount(0); // No keywords, so 0 posts
+        setRedditMatchedCount(0); 
+        setIsLoadingRedditCount(false);
       }
     };
 
-    fetchRedditData();
+    fetchRedditDataCount();
   }, [user, toast]);
 
-  // Combined loading state for overview cards
-  // For now, only Reddit is async for the counts shown in overview.
-  // YouTube count is direct from user object. Twitter/Global are from sync mock data.
-  const isLoadingOverview = isLoadingReddit || 
+  const isLoadingOverview = isLoadingRedditCount || 
                             youtubeTrackedCount === null || 
                             twitterMentionsCount === null || 
                             globalMentionsCount === null;
