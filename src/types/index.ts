@@ -28,8 +28,8 @@ export interface YoutubeVideo {
 }
 
 export interface RedditPost {
-  id:string;
-  sno?: number; // Added for serial number in table
+  id:string; // Fullname from Reddit API (e.g., t3_xxxxxx or t1_yyyyyy)
+  sno?: number; // Client-side serial number for table display
   title: string; // For posts: post title. For comments: title of the post the comment is on (link_title)
   content?: string; // For posts: selftext. For comments: comment body.
   subreddit: string;
@@ -40,8 +40,9 @@ export interface RedditPost {
   url: string; // For posts: post URL. For comments: comment permalink.
   flair?: string;
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
-  type: 'Post' | 'Comment'; // Added for type distinction
+  type: 'Post' | 'Comment'; 
   matchedKeyword?: string; // Keyword that this post/comment matched
+  processedAt?: string; // ISO string timestamp of when this item was last processed/saved
 }
 
 export interface Tweet {
