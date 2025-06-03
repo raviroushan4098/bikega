@@ -1,11 +1,11 @@
 
 'use server';
 
-import type { RedditPost, RedditSearchParams as ClientRedditSearchParams } from '@/types';
+import type { RedditPost } from '@/types';
 import { getApiKeys } from './api-key-service';
 import Sentiment from 'sentiment';
 import { db } from './firebase';
-import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp, deleteDoc, getDoc } from 'firebase/firestore';
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -70,6 +70,7 @@ interface RedditApiResponse {
 type RedditCommentsApiResponse = [RedditApiResponse, RedditApiResponse];
 
 async function getRedditAccessToken(): Promise<{ token: string; userAgent: string } | { error: string }> {
+  console.log('[Reddit API Service] getRedditAccessToken: Attempting to retrieve or generate Reddit access token.');
   const apiKeys = await getApiKeys();
   const clientIdEntry = apiKeys.find(k => k.serviceName === REDDIT_CLIENT_ID_SERVICE_NAME);
   const clientSecretEntry = apiKeys.find(k => k.serviceName === REDDIT_CLIENT_SECRET_SERVICE_NAME);
@@ -77,7 +78,7 @@ async function getRedditAccessToken(): Promise<{ token: string; userAgent: strin
 
   const userAgent = userAgentEntry ? userAgentEntry.keyValue : "InsightStreamApp/1.0 (FallbackUserAgent)";
   if (!userAgentEntry) {
-    console.warn(`[Reddit API Service] getRedditAccessToken: Warning: '${REDDIT_USER_AGENT_SERVICE_NAME}' not found. Using fallback.`);
+    console.warn(`[Reddit API Service] getRedditAccessToken: Warning: '${REDDIT_USER_AGENT_SERVICE_NAME}' not found in API Key Management. Using fallback.`);
   }
 
   if (!clientIdEntry || !clientIdEntry.keyValue || !clientSecretEntry || !clientSecretEntry.keyValue) {
@@ -95,9 +96,9 @@ async function getRedditAccessToken(): Promise<{ token: string; userAgent: strin
     console.log('[Reddit API Service] getRedditAccessToken: Using existing valid access token.');
     return { token: accessToken, userAgent };
   }
+  console.log('[Reddit API Service] getRedditAccessToken: Existing token invalid or expired. Fetching new token.');
 
   try {
-    console.log('[Reddit API Service] getRedditAccessToken: Attempting to fetch new Reddit access token...');
     const response = await fetch('https://www.reddit.com/api/v1/access_token', {
       method: 'POST',
       headers: {
@@ -123,7 +124,8 @@ async function getRedditAccessToken(): Promise<{ token: string; userAgent: strin
   } catch (error) {
     console.error('[Reddit API Service] getRedditAccessToken: Exception occurred while fetching access token:', error);
     accessToken = null; tokenExpiry = null;
-    return { error: `Exception getting Reddit token: ${(error as Error).message}` };
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching token.';
+    return { error: `Exception getting Reddit token: ${errorMessage}` };
   }
 }
 
@@ -136,16 +138,16 @@ async function fetchCommentsForPostInternal(
   userAgent: string,
   queryKeywordsArray: string[],
   cutoffTimestamp: number,
-  processedAt: string // Pass processedAt for consistency
+  processedAt: string
 ): Promise<RedditPost[]> {
   const postId = postFullname.startsWith('t3_') ? postFullname.substring(3) : postFullname;
   if (!postId) {
-    console.warn(`[Reddit API Service] fetchCommentsForPostInternal: Invalid post fullname: ${postFullname}`);
+    console.warn(`[Reddit API Service] fetchCommentsForPostInternal: Invalid post fullname: ${postFullname}, skipping comment fetch.`);
     return [];
   }
 
   const commentsUrl = `https://oauth.reddit.com/comments/${postId}.json?sort=new&limit=${COMMENTS_PER_POST_LIMIT}&depth=${COMMENT_FETCH_DEPTH}&show_more=false&show_edits=false`;
-  console.log(`[Reddit API Service] fetchCommentsForPostInternal: Fetching comments for post ${postId}`);
+  console.log(`[Reddit API Service] fetchCommentsForPostInternal: Fetching comments for post ${postId} using URL: ${commentsUrl}`);
 
   try {
     const response = await fetch(commentsUrl, {
@@ -155,12 +157,12 @@ async function fetchCommentsForPostInternal(
     if (!response.ok) {
       const errorText = await response.text().catch(() => `Status: ${response.status}`);
       console.error(`[Reddit API Service] fetchCommentsForPostInternal: Error fetching comments for post ${postId} (${response.status}): ${errorText}`);
-      return []; // Return empty, let main sync decide if it's a fatal error
+      return []; 
     }
 
     const responseData: RedditCommentsApiResponse = await response.json();
     if (!responseData || !Array.isArray(responseData) || responseData.length < 2 || !responseData[1] || !responseData[1].data || !responseData[1].data.children) {
-        console.error(`[Reddit API Service] fetchCommentsForPostInternal: Unexpected response structure for comments of post ${postId}.`);
+        console.warn(`[Reddit API Service] fetchCommentsForPostInternal: Unexpected response structure for comments of post ${postId}. Data:`, JSON.stringify(responseData).substring(0, 500));
         return [];
     }
     
@@ -185,14 +187,14 @@ async function fetchCommentsForPostInternal(
             }
 
             mappedComments.push({
-              id: commentData.name, // e.g., t1_xxxxxx
-              title: postTitle, // Parent post's title
+              id: commentData.name,
+              title: postTitle,
               content: commentData.body || '',
               subreddit: postSubredditPrefixed,
               author: commentData.author || '[deleted]',
               timestamp: new Date(commentTimestampMs).toISOString(),
               score: commentData.score || 0,
-              numComments: 0, // Comments don't have their own comment count in this context
+              numComments: 0,
               url: `https://www.reddit.com${commentData.permalink}`,
               flair: undefined, 
               sentiment: sentiment,
@@ -206,8 +208,9 @@ async function fetchCommentsForPostInternal(
     console.log(`[Reddit API Service] fetchCommentsForPostInternal: Fetched and processed ${mappedComments.length} comments for post ${postId}.`);
     return mappedComments;
   } catch (error) {
-    console.error(`[Reddit API Service] fetchCommentsForPostInternal: Exception fetching/processing comments for post ${postId}:`, error);
-    return []; // Return empty on major exception
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error processing comments.';
+    console.error(`[Reddit API Service] fetchCommentsForPostInternal: Exception fetching/processing comments for post ${postId}: ${errorMessage}`, error);
+    return [];
   }
 }
 
@@ -215,10 +218,25 @@ export async function syncUserRedditData(
   userId: string,
   userKeywords: string[]
 ): Promise<{ success: boolean; itemsFetchedAndStored: number; error?: string }> {
-  console.log(`[Reddit API Service] syncUserRedditData: Starting for userID: ${userId}, Keywords: "${userKeywords.join('", "')}"`);
+  console.log(`[Reddit API Service] syncUserRedditData: Starting sync for userID: ${userId}, Keywords: "${userKeywords.join('", "')}"`);
+
+  console.log('[Reddit API Service] syncUserRedditData: Checking Firebase connectivity...');
+  try {
+    const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create'); 
+    await getDoc(testDocRef); 
+    console.log('[Reddit API Service] syncUserRedditData: Firebase connectivity check successful (attempted read, no error thrown).');
+  } catch (fbError) {
+    console.error('[Reddit API Service] syncUserRedditData: Firebase connectivity check FAILED.', fbError);
+    const errorMessage = fbError instanceof Error ? fbError.message : 'Unknown Firebase connection error.';
+    // It's possible this error is expected if Firestore rules are strict and 'connectivity-test-doc' isn't allowed.
+    // However, a complete failure to connect (e.g. network issue, misconfig) would also manifest here.
+    // For now, we will proceed but log this carefully. A more robust check might require a specific readable doc.
+    console.warn('[Reddit API Service] syncUserRedditData: Firebase connectivity test threw an error. This might be due to Firestore rules or a genuine connection issue. Proceeding with sync attempt but be aware.');
+    // If this was critical, we would: return { success: false, itemsFetchedAndStored: 0, error: `Firebase Connection/Permission Error: ${errorMessage}. Please check server logs and Firestore rules.` };
+  }
 
   if (!userKeywords || userKeywords.length === 0) {
-    console.log("[Reddit API Service] syncUserRedditData: No keywords provided. Sync aborted.");
+    console.log("[Reddit API Service] syncUserRedditData: No keywords provided. Sync aborted as there's nothing to search for.");
     return { success: true, itemsFetchedAndStored: 0, error: "No keywords assigned to sync." };
   }
 
@@ -228,18 +246,19 @@ export async function syncUserRedditData(
     return { success: false, itemsFetchedAndStored: 0, error: `Reddit Authentication Failed: ${authDetails.error}` };
   }
   const { token, userAgent } = authDetails;
+  console.log("[Reddit API Service] syncUserRedditData: Reddit access token and user agent obtained.");
 
-  const queryString = userKeywords.join(' OR ');
-  const limit = Math.min(100, userKeywords.length * 10); 
+  const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR '); // Ensure keywords with spaces are treated as phrases
+  const limit = Math.min(100, userKeywords.length * 15); // Slightly increased limit per keyword
   const sort = 'new';
-  const time = 'month';
+  const time = 'month'; // Fetching from last month initially
 
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&t=${time}&type=t3&restrict_sr=false&include_over_18=on`;
   
-  console.log(`[Reddit API Service] syncUserRedditData: Searching Reddit with URL: ${searchUrl}`);
+  console.log(`[Reddit API Service] syncUserRedditData: Searching Reddit. Query: "${queryString}". URL: ${searchUrl}`);
   const allFetchedItems: RedditPost[] = [];
-  const cutoffTimestamp = getCutoffTimestamp();
-  const processedAt = new Date().toISOString(); // Single timestamp for all items in this batch
+  const cutoffTimestamp = getCutoffTimestamp(); // Filters to last FILTER_PERIOD_DAYS days
+  const processedAt = new Date().toISOString();
 
   try {
     const response = await fetch(searchUrl, {
@@ -276,10 +295,10 @@ export async function syncUserRedditData(
           const matchedKw = userKeywords.find(kw => 
                 (postData.title?.toLowerCase().includes(kw.toLowerCase()) || 
                  postData.selftext?.toLowerCase().includes(kw.toLowerCase()))
-            ) || userKeywords[0] || 'general';
+            ) || userKeywords[0] || 'general'; // Fallback to first keyword if specific match not found
 
           allFetchedItems.push({
-            id: postData.name, // e.g. t3_xxxxxx
+            id: postData.name, 
             title: postData.title || 'No Title',
             content: postData.selftext || '',
             subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
@@ -295,7 +314,7 @@ export async function syncUserRedditData(
             processedAt: processedAt,
           });
 
-          if (postData.num_comments && postData.num_comments > 0) {
+          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) { // Control total items
             console.log(`[Reddit API Service] syncUserRedditData: Post ${postData.name} has ${postData.num_comments} comments. Fetching relevant ones.`);
             const commentsForThisPost = await fetchCommentsForPostInternal(
                 postData.name,
@@ -309,50 +328,62 @@ export async function syncUserRedditData(
             );
             allFetchedItems.push(...commentsForThisPost);
           }
-        } else {
-          // console.log(`[Reddit API Service] syncUserRedditData: Post ${postData.name} timestamp ${new Date(postTimestampMs).toISOString()} is older than cutoff ${new Date(cutoffTimestamp).toISOString()}. Skipping.`);
         }
       }
     }
-    console.log(`[Reddit API Service] syncUserRedditData: Processed ${allFetchedItems.length} total items (posts and comments) after filtering and comment fetching.`);
+    console.log(`[Reddit API Service] syncUserRedditData: Processed ${allFetchedItems.length} total items (posts and comments) after initial filtering and comment fetching.`);
 
     const itemsSubcollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
     console.log(`[Reddit API Service] syncUserRedditData: Preparing to delete existing items for user ${userId} from ${itemsSubcollectionRef.path}.`);
-    const existingItemsSnapshot = await getDocs(itemsSubcollectionRef);
-    if (!existingItemsSnapshot.empty) {
-        const deleteBatch = writeBatch(db);
-        existingItemsSnapshot.docs.forEach(docSnap => deleteBatch.delete(docSnap.ref));
-        await deleteBatch.commit();
-        console.log(`[Reddit API Service] syncUserRedditData: Successfully deleted ${existingItemsSnapshot.size} existing items for user ${userId}.`);
-    } else {
-        console.log(`[Reddit API Service] syncUserRedditData: No existing items to delete for user ${userId}.`);
+    
+    try {
+      const existingItemsSnapshot = await getDocs(itemsSubcollectionRef);
+      if (!existingItemsSnapshot.empty) {
+          const deleteBatch = writeBatch(db);
+          existingItemsSnapshot.docs.forEach(docSnap => deleteBatch.delete(docSnap.ref));
+          await deleteBatch.commit();
+          console.log(`[Reddit API Service] syncUserRedditData: Successfully deleted ${existingItemsSnapshot.size} existing items for user ${userId}.`);
+      } else {
+          console.log(`[Reddit API Service] syncUserRedditData: No existing items to delete for user ${userId}.`);
+      }
+    } catch (deleteError) {
+        console.error(`[Reddit API Service] syncUserRedditData: Error deleting existing Firestore items for user ${userId}:`, deleteError);
+        const errorMessage = deleteError instanceof Error ? deleteError.message : 'Unknown Firestore delete error.';
+        return { success: false, itemsFetchedAndStored: 0, error: `Firestore Delete Failed: ${errorMessage}` };
     }
 
     if (allFetchedItems.length > 0) {
         console.log(`[Reddit API Service] syncUserRedditData: Preparing to batch write ${allFetchedItems.length} new items for user ${userId}.`);
-        const batch = writeBatch(db);
-        allFetchedItems.forEach(item => {
-            const docId = item.id.includes('_') ? item.id.split('_')[1] : item.id;
-            if (!docId) {
-                console.warn("[Reddit API Service] syncUserRedditData: Skipping item with invalid ID structure for Firestore doc ID:", item.id);
-                return; 
-            }
-            const itemRef = doc(itemsSubcollectionRef, docId);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { sno, ...itemToSave } = item; 
-            batch.set(itemRef, { ...itemToSave, serverTimestamp: serverTimestamp() });
-        });
-        await batch.commit();
-        console.log(`[Reddit API Service] syncUserRedditData: Successfully stored ${allFetchedItems.length} new items for user ${userId}.`);
+        try {
+            const batch = writeBatch(db);
+            allFetchedItems.forEach(item => {
+                const docId = item.id.includes('_') ? item.id.split('_')[1] : item.id;
+                if (!docId) {
+                    console.warn("[Reddit API Service] syncUserRedditData: Skipping item with invalid ID structure for Firestore doc ID:", item.id);
+                    return; 
+                }
+                const itemRef = doc(itemsSubcollectionRef, docId);
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { sno, ...itemToSave } = item; 
+                batch.set(itemRef, { ...itemToSave, serverTimestamp: serverTimestamp() });
+            });
+            await batch.commit();
+            console.log(`[Reddit API Service] syncUserRedditData: Successfully stored ${allFetchedItems.length} new items for user ${userId}.`);
+        } catch (writeError) {
+            console.error(`[Reddit API Service] syncUserRedditData: Error writing new Firestore items for user ${userId}:`, writeError);
+            const errorMessage = writeError instanceof Error ? writeError.message : 'Unknown Firestore write error.';
+            return { success: false, itemsFetchedAndStored: 0, error: `Firestore Write Failed: ${errorMessage}` };
+        }
     } else {
         console.log(`[Reddit API Service] syncUserRedditData: No new items to store for user ${userId} after API fetch and processing.`);
     }
     
+    console.log(`[Reddit API Service] syncUserRedditData: Sync completed for user ${userId}. Items fetched and stored: ${allFetchedItems.length}.`);
     return { success: true, itemsFetchedAndStored: allFetchedItems.length };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown sync error.';
-    console.error(`[Reddit API Service] syncUserRedditData: Exception for user "${userId}". Keywords: "${userKeywords.join('", "')}". Error:`, error);
+    console.error(`[Reddit API Service] syncUserRedditData: General Exception for user "${userId}". Keywords: "${userKeywords.join('", "')}". Error: ${errorMessage}`, error);
     let specificError = `General Sync Exception: ${errorMessage}`;
     if (error instanceof Error && (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED'))) {
         specificError = `Firestore Permission Error: ${errorMessage}. Check Firestore rules.`;
@@ -372,18 +403,23 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetching stored items for user ${userId}.`);
   try {
     const itemsCollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
-    const q = query(itemsCollectionRef, where('timestamp', '!=', null));
+    // Query for items and order by timestamp descending.
+    // Ensure 'timestamp' field exists and is properly indexed in Firestore if performance issues arise.
+    const q = query(itemsCollectionRef, where('timestamp', '!=', null)); 
     const querySnapshot = await getDocs(q);
     
     const posts = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       return {
-        id: docSnap.id, // Using Firestore doc ID, not the Reddit fullname (t3_xxxx)
+        id: docSnap.id, 
         ...data,
         timestamp: data.timestamp || new Date(0).toISOString(), 
       } as RedditPost;
     });
 
+    // Client-side sort as Firestore compound queries might be complex with other filters.
+    // For simple timestamp sort, Firestore's orderBy is better.
+    // But if this function is only fetching then sorting, this is okay.
     posts.sort((a, b) => {
         const dateA = new Date(a.timestamp).getTime();
         const dateB = new Date(b.timestamp).getTime();
@@ -393,53 +429,8 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
     console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetched ${posts.length} items for user ${userId} from Firestore.`);
     return posts;
   } catch (error) {
-    console.error(`[Reddit API Service] getStoredRedditFeedForUser: Error fetching stored feed for user ${userId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching stored feed.';
+    console.error(`[Reddit API Service] getStoredRedditFeedForUser: Error fetching stored feed for user ${userId}: ${errorMessage}`, error);
     return [];
-  }
-}
-
-// Function to save manually displayed Reddit items to Firestore (e.g., from a "Save this view" button)
-// This function is NO LONGER USED by the automatic sync on page load. Kept for potential future use or reference.
-export async function saveDisplayedRedditItems(
-  userId: string,
-  itemsToSave: RedditPost[]
-): Promise<{ success: boolean; itemsSaved: number; error?: string }> {
-  console.log(`[Reddit API Service] saveDisplayedRedditItems: Attempting to save ${itemsToSave.length} displayed items for user ${userId}.`);
-  if (!itemsToSave || itemsToSave.length === 0) {
-    return { success: true, itemsSaved: 0, error: "No items provided to save." };
-  }
-
-  try {
-    const itemsSubcollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
-    const batch = writeBatch(db);
-    const currentTimestamp = new Date().toISOString();
-
-    itemsToSave.forEach(item => {
-      const docId = item.id.includes('_') ? item.id.split('_')[1] : item.id; // Use Reddit ID part for doc ID
-      if (!docId) {
-         console.warn("[Reddit API Service] saveDisplayedRedditItems: Skipping item with invalid ID structure for Firestore doc ID:", item.id);
-         return;
-      }
-      const itemRef = doc(itemsSubcollectionRef, docId);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { sno, ...itemData } = item; 
-      batch.set(itemRef, { 
-        ...itemData, 
-        processedAt: itemData.processedAt || currentTimestamp, // Preserve original processedAt if exists, else use current
-        serverTimestamp: serverTimestamp() // Add/update server timestamp
-      });
-    });
-
-    await batch.commit();
-    console.log(`[Reddit API Service] saveDisplayedRedditItems: Successfully saved ${itemsToSave.length} items for user ${userId}.`);
-    return { success: true, itemsSaved: itemsToSave.length };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown Firestore save error.';
-    console.error(`[Reddit API Service] saveDisplayedRedditItems: Error saving displayed items for user ${userId}:`, error);
-     let specificError = `Firestore Save Error: ${errorMessage}`;
-    if (error instanceof Error && (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED'))) {
-        specificError = `Firestore Permission Error during save: ${errorMessage}. Check Firestore rules.`;
-    }
-    return { success: false, itemsSaved: 0, error: specificError };
   }
 }
