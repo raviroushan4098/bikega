@@ -4,12 +4,12 @@
 import React, { useState, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown } from "lucide-react"; // Removed ExternalLink as it's no longer auto-added
+import { ArrowUpDown } from "lucide-react";
 import type { ColumnConfig } from '@/types';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
-interface GenericDataTableProps<T extends { id: string, thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }> { // Removed url from constraint
+interface GenericDataTableProps<T extends { id: string, thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }> {
   data: T[];
   columns: ColumnConfig<T>[];
   caption?: string;
@@ -78,18 +78,17 @@ export function GenericDataTable<T extends { id: string, thumbnailUrl?: string, 
                 )}
               </TableHead>
             ))}
-            {/* Removed automatic Link column header */}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedData.map((item) => (
+          {sortedData.map((item, index) => ( // 'index' here is from the array map, should be 0, 1, 2...
             <TableRow key={item.id} className="hover:bg-muted/20 transition-colors">
               {columns.map((column) => (
                 <TableCell key={String(column.key)} className={cn("py-3", column.className)}>
-                  {column.render ? column.render(item) : String(item[column.key as keyof T] ?? '')}
+                  {/* Ensure this 'index' is passed to column.render */}
+                  {column.render ? column.render(item, index) : String(item[column.key as keyof T] ?? '')}
                 </TableCell>
               ))}
-              {/* Removed automatic Link column cell */}
             </TableRow>
           ))}
         </TableBody>
@@ -102,7 +101,7 @@ export function GenericDataTable<T extends { id: string, thumbnailUrl?: string, 
 export const renderImageCell = (item: { thumbnailUrl?: string, dataAiHint?: string, authorAvatarUrl?: string }, type: 'thumbnail' | 'avatar') => {
   const url = type === 'thumbnail' ? item.thumbnailUrl : item.authorAvatarUrl;
   const altText = type === 'thumbnail' ? 'Video thumbnail' : 'Author avatar';
-  const size = type === 'thumbnail' ? { width: 80, height: 45 } : { width: 32, height: 32 }; // thumbnail 16:9, avatar square
+  const size = type === 'thumbnail' ? { width: 80, height: 45 } : { width: 32, height: 32 };
   const roundedClass = type === 'avatar' ? 'rounded-full' : 'rounded-sm';
 
   if (url) {
