@@ -5,7 +5,7 @@ import type { RedditPost } from '@/types';
 import { getApiKeys } from './api-key-service';
 import Sentiment from 'sentiment';
 import { db } from './firebase';
-import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, deleteDoc, getDoc } from 'firebase/firestore'; // Renamed serverTimestamp to avoid conflict
+import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, deleteDoc, getDoc } from 'firebase/firestore';
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -16,13 +16,11 @@ let tokenExpiry: number | null = null;
 
 const sentimentAnalyzer = new Sentiment();
 
-const FILTER_PERIOD_DAYS = 30;
+// const FILTER_PERIOD_DAYS = 30; // This is not used by getCutoffTimestamp currently
 
 const getCutoffTimestamp = (): number => {
-  const date = new Date();
-  date.setDate(date.getDate() - FILTER_PERIOD_DAYS);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+  // For fetching data from June 1st, 2025 onwards
+  return new Date('2025-06-01T00:00:00.000Z').getTime();
 };
 
 const COMMENTS_PER_POST_LIMIT = 5;
@@ -187,16 +185,16 @@ async function fetchCommentsForPostInternal(
             }
 
             mappedComments.push({
-              id: commentData.name,
-              title: postTitle,
+              id: commentData.name, // Use fullname (e.g., t1_xxxxxx) as ID
+              title: postTitle, // Parent post's title
               content: commentData.body || '',
-              subreddit: postSubredditPrefixed,
+              subreddit: postSubredditPrefixed, // Parent post's subreddit
               author: commentData.author || '[deleted]',
               timestamp: new Date(commentTimestampMs).toISOString(),
               score: commentData.score || 0,
-              numComments: 0, // Comments don't have their own 'numComments' in this context
+              numComments: 0, // Comments don't have their own 'numComments' in this display context
               url: `https://www.reddit.com${commentData.permalink}`,
-              flair: null,
+              flair: null, // Comments don't have flairs
               sentiment: sentiment,
               type: 'Comment',
               matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
@@ -222,14 +220,16 @@ export async function syncUserRedditData(
 
   console.log('[Reddit API Service] syncUserRedditData: Checking Firebase connectivity...');
   try {
-    const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create');
-    await getDoc(testDocRef);
+    const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create'); // A non-existent doc path
+    await getDoc(testDocRef); // Attempt a read. Success means connectivity and basic permissions are okay.
     console.log('[Reddit API Service] syncUserRedditData: Firebase connectivity check successful.');
   } catch (fbError) {
     const errorMessage = fbError instanceof Error ? fbError.message : 'Unknown Firebase connection error.';
     console.error('[Reddit API Service] syncUserRedditData: Firebase connectivity check FAILED.', fbError);
+    // If this basic check fails, it's a fundamental issue with Firestore access.
     return { success: false, itemsFetchedAndStored: 0, error: `Firebase Connection/Permission Error: ${errorMessage}. Please check server logs and Firestore rules.` };
   }
+
 
   if (!userKeywords || userKeywords.length === 0) {
     console.log("[Reddit API Service] syncUserRedditData: No keywords provided. Sync aborted as there's nothing to search for.");
@@ -245,15 +245,15 @@ export async function syncUserRedditData(
   console.log("[Reddit API Service] syncUserRedditData: Reddit access token and user agent obtained.");
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = Math.min(100, userKeywords.length * 15);
-  const sort = 'new';
-  const time = 'month';
+  const limit = 100; // Fetch up to 100 posts from the API
+  const sort = 'new'; // Fetch newest posts first
+  // Removed 't' (time) parameter as it's generally not used effectively with sort=new for historical fetching
 
-  const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&t=${time}&type=t3&restrict_sr=false&include_over_18=on`;
+  const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
 
   console.log(`[Reddit API Service] syncUserRedditData: Searching Reddit. Query: "${queryString}". URL: ${searchUrl}`);
   const allFetchedItems: RedditPost[] = [];
-  const cutoffTimestamp = getCutoffTimestamp();
+  const cutoffTimestamp = getCutoffTimestamp(); // Uses the fixed 2025-06-01 date
   const processedAt = new Date().toISOString();
 
   try {
@@ -294,7 +294,7 @@ export async function syncUserRedditData(
             ) || userKeywords[0] || 'general';
 
           allFetchedItems.push({
-            id: postData.name,
+            id: postData.name, // Use fullname (e.g., t3_xxxxxx) as ID
             title: postData.title || 'No Title',
             content: postData.selftext || '',
             subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
@@ -310,15 +310,17 @@ export async function syncUserRedditData(
             processedAt: processedAt,
           });
 
-          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) {
+          // Consider if fetching comments is still desired here given the limit.
+          // If allFetchedItems can reach 100 from posts alone, comment fetching might exceed desired scope for this sync.
+          if (postData.num_comments && postData.num_comments > 0 && allFetchedItems.length < (limit * 1.5)) { // Adjusted limit for including comments
             console.log(`[Reddit API Service] syncUserRedditData: Post ${postData.name} has ${postData.num_comments} comments. Fetching relevant ones.`);
             const commentsForThisPost = await fetchCommentsForPostInternal(
-                postData.name,
+                postData.name, // Fullname of the post
                 postData.title || 'No Title',
                 postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
                 token,
                 userAgent,
-                userKeywords,
+                userKeywords, // Pass userKeywords for comment matching
                 cutoffTimestamp,
                 processedAt
             );
@@ -359,11 +361,8 @@ export async function syncUserRedditData(
                     return;
                 }
                 const itemRef = doc(itemsSubcollectionRef, docId);
-
-                // Create a clean object for Firestore, ensuring no 'undefined' for flair
-                // and 'sno' is removed.
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { sno, ...restOfItem } = item;
+                const { sno, ...restOfItem } = item; // Remove sno if it exists
                 const itemToSaveClean = {
                   ...restOfItem,
                   flair: restOfItem.flair === undefined ? null : restOfItem.flair,
@@ -408,21 +407,23 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetching stored items for user ${userId}.`);
   try {
     const itemsCollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
-    const q = query(itemsCollectionRef, where('timestamp', '!=', null));
+    const q = query(itemsCollectionRef, where('timestamp', '!=', null)); // Basic query, can be ordered by serverTimestamp
     const querySnapshot = await getDocs(q);
 
     const posts = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { serverTimestamp, ...restOfData } = data; // Exclude serverTimestamp
+      const { serverTimestamp, sno, ...restOfData } = data; // Exclude serverTimestamp and sno
       return {
-        id: docSnap.id,
+        id: docSnap.id, // Use Firestore document ID as the primary ID for the object
         ...restOfData,
-        timestamp: restOfData.timestamp || new Date(0).toISOString(),
-        flair: restOfData.flair === undefined ? null : restOfData.flair,
+        timestamp: restOfData.timestamp || new Date(0).toISOString(), // Ensure timestamp is a string
+        flair: restOfData.flair === undefined ? null : restOfData.flair, // Ensure flair is string or null
+        content: restOfData.content === undefined || restOfData.content === null ? '' : restOfData.content, // Ensure content is a string
       } as RedditPost;
     });
 
+    // Sort by timestamp client-side after fetching, descending (newest first)
     posts.sort((a, b) => {
         const dateA = new Date(a.timestamp).getTime();
         const dateB = new Date(b.timestamp).getTime();
