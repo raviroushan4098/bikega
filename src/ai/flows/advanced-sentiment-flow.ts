@@ -15,12 +15,12 @@ import type { ApiKey } from '@/types';
 const FIRESTORE_GEMINI_API_KEY_NAME = "GIMINI_API_KEY";
 const FIRESTORE_GEMINI_API_URL_NAME = "GIMINI_API_URL";
 
-export const AdvancedSentimentInputSchema = z.object({
+const AdvancedSentimentInputSchema = z.object({
   text: z.string().describe("The text to analyze for sentiment."),
 });
 export type AdvancedSentimentInput = z.infer<typeof AdvancedSentimentInputSchema>;
 
-export const AdvancedSentimentOutputSchema = z.object({
+const AdvancedSentimentOutputSchema = z.object({
   sentiment: z.enum(['positive', 'negative', 'neutral', 'unknown']).describe("The detected sentiment of the text."),
   error: z.string().optional().describe("Error message if analysis failed."),
 });
