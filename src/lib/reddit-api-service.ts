@@ -3,7 +3,6 @@
 
 import type { RedditPost } from '@/types';
 import { getApiKeys } from './api-key-service';
-// Removed: import Sentiment from 'sentiment';
 import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '@/ai/flows/advanced-sentiment-flow'; // Corrected import path
 import { db } from './firebase';
 import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc } from 'firebase/firestore';
@@ -159,49 +158,51 @@ async function fetchCommentsForPostInternal(
     }
 
     const commentsListing = responseData[1];
-    const rawCommentItems = commentsListing.data.children || [];
-    const mappedComments: RedditPost[] = [];
-
-    for (const child of rawCommentItems) {
-      if (child.kind === 't1' && child.data && typeof child.data === 'object' && 'body' in child.data) {
+    const rawCommentItems = (commentsListing.data.children || []).filter(child => {
         const commentData = child.data as RedditApiItemData;
         const commentTimestampMs = new Date((commentData.created_utc || 0) * 1000).getTime();
+        return child.kind === 't1' && child.data && typeof child.data === 'object' && 'body' in child.data && commentTimestampMs >= fetchSinceTimestamp;
+    });
 
-        if (commentTimestampMs >= fetchSinceTimestamp) {
-            let sentimentResult: RedditPost['sentiment'] = 'unknown';
-            const commentBody = commentData.body || '';
-            if (commentBody.trim()) {
-              const sentimentAnalysisInput: AdvancedSentimentInput = { text: commentBody };
-              const analysisOutput = await analyzeAdvancedSentiment(sentimentAnalysisInput);
-              if (analysisOutput.error) {
-                console.warn(`[Reddit API Service] Advanced sentiment analysis failed for comment ${commentData.id}: ${analysisOutput.error}. Defaulting to 'unknown'.`);
-                sentimentResult = 'unknown';
-              } else {
-                sentimentResult = analysisOutput.sentiment;
-              }
-            } else {
-                sentimentResult = 'neutral'; // Or 'unknown' if empty text should not be neutral
-            }
-
-            mappedComments.push({
-              id: commentData.name,
-              title: postTitle,
-              content: commentData.body || '',
-              subreddit: postSubredditPrefixed,
-              author: commentData.author || '[deleted]',
-              timestamp: new Date(commentTimestampMs).toISOString(),
-              score: commentData.score || 0,
-              numComments: 0, // Comments don't have a 'numComments' field like posts
-              url: `https://www.reddit.com${commentData.permalink}`,
-              flair: null, // Comments don't have flairs
-              sentiment: sentimentResult,
-              type: 'Comment',
-              matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
-              processedAt: processedAt,
-            });
+    const sentimentPromises = rawCommentItems.map(child => {
+        const commentData = child.data as RedditApiItemData;
+        const commentBody = commentData.body || '';
+        if (commentBody.trim()) {
+            const sentimentAnalysisInput: AdvancedSentimentInput = { text: commentBody };
+            return analyzeAdvancedSentiment(sentimentAnalysisInput);
         }
+        return Promise.resolve({ sentiment: 'neutral' as RedditPost['sentiment'] }); // Default for empty
+    });
+
+    const sentimentResults = await Promise.all(sentimentPromises);
+
+    const mappedComments: RedditPost[] = rawCommentItems.map((child, index) => {
+      const commentData = child.data as RedditApiItemData;
+      const commentTimestampMs = new Date((commentData.created_utc || 0) * 1000).getTime();
+      let finalSentiment = sentimentResults[index].sentiment;
+      if (sentimentResults[index].error) {
+          console.warn(`[Reddit API Service] Advanced sentiment analysis failed for comment ${commentData.id}: ${sentimentResults[index].error}. Defaulting to 'unknown'.`);
+          finalSentiment = 'unknown';
       }
-    }
+
+      return {
+        id: commentData.name,
+        title: postTitle,
+        content: commentData.body || '',
+        subreddit: postSubredditPrefixed,
+        author: commentData.author || '[deleted]',
+        timestamp: new Date(commentTimestampMs).toISOString(),
+        score: commentData.score || 0,
+        numComments: 0, 
+        url: `https://www.reddit.com${commentData.permalink}`,
+        flair: null, 
+        sentiment: finalSentiment,
+        type: 'Comment',
+        matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
+        processedAt: processedAt,
+      };
+    });
+    
     console.log(`[Reddit API Service] fetchCommentsForPostInternal: Processed ${mappedComments.length} comments for post ${postId}.`);
     return mappedComments;
   } catch (error) {
@@ -242,7 +243,7 @@ export async function refreshUserRedditData(
   console.log("[Reddit API Service] refreshUserRedditData: Reddit token obtained.");
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = 100; 
+  const limit = 100; // Fetch up to 100 posts
   const sort = 'new';
   
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
@@ -264,68 +265,72 @@ export async function refreshUserRedditData(
     }
 
     const responseData: RedditApiResponse = await response.json();
-    const rawItems = responseData.data?.children || [];
-    console.log(`[Reddit API Service] refreshUserRedditData: Received ${rawItems.length} raw items.`);
-
-    for (const child of rawItems) {
-      if (child.kind === 't3' && child.data && typeof child.data === 'object' && 'title' in child.data) {
+    const rawItems = (responseData.data?.children || []).filter(child => {
         const postData = child.data as RedditApiItemData;
         const postTimestampMs = new Date((postData.created_utc || 0) * 1000).getTime();
+        return child.kind === 't3' && child.data && typeof child.data === 'object' && 'title' in child.data && postTimestampMs >= fetchSinceTimestamp;
+    });
+    console.log(`[Reddit API Service] refreshUserRedditData: Received ${rawItems.length} raw posts matching time filter.`);
 
-        if (postTimestampMs >= fetchSinceTimestamp) {
-          let postSentimentResult: RedditPost['sentiment'] = 'unknown';
-          const postSentimentText = `${postData.title || ''} ${postData.selftext || ''}`;
-          if (postSentimentText.trim()) {
+    const postSentimentPromises = rawItems.map(child => {
+        const postData = child.data as RedditApiItemData;
+        const postSentimentText = `${postData.title || ''} ${postData.selftext || ''}`;
+        if (postSentimentText.trim()) {
             const sentimentAnalysisInput: AdvancedSentimentInput = { text: postSentimentText };
-            const analysisOutput = await analyzeAdvancedSentiment(sentimentAnalysisInput);
-            if (analysisOutput.error) {
-              console.warn(`[Reddit API Service] Advanced sentiment analysis failed for post ${postData.id}: ${analysisOutput.error}. Defaulting to 'unknown'.`);
-              postSentimentResult = 'unknown';
-            } else {
-              postSentimentResult = analysisOutput.sentiment;
-            }
-          } else {
-            postSentimentResult = 'neutral'; 
-          }
-
-          const matchedKw = userKeywords.find(kw =>
-                (postData.title?.toLowerCase().includes(kw.toLowerCase()) ||
-                 postData.selftext?.toLowerCase().includes(kw.toLowerCase()))
-            ) || userKeywords[0] || 'general';
-          
-          const flairValue = postData.link_flair_text === undefined ? null : postData.link_flair_text;
-
-          fetchedItemsToStore.push({
-            id: postData.name,
-            title: postData.title || 'No Title',
-            content: postData.selftext || '',
-            subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
-            author: postData.author || '[deleted]',
-            timestamp: new Date(postTimestampMs).toISOString(),
-            score: postData.score || 0,
-            numComments: postData.num_comments || 0,
-            url: (postData.url && postData.url.startsWith('http')) ? postData.url : `https://www.reddit.com${postData.permalink}`,
-            flair: flairValue,
-            type: 'Post',
-            sentiment: postSentimentResult,
-            matchedKeyword: matchedKw,
-            processedAt: processedAt,
-          });
-
-          if (postData.num_comments && postData.num_comments > 0 && fetchedItemsToStore.length < (limit * 1.5)) { 
-            const commentsForThisPost = await fetchCommentsForPostInternal(
-                postData.name, 
-                postData.title || 'No Title',
-                postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
-                token,
-                userAgent,
-                userKeywords, 
-                fetchSinceTimestamp,
-                processedAt
-            );
-            fetchedItemsToStore.push(...commentsForThisPost);
-          }
+            return analyzeAdvancedSentiment(sentimentAnalysisInput);
         }
+        return Promise.resolve({ sentiment: 'neutral' as RedditPost['sentiment'] }); // Default for empty
+    });
+
+    const postSentimentResults = await Promise.all(postSentimentPromises);
+
+    for (let i = 0; i < rawItems.length; i++) {
+      const child = rawItems[i];
+      const postData = child.data as RedditApiItemData;
+      const postTimestampMs = new Date((postData.created_utc || 0) * 1000).getTime();
+
+      let finalPostSentiment = postSentimentResults[i].sentiment;
+      if (postSentimentResults[i].error) {
+          console.warn(`[Reddit API Service] Advanced sentiment analysis failed for post ${postData.id}: ${postSentimentResults[i].error}. Defaulting to 'unknown'.`);
+          finalPostSentiment = 'unknown';
+      }
+      
+      const matchedKw = userKeywords.find(kw =>
+            (postData.title?.toLowerCase().includes(kw.toLowerCase()) ||
+             postData.selftext?.toLowerCase().includes(kw.toLowerCase()))
+        ) || userKeywords[0] || 'general';
+      
+      const flairValue = postData.link_flair_text === undefined ? null : postData.link_flair_text;
+
+      fetchedItemsToStore.push({
+        id: postData.name,
+        title: postData.title || 'No Title',
+        content: postData.selftext || '',
+        subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
+        author: postData.author || '[deleted]',
+        timestamp: new Date(postTimestampMs).toISOString(),
+        score: postData.score || 0,
+        numComments: postData.num_comments || 0,
+        url: (postData.url && postData.url.startsWith('http')) ? postData.url : `https://www.reddit.com${postData.permalink}`,
+        flair: flairValue,
+        type: 'Post',
+        sentiment: finalPostSentiment,
+        matchedKeyword: matchedKw,
+        processedAt: processedAt,
+      });
+
+      if (postData.num_comments && postData.num_comments > 0 && fetchedItemsToStore.length < (limit * 1.5)) { 
+        const commentsForThisPost = await fetchCommentsForPostInternal(
+            postData.name, 
+            postData.title || 'No Title',
+            postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
+            token,
+            userAgent,
+            userKeywords, 
+            fetchSinceTimestamp,
+            processedAt
+        );
+        fetchedItemsToStore.push(...commentsForThisPost);
       }
     }
     console.log(`[Reddit API Service] refreshUserRedditData: Processed ${fetchedItemsToStore.length} total items for storage.`);
