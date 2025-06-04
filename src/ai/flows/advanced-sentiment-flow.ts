@@ -15,16 +15,26 @@ import type { ApiKey } from '@/types';
 const FIRESTORE_GEMINI_API_KEY_NAME = "GIMINI_API_KEY";
 const FIRESTORE_GEMINI_API_URL_NAME = "GIMINI_API_URL";
 
-const AdvancedSentimentInputSchema = z.object({
+// Manually define exported types
+export type AdvancedSentimentInput = {
+  text: string;
+};
+
+export type AdvancedSentimentOutput = {
+  sentiment: 'positive' | 'negative' | 'neutral' | 'unknown';
+  error?: string;
+};
+
+// Internal Zod schema for input validation (not exported)
+const AdvancedSentimentInputSchemaInternal = z.object({
   text: z.string().describe("The text to analyze for sentiment."),
 });
-export type AdvancedSentimentInput = z.infer<typeof AdvancedSentimentInputSchema>;
 
-const AdvancedSentimentOutputSchema = z.object({
-  sentiment: z.enum(['positive', 'negative', 'neutral', 'unknown']).describe("The detected sentiment of the text."),
-  error: z.string().optional().describe("Error message if analysis failed."),
-});
-export type AdvancedSentimentOutput = z.infer<typeof AdvancedSentimentOutputSchema>;
+// Internal Zod schema for output structure (not exported, for reference or internal use)
+// const AdvancedSentimentOutputSchemaInternal = z.object({
+//   sentiment: z.enum(['positive', 'negative', 'neutral', 'unknown']).describe("The detected sentiment of the text."),
+//   error: z.string().optional().describe("Error message if analysis failed."),
+// });
 
 interface GeminiResponseCandidate {
   content: {
@@ -49,6 +59,17 @@ interface GeminiApiResponse {
 }
 
 export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): Promise<AdvancedSentimentOutput> {
+  // Optional: Validate input against the internal schema
+  try {
+    AdvancedSentimentInputSchemaInternal.parse(input);
+  } catch (validationError) {
+    console.error("[AdvancedSentimentFlow] Input validation error:", validationError);
+    // It's good practice to cast the error to a known type if you want to extract details.
+    // For now, a generic message is fine.
+    const message = validationError instanceof Error ? validationError.message : "Invalid input structure.";
+    return { sentiment: 'unknown', error: `Invalid input: ${message}` };
+  }
+
   console.log("[AdvancedSentimentFlow] Starting advanced sentiment analysis for text:", input.text.substring(0, 50) + "...");
 
   let geminiApiKey: string | undefined;
@@ -88,10 +109,10 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       temperature: 0.2,
       topK: 1,
       topP: 0.95,
-      maxOutputTokens: 10, // Expecting a short response like "positive"
+      maxOutputTokens: 10, 
       candidateCount: 1,
     },
-    safetySettings: [ // Using common default safety settings
+    safetySettings: [ 
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
