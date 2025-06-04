@@ -3,9 +3,10 @@
 
 import type { RedditPost } from '@/types';
 import { getApiKeys } from './api-key-service';
-import Sentiment from 'sentiment';
+// Removed: import Sentiment from 'sentiment';
+import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '../../ai/flows/advanced-sentiment-flow'; // Updated import
 import { db } from './firebase';
-import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc } from 'firebase/firestore';
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -14,9 +15,9 @@ const REDDIT_USER_AGENT_SERVICE_NAME = "Reddit User Agent";
 let accessToken: string | null = null;
 let tokenExpiry: number | null = null;
 
-const sentimentAnalyzer = new Sentiment();
+// Removed: const sentimentAnalyzer = new Sentiment();
 
-const FETCH_PERIOD_DAYS = 30; // Fetch data from the last 30 days on refresh
+const FETCH_PERIOD_DAYS = 30;
 const COMMENTS_PER_POST_LIMIT = 5;
 const COMMENT_FETCH_DEPTH = 1;
 
@@ -129,7 +130,7 @@ async function fetchCommentsForPostInternal(
   token: string,
   userAgent: string,
   queryKeywordsArray: string[],
-  fetchSinceTimestamp: number, // Timestamp to filter comments newer than this
+  fetchSinceTimestamp: number,
   processedAt: string
 ): Promise<RedditPost[]> {
   const postId = postFullname.startsWith('t3_') ? postFullname.substring(3) : postFullname;
@@ -167,15 +168,20 @@ async function fetchCommentsForPostInternal(
         const commentData = child.data as RedditApiItemData;
         const commentTimestampMs = new Date((commentData.created_utc || 0) * 1000).getTime();
 
-        if (commentTimestampMs >= fetchSinceTimestamp) { // Filter by fetchSinceTimestamp
-            let sentiment: RedditPost['sentiment'] = 'unknown';
-            try {
-                const sentimentResult = sentimentAnalyzer.analyze(commentData.body || '');
-                if (sentimentResult.score > 0.5) sentiment = 'positive';
-                else if (sentimentResult.score < -0.5) sentiment = 'negative';
-                else sentiment = 'neutral';
-            } catch (e) {
-                console.warn(`[Reddit API Service] Sentiment analysis failed for comment ${commentData.id}: ${(e as Error).message}.`);
+        if (commentTimestampMs >= fetchSinceTimestamp) {
+            let sentimentResult: RedditPost['sentiment'] = 'unknown';
+            const commentBody = commentData.body || '';
+            if (commentBody.trim()) {
+              const sentimentAnalysisInput: AdvancedSentimentInput = { text: commentBody };
+              const analysisOutput = await analyzeAdvancedSentiment(sentimentAnalysisInput);
+              if (analysisOutput.error) {
+                console.warn(`[Reddit API Service] Advanced sentiment analysis failed for comment ${commentData.id}: ${analysisOutput.error}. Defaulting to 'unknown'.`);
+                sentimentResult = 'unknown';
+              } else {
+                sentimentResult = analysisOutput.sentiment;
+              }
+            } else {
+                sentimentResult = 'neutral'; // Or 'unknown' if empty text should not be neutral
             }
 
             mappedComments.push({
@@ -188,8 +194,8 @@ async function fetchCommentsForPostInternal(
               score: commentData.score || 0,
               numComments: 0,
               url: `https://www.reddit.com${commentData.permalink}`,
-              flair: null, 
-              sentiment: sentiment,
+              flair: null,
+              sentiment: sentimentResult,
               type: 'Comment',
               matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
               processedAt: processedAt,
@@ -211,6 +217,19 @@ export async function refreshUserRedditData(
   userKeywords: string[]
 ): Promise<{ success: boolean; itemsFetchedAndStored: number; error?: string }> {
   console.log(`[Reddit API Service] refreshUserRedditData: Starting refresh for userID: ${userId}, Keywords: "${userKeywords.join('", "')}"`);
+  
+  // Firebase connectivity check
+  const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create');
+  try {
+    console.log("[Reddit API Service] refreshUserRedditData: Performing Firebase connectivity check...");
+    await getDoc(testDocRef); // Attempt a read operation
+    console.log("[Reddit API Service] refreshUserRedditData: Firebase connectivity check successful.");
+  } catch (fbError) {
+    const fbErrorMessage = fbError instanceof Error ? fbError.message : 'Unknown Firestore communication error.';
+    console.error(`[Reddit API Service] refreshUserRedditData: Firebase connectivity check FAILED. Error: ${fbErrorMessage}`, fbError);
+    return { success: false, itemsFetchedAndStored: 0, error: `Firebase Connection/Permission Error: ${fbErrorMessage}. Reddit sync aborted.` };
+  }
+
 
   if (!userKeywords || userKeywords.length === 0) {
     console.log("[Reddit API Service] refreshUserRedditData: No keywords. Refresh aborted.");
@@ -226,14 +245,13 @@ export async function refreshUserRedditData(
   console.log("[Reddit API Service] refreshUserRedditData: Reddit token obtained.");
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = 100; 
-  const sort = 'new'; 
+  const limit = 100;
+  const sort = 'new';
   
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
 
   console.log(`[Reddit API Service] refreshUserRedditData: Searching Reddit. Query: "${queryString}". URL: ${searchUrl}`);
   const fetchedItemsToStore: RedditPost[] = [];
-  // Fetch items from the last FETCH_PERIOD_DAYS
   const fetchSinceTimestamp = Date.now() - (FETCH_PERIOD_DAYS * 24 * 60 * 60 * 1000);
   const processedAt = new Date().toISOString();
 
@@ -257,17 +275,22 @@ export async function refreshUserRedditData(
         const postData = child.data as RedditApiItemData;
         const postTimestampMs = new Date((postData.created_utc || 0) * 1000).getTime();
 
-        if (postTimestampMs >= fetchSinceTimestamp) { // Filter by fetchSinceTimestamp
-          let postSentiment: RedditPost['sentiment'] = 'unknown';
-          try {
-            const postSentimentText = `${postData.title || ''} ${postData.selftext || ''}`;
-            const postSentimentResult = sentimentAnalyzer.analyze(postSentimentText);
-            if (postSentimentResult.score > 0.5) postSentiment = 'positive';
-            else if (postSentimentResult.score < -0.5) postSentiment = 'negative';
-            else postSentiment = 'neutral';
-          } catch (e) {
-            console.warn(`[Reddit API Service] Sentiment analysis failed for post ${postData.id}: ${(e as Error).message}.`);
+        if (postTimestampMs >= fetchSinceTimestamp) {
+          let postSentimentResult: RedditPost['sentiment'] = 'unknown';
+          const postSentimentText = `${postData.title || ''} ${postData.selftext || ''}`;
+          if (postSentimentText.trim()) {
+            const sentimentAnalysisInput: AdvancedSentimentInput = { text: postSentimentText };
+            const analysisOutput = await analyzeAdvancedSentiment(sentimentAnalysisInput);
+            if (analysisOutput.error) {
+              console.warn(`[Reddit API Service] Advanced sentiment analysis failed for post ${postData.id}: ${analysisOutput.error}. Defaulting to 'unknown'.`);
+              postSentimentResult = 'unknown';
+            } else {
+              postSentimentResult = analysisOutput.sentiment;
+            }
+          } else {
+            postSentimentResult = 'neutral'; // Or 'unknown'
           }
+
 
           const matchedKw = userKeywords.find(kw =>
                 (postData.title?.toLowerCase().includes(kw.toLowerCase()) ||
@@ -288,7 +311,7 @@ export async function refreshUserRedditData(
             url: (postData.url && postData.url.startsWith('http')) ? postData.url : `https://www.reddit.com${postData.permalink}`,
             flair: flairValue,
             type: 'Post',
-            sentiment: postSentiment,
+            sentiment: postSentimentResult,
             matchedKeyword: matchedKw,
             processedAt: processedAt,
           });
@@ -301,7 +324,7 @@ export async function refreshUserRedditData(
                 token,
                 userAgent,
                 userKeywords, 
-                fetchSinceTimestamp, // Pass fetchSinceTimestamp for comment filtering
+                fetchSinceTimestamp,
                 processedAt
             );
             fetchedItemsToStore.push(...commentsForThisPost);
@@ -318,11 +341,10 @@ export async function refreshUserRedditData(
         try {
             const batch = writeBatch(db);
             fetchedItemsToStore.forEach(item => {
-                // Use the part of id after 't1_' or 't3_' as Firestore document ID
                 const docId = item.id.includes('_') ? item.id.split('_')[1] : item.id; 
                 if (!docId) {
                     console.warn("[Reddit API Service] refreshUserRedditData: Invalid ID for Firestore doc:", item.id);
-                    return; // Skip item with invalid ID
+                    return; 
                 }
                 const itemRef = doc(itemsSubcollectionRef, docId);
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -371,7 +393,6 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetching stored items for user ${userId}.`);
   try {
     const itemsCollectionRef = collection(db, 'reddit_data', userId, 'fetched_items');
-    // Order by the actual Reddit item timestamp, descending (newest first)
     const q = query(itemsCollectionRef, orderBy('timestamp', 'desc')); 
     const querySnapshot = await getDocs(q);
 
@@ -396,5 +417,3 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
     return [];
   }
 }
-
-    
