@@ -3,7 +3,7 @@
 
 import type { RedditPost } from '@/types';
 import { getApiKeys } from './api-key-service';
-import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '@/ai/flows/advanced-sentiment-flow'; // Corrected import path
+import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '@/ai/flows/advanced-sentiment-flow';
 import { db } from './firebase';
 import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc } from 'firebase/firestore';
 
@@ -164,12 +164,15 @@ async function fetchCommentsForPostInternal(
         return child.kind === 't1' && child.data && typeof child.data === 'object' && 'body' in child.data && commentTimestampMs >= fetchSinceTimestamp;
     });
 
-    const sentimentPromises = rawCommentItems.map(child => {
+    const sentimentPromises = rawCommentItems.map(async (child) => {
         const commentData = child.data as RedditApiItemData;
         const commentBody = commentData.body || '';
         if (commentBody.trim()) {
             const sentimentAnalysisInput: AdvancedSentimentInput = { text: commentBody };
-            return analyzeAdvancedSentiment(sentimentAnalysisInput);
+            console.log(`[Reddit API Service] COMMENT: Preparing to analyze sentiment for comment ID: ${commentData.id}, Text (first 30): "${commentBody.substring(0,30)}..."`);
+            const sentimentResult = await analyzeAdvancedSentiment(sentimentAnalysisInput);
+            console.log(`[Reddit API Service] COMMENT: Sentiment analysis COMPLETE for comment ID: ${commentData.id}. Raw Result: ${JSON.stringify(sentimentResult)}`);
+            return sentimentResult;
         }
         return Promise.resolve({ sentiment: 'neutral' as RedditPost['sentiment'] }); // Default for empty
     });
@@ -272,12 +275,15 @@ export async function refreshUserRedditData(
     });
     console.log(`[Reddit API Service] refreshUserRedditData: Received ${rawItems.length} raw posts matching time filter.`);
 
-    const postSentimentPromises = rawItems.map(child => {
+    const postSentimentPromises = rawItems.map(async (child) => {
         const postData = child.data as RedditApiItemData;
         const postSentimentText = `${postData.title || ''} ${postData.selftext || ''}`;
         if (postSentimentText.trim()) {
             const sentimentAnalysisInput: AdvancedSentimentInput = { text: postSentimentText };
-            return analyzeAdvancedSentiment(sentimentAnalysisInput);
+            console.log(`[Reddit API Service] POST: Preparing to analyze sentiment for post ID: ${postData.id}, Text (first 30): "${postSentimentText.substring(0,30)}..."`);
+            const sentimentResult = await analyzeAdvancedSentiment(sentimentAnalysisInput);
+            console.log(`[Reddit API Service] POST: Sentiment analysis COMPLETE for post ID: ${postData.id}. Raw Result: ${JSON.stringify(sentimentResult)}`);
+            return sentimentResult;
         }
         return Promise.resolve({ sentiment: 'neutral' as RedditPost['sentiment'] }); // Default for empty
     });
