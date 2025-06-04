@@ -80,7 +80,7 @@ export default function DashboardSidebar() {
       
       return (
         <SidebarMenuItem key={item.href}>
-          <Link href={item.href} passHref legacyBehavior>
+          <Link href={item.href}>
             <SidebarMenuButton
               className={cn(isActive && "bg-primary/10 text-primary hover:bg-primary/20")}
               isActive={isActive}
