@@ -54,6 +54,11 @@ interface GeminiApiResponse {
 }
 
 export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): Promise<AdvancedSentimentOutput> {
+  console.log("======================================================================");
+  console.log(`[AdvancedSentimentFlow] ENTERING FLOW. Timestamp: ${new Date().toISOString()}`);
+  console.log(`[AdvancedSentimentFlow] Input text (first 50 chars): "${input.text.substring(0, 50)}..."`);
+  console.log("======================================================================");
+
   // Optional: Validate input against the internal schema
   try {
     AdvancedSentimentInputSchemaInternal.parse(input);
@@ -70,14 +75,14 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
 
   try {
     console.log("[AdvancedSentimentFlow] Attempting to fetch API keys from Firestore service.");
-    const apiKeys: ApiKey[] = await getApiKeys(); // This function should handle its own errors and potentially return []
+    const apiKeys: ApiKey[] = await getApiKeys(); 
 
-    if (!apiKeys || !Array.isArray(apiKeys)) {
-      const errorMsg = "API keys array fetched from Firestore is empty or not an array.";
+    if (!apiKeys || !Array.isArray(apiKeys) || apiKeys.length === 0) { // Check for empty array too
+      const errorMsg = "API keys array fetched from Firestore is empty, null, or not an array.";
       console.error(`[AdvancedSentimentFlow] CRITICAL ERROR: ${errorMsg}`);
       return { sentiment: 'unknown', error: "Failed to retrieve valid API configuration array from Firestore." };
     }
-    console.log(`[AdvancedSentimentFlow] Successfully fetched ${apiKeys.length} API key(s) from Firestore service. Raw data: ${JSON.stringify(apiKeys.map(k => ({serviceName: k.serviceName, hasKey: !!k.keyValue})))}`);
+    console.log(`[AdvancedSentimentFlow] Successfully fetched ${apiKeys.length} API key(s) from Firestore service. Raw data (serviceName & key presence): ${JSON.stringify(apiKeys.map(k => ({serviceName: k.serviceName, hasKey: !!k.keyValue})))}`);
 
 
     const apiKeyEntry = apiKeys.find(k => k.serviceName === FIRESTORE_GEMINI_API_KEY_NAME);
@@ -88,7 +93,7 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       console.log(`[AdvancedSentimentFlow] Found Gemini API Key: ${geminiApiKey ? '********' : 'NOT FOUND OR EMPTY (this should not happen if apiKeyEntry.keyValue was true)'}`);
     } else {
       const errorMsg = `API key "${FIRESTORE_GEMINI_API_KEY_NAME}" not found or its keyValue is empty in Firestore.`;
-      console.error(`[AdvancedSentimentFlow] CRITICAL ERROR: ${errorMsg} Searched among ${apiKeys.length} keys. Found entry: ${JSON.stringify(apiKeyEntry)}`);
+      console.error(`[AdvancedSentimentFlow] CRITICAL ERROR: ${errorMsg} Searched among ${apiKeys.length} keys. API Key Entry found: ${JSON.stringify(apiKeyEntry, null, 2)}`);
       return { sentiment: 'unknown', error: errorMsg };
     }
 
@@ -97,7 +102,7 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       console.log(`[AdvancedSentimentFlow] Found Gemini API URL: ${geminiApiUrl}`);
     } else {
       const errorMsg = `API URL "${FIRESTORE_GEMINI_API_URL_NAME}" not found or its keyValue is empty in Firestore.`;
-      console.error(`[AdvancedSentimentFlow] CRITICAL ERROR: ${errorMsg} Searched among ${apiKeys.length} keys. Found entry: ${JSON.stringify(apiUrlEntry)}`);
+      console.error(`[AdvancedSentimentFlow] CRITICAL ERROR: ${errorMsg} Searched among ${apiKeys.length} keys. API URL Entry found: ${JSON.stringify(apiUrlEntry, null, 2)}`);
       return { sentiment: 'unknown', error: errorMsg };
     }
   } catch (e) {
@@ -127,7 +132,10 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
     ]
   };
-  console.log(`[AdvancedSentimentFlow] Gemini API Request Payload (text part): "${payload.contents[0].parts[0].text.substring(0,100)}..." Full config: ${JSON.stringify(payload.generationConfig)}`);
+  console.log(`[AdvancedSentimentFlow] Gemini API Request URL: ${geminiApiUrl} (key will be appended)`);
+  console.log(`[AdvancedSentimentFlow] Gemini API Request Payload (text part only): "${payload.contents[0].parts[0].text.substring(0,150)}..."`);
+  console.log(`[AdvancedSentimentFlow] Gemini API Request Full Config: ${JSON.stringify(payload.generationConfig)}`);
+  console.log(`[AdvancedSentimentFlow] Gemini API Request Full Safety Settings: ${JSON.stringify(payload.safetySettings)}`);
 
 
   const controller = new AbortController();
@@ -137,7 +145,7 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
   }, API_CALL_TIMEOUT_MS);
 
   try {
-    console.log(`[AdvancedSentimentFlow] Making request to Gemini API: ${geminiApiUrl} (key is appended) with timeout ${API_CALL_TIMEOUT_MS}ms`);
+    console.log(`[AdvancedSentimentFlow] Making POST request to Gemini API: ${geminiApiUrl} (key is appended in fullApiUrl) with timeout ${API_CALL_TIMEOUT_MS}ms`);
     const response = await fetch(fullApiUrl, {
       method: 'POST',
       headers: {
@@ -146,38 +154,41 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId); // Clear the timeout if the request completes
+    clearTimeout(timeoutId); 
+
+    console.log(`[AdvancedSentimentFlow] Gemini API response status: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       let errorBody = "Could not parse error body.";
       try {
-        errorBody = await response.text(); // Try to get text first for more detailed errors
+        errorBody = await response.text(); 
       } catch (parseError) {
-        // Ignore if can't parse error body as text
+        // Ignore
       }
       console.error(`[AdvancedSentimentFlow] Gemini API error: ${response.status} ${response.statusText}. URL: ${geminiApiUrl}. Body: ${errorBody}`);
       return { sentiment: 'unknown', error: `Gemini API request failed with status ${response.status} (${response.statusText}). Check server logs for API response body.` };
     }
 
     const responseData: GeminiApiResponse = await response.json();
-    console.log("[AdvancedSentimentFlow] Full Gemini API Response Data:", JSON.stringify(responseData, null, 2));
+    // Log the full response data immediately after parsing, before any checks
+    console.log("[AdvancedSentimentFlow] Full Gemini API Response Data (parsed JSON):", JSON.stringify(responseData, null, 2));
 
 
     if (responseData.error) {
-        console.error(`[AdvancedSentimentFlow] Gemini API returned an error object: Code ${responseData.error.code}, Message: ${responseData.error.message}`);
+        console.error(`[AdvancedSentimentFlow] Gemini API returned an error object in response body: Code ${responseData.error.code}, Message: ${responseData.error.message}, Status: ${responseData.error.status}`);
         return { sentiment: 'unknown', error: `Gemini API Error: ${responseData.error.message}` };
     }
 
     if (responseData.promptFeedback && responseData.promptFeedback.safetyRatings) {
         const blockedRating = responseData.promptFeedback.safetyRatings.find(r => r.blocked);
         if (blockedRating) {
-            const blockMsg = `Content blocked by Gemini API due to safety policy: ${blockedRating.category}.`;
+            const blockMsg = `Content blocked by Gemini API due to safety policy (promptFeedback): ${blockedRating.category}.`;
             console.warn(`[AdvancedSentimentFlow] ${blockMsg} For text: "${input.text.substring(0,50)}..."`);
             return { sentiment: 'unknown', error: blockMsg };
         }
     }
     if (responseData.candidates && responseData.candidates.length > 0 && responseData.candidates[0].finishReason === "SAFETY") {
-        const safetyMsg = `Content generation stopped by Gemini API due to safety policy. Candidate finish reason: SAFETY.`;
+        const safetyMsg = `Content generation stopped by Gemini API due to safety policy. Candidate finishReason: SAFETY. Safety Ratings: ${JSON.stringify(responseData.candidates[0].safetyRatings)}`;
         console.warn(`[AdvancedSentimentFlow] ${safetyMsg} For text: "${input.text.substring(0,50)}..."`);
         return { sentiment: 'unknown', error: safetyMsg };
     }
@@ -188,25 +199,28 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       console.log(`[AdvancedSentimentFlow] Raw sentiment from Gemini for "${input.text.substring(0,50)}...": "${rawSentiment}"`);
 
       if (rawSentiment.includes('positive')) {
+        console.log("[AdvancedSentimentFlow] Mapped to POSITIVE.");
         return { sentiment: 'positive' };
       } else if (rawSentiment.includes('negative')) {
+        console.log("[AdvancedSentimentFlow] Mapped to NEGATIVE.");
         return { sentiment: 'negative' };
       } else if (rawSentiment.includes('neutral')) {
+        console.log("[AdvancedSentimentFlow] Mapped to NEUTRAL.");
         return { sentiment: 'neutral' };
       } else {
         console.warn(`[AdvancedSentimentFlow] Could not map Gemini response to a known sentiment: "${rawSentiment}" for text "${input.text.substring(0,50)}..."`);
         return { sentiment: 'unknown', error: `Could not interpret sentiment from API response: "${rawSentiment.substring(0, 50)}${rawSentiment.length > 50 ? '...' : ''}"` };
       }
     } else {
-      console.warn(`[AdvancedSentimentFlow] Gemini API response did not contain expected sentiment data. Response: ${JSON.stringify(responseData, null, 2)}`);
-      return { sentiment: 'unknown', error: "No sentiment data found in API response structure." };
+      console.warn(`[AdvancedSentimentFlow] Gemini API response did not contain expected sentiment data in candidates[0].content.parts. Full Response already logged above.`);
+      return { sentiment: 'unknown', error: "No sentiment data found in the expected API response structure (candidates[0].content.parts)." };
     }
 
   } catch (error) {
-    clearTimeout(timeoutId); // Clear timeout if error occurs before completion
+    clearTimeout(timeoutId); 
     const castError = error as Error;
     let errorMessage = castError.message || "An unknown error occurred.";
-    if (castError.name === 'AbortError' || errorMessage.includes('timed out')) {
+    if (castError.name === 'AbortError' || errorMessage.includes('timed out') || (castError instanceof DOMException && castError.name === 'AbortError')) {
         errorMessage = `Gemini API call timed out after ${API_CALL_TIMEOUT_MS}ms.`;
         console.error(`[AdvancedSentimentFlow] ${errorMessage} For text: "${input.text.substring(0,50)}..."`);
         return { sentiment: 'unknown', error: "API call timed out." };
@@ -215,3 +229,4 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
     return { sentiment: 'unknown', error: `Exception during API call: ${errorMessage}` };
   }
 }
+
