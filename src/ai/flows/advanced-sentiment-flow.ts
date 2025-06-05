@@ -12,8 +12,8 @@ import { z } from 'genkit';
 import { getApiKeys } from '@/lib/api-key-service';
 import type { ApiKey } from '@/types';
 
-const FIRESTORE_GEMINI_API_KEY_NAME = "GIMINI_API_KEY";
-const FIRESTORE_GEMINI_API_URL_NAME = "GIMINI_API_URL";
+const FIRESTORE_GEMINI_API_KEY_NAME = "GIMINI_API_KEY"; // Corrected: GIMINI
+const FIRESTORE_GEMINI_API_URL_NAME = "GIMINI_API_URL"; // Corrected: GIMINI
 const API_CALL_TIMEOUT_MS = 15000; // 15 seconds timeout for the API call
 
 // Manually define exported types
@@ -75,7 +75,7 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
 
   try {
     console.log("[AdvancedSentimentFlow] Attempting to fetch API keys from Firestore service.");
-    const apiKeys: ApiKey[] = await getApiKeys(); 
+    const apiKeys: ApiKey[] = await getApiKeys();
 
     if (!apiKeys || !Array.isArray(apiKeys) || apiKeys.length === 0) { // Check for empty array too
       const errorMsg = "API keys array fetched from Firestore is empty, null, or not an array.";
@@ -154,14 +154,14 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId); 
+    clearTimeout(timeoutId);
 
     console.log(`[AdvancedSentimentFlow] Gemini API response status: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       let errorBody = "Could not parse error body.";
       try {
-        errorBody = await response.text(); 
+        errorBody = await response.text();
       } catch (parseError) {
         // Ignore
       }
@@ -217,7 +217,7 @@ export async function analyzeAdvancedSentiment(input: AdvancedSentimentInput): P
     }
 
   } catch (error) {
-    clearTimeout(timeoutId); 
+    clearTimeout(timeoutId);
     const castError = error as Error;
     let errorMessage = castError.message || "An unknown error occurred.";
     if (castError.name === 'AbortError' || errorMessage.includes('timed out') || (castError instanceof DOMException && castError.name === 'AbortError')) {
