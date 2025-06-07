@@ -854,7 +854,7 @@ export default function AnalyzeExternalRedditUserPage() {
       )}
 
       {currentDisplayResults.length > 0 && (
-        <div className="space-y-8 mt-8">
+        <div className="space-y-8 mt-8 overflow-x-auto">
           {currentDisplayResults.map((result, index) => {
             const isInitialLoading = result.isLoading && !result.isRefreshing && (!result.data || result.data._placeholder);
             const isActualRefreshing = result.isRefreshing;
@@ -885,7 +885,7 @@ export default function AnalyzeExternalRedditUserPage() {
               statusIconColor = "text-green-500";
             }
             
-             const combinedItemsUnfiltered = (result.data && !result.data._placeholder) ? [
+            const combinedItemsUnfiltered = (result.data && !result.data._placeholder) ? [
               ...(result.data.fetchedPostsDetails || []),
               ...(result.data.fetchedCommentsDetails || []),
             ].sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()) : [];
