@@ -13,7 +13,7 @@ import { z } from 'genkit';
 import type { Mention, User } from '@/types';
 import { analyzeAdvancedSentiment } from '@/ai/flows/advanced-sentiment-flow';
 import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service';
-import { getRedditAccessToken } from '@/lib/reddit-api-service';
+import { getRedditAccessToken } from '@/lib/reddit-api-service'; // Keep for potential future use, but won't be called
 import { getUserById } from '@/lib/user-service';
 import {
   GatherGlobalMentionsInputSchema,
@@ -86,14 +86,14 @@ interface HackerNewsAlgoliaResponse {
   hitsPerPage: number;
 }
 
-
+// fetchRedditMentions is kept for potential future re-integration but will not be called by the current flow logic.
 async function fetchRedditMentions(keywords: string[], token: string, userAgent: string): Promise<Partial<Mention>[]> {
   if (!keywords.length) return [];
   const mentions: Partial<Mention>[] = [];
   const queryString = keywords.map(kw => `"${kw}"`).join(' OR ');
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=25&sort=new&t=week&type=t3&restrict_sr=false&include_over_18=on`;
 
-  console.log(`[RedditMentions] Fetching from: ${searchUrl.substring(0, 150)}... for keywords: ${keywords.join(', ')}`);
+  console.log(`[RedditMentions (Currently Inactive in Global Flow)] Fetching from: ${searchUrl.substring(0, 150)}... for keywords: ${keywords.join(', ')}`);
 
   try {
     const response = await fetch(searchUrl, {
@@ -103,23 +103,23 @@ async function fetchRedditMentions(keywords: string[], token: string, userAgent:
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => `Status: ${response.status}`);
-      console.error(`[RedditMentions] API Error (${response.status}): ${errorText}`);
+      console.error(`[RedditMentions (Currently Inactive in Global Flow)] API Error (${response.status}): ${errorText}`);
       return [];
     }
     const responseData: RedditApiResponse = await response.json();
     const rawPosts = (responseData.data?.children || []).filter(child => child.kind === 't3' && child.data);
 
-    console.log(`[RedditMentions] Received ${rawPosts.length} raw posts from API.`);
+    console.log(`[RedditMentions (Currently Inactive in Global Flow)] Received ${rawPosts.length} raw posts from API.`);
     for (const child of rawPosts) {
       const post = child.data;
       const matchedKeyword = keywords.find(kw =>
         (post.title?.toLowerCase().includes(kw.toLowerCase()) || post.selftext?.toLowerCase().includes(kw.toLowerCase()))
       );
       if (!matchedKeyword) {
-        console.log(`[RedditMentions] Post ID ${post.id} (Title: "${post.title?.substring(0,30)}...") did not match any keyword. Skipping.`);
+        console.log(`[RedditMentions (Currently Inactive in Global Flow)] Post ID ${post.id} (Title: "${post.title?.substring(0,30)}...") did not match any keyword. Skipping.`);
         continue;
       }
-      console.log(`[RedditMentions] Post ID ${post.id} matched keyword "${matchedKeyword}". Adding to list.`);
+      console.log(`[RedditMentions (Currently Inactive in Global Flow)] Post ID ${post.id} matched keyword "${matchedKeyword}". Adding to list.`);
 
       mentions.push({
         id: `reddit_${post.name}`,
@@ -133,11 +133,12 @@ async function fetchRedditMentions(keywords: string[], token: string, userAgent:
       });
     }
   } catch (error) {
-    console.error(`[RedditMentions] Exception: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`[RedditMentions (Currently Inactive in Global Flow)] Exception: ${error instanceof Error ? error.message : String(error)}`);
   }
-  console.log(`[RedditMentions] Fetched ${mentions.length} potential mentions matching keywords.`);
+  console.log(`[RedditMentions (Currently Inactive in Global Flow)] Fetched ${mentions.length} potential mentions matching keywords.`);
   return mentions;
 }
+
 
 async function fetchHackerNewsMentions(keywords: string[]): Promise<Partial<Mention>[]> {
   if (!keywords.length) return [];
@@ -219,9 +220,10 @@ const lpuMockTweets: MockTweetExample[] = [
   }
 ];
 
+// fetchTwitterMentionsMock is kept for potential future re-integration but will not be called by the current flow logic.
 function fetchTwitterMentionsMock(keywords: string[]): Partial<Mention>[] {
   if (!keywords.length) return [];
-  console.log(`[TwitterMentionsMock] Simulating fetch for keywords: ${keywords.join(', ')}`);
+  console.log(`[TwitterMentionsMock (Currently Inactive in Global Flow)] Simulating fetch for keywords: ${keywords.join(', ')}`);
   const outputMentions: Partial<Mention>[] = [];
   let mockIdCounter = Date.now();
 
@@ -257,7 +259,7 @@ function fetchTwitterMentionsMock(keywords: string[]): Partial<Mention>[] {
       });
     }
   });
-  console.log(`[TwitterMentionsMock] Generated ${outputMentions.length} mock tweets (pre-slice).`);
+  console.log(`[TwitterMentionsMock (Currently Inactive in Global Flow)] Generated ${outputMentions.length} mock tweets (pre-slice).`);
   return outputMentions.slice(0, 5); // Cap total mock tweets
 }
 
@@ -355,44 +357,41 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
 
     let allPotentialMentionsPartial: Partial<Mention>[] = [];
 
-    // 1. Fetch from Reddit
-    console.log('[GatherGlobalMentionsFlow] Starting Reddit fetch...');
-    const redditAuth = await getRedditAccessToken();
-    let redditMentions: Partial<Mention>[] = [];
-    if ('token' in redditAuth) {
-      redditMentions = await fetchRedditMentions(keywords, redditAuth.token, redditAuth.userAgent);
-      allPotentialMentionsPartial.push(...redditMentions);
-      console.log(`[GatherGlobalMentionsFlow] Reddit fetch complete. Found ${redditMentions.length} mentions.`);
-    } else {
-      errors.push(`Reddit Auth Error: ${redditAuth.error}`);
-      console.error(`[GatherGlobalMentionsFlow] Reddit Auth Error: ${redditAuth.error}`);
-    }
-
-    // 2. Fetch from Hacker News
+    // 1. Fetch from Hacker News (as a forum/community example)
     console.log('[GatherGlobalMentionsFlow] Starting Hacker News fetch...');
     const hnMentions = await fetchHackerNewsMentions(keywords);
     allPotentialMentionsPartial.push(...hnMentions);
     console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions.`);
 
-    // 3. Fetch from Twitter/X (Mock)
-    console.log('[GatherGlobalMentionsFlow] Starting Twitter/X (Mock) fetch...');
-    const twitterMentions = fetchTwitterMentionsMock(keywords);
-    allPotentialMentionsPartial.push(...twitterMentions);
-    console.log(`[GatherGlobalMentionsFlow] Twitter/X (Mock) fetch complete. Found ${twitterMentions.length} mentions.`);
-
-    // 4. Fetch from Google News (Mock)
+    // 2. Fetch from Google News (Mock - for news channels)
     console.log('[GatherGlobalMentionsFlow] Starting Google News (Mock) fetch...');
     const googleNewsMentions = fetchGoogleNewsMentionsMock(keywords);
     allPotentialMentionsPartial.push(...googleNewsMentions);
     console.log(`[GatherGlobalMentionsFlow] Google News (Mock) fetch complete. Found ${googleNewsMentions.length} mentions.`);
 
-    // 5. Fetch from Web Mentions (Mock)
+    // 3. Fetch from Web Mentions (Mock - for blogs, general forums, webpages)
     console.log('[GatherGlobalMentionsFlow] Starting Web Mentions (Mock) fetch...');
     const webMentions = fetchWebMentionsMock(keywords);
     allPotentialMentionsPartial.push(...webMentions);
     console.log(`[GatherGlobalMentionsFlow] Web Mentions (Mock) fetch complete. Found ${webMentions.length} mentions.`);
 
-    console.log(`[GatherGlobalMentionsFlow] Counts per platform: Reddit=${redditMentions.length}, HN=${hnMentions.length}, TwitterMock=${twitterMentions.length}, GNewsMock=${googleNewsMentions.length}, WebMock=${webMentions.length}`);
+    // Reddit and Twitter/X are now excluded from this specific flow.
+    // const redditAuth = await getRedditAccessToken();
+    // let redditMentions: Partial<Mention>[] = [];
+    // if ('token' in redditAuth) {
+    //   redditMentions = await fetchRedditMentions(keywords, redditAuth.token, redditAuth.userAgent);
+    //   allPotentialMentionsPartial.push(...redditMentions);
+    //   console.log(`[GatherGlobalMentionsFlow] Reddit fetch complete. Found ${redditMentions.length} mentions.`);
+    // } else {
+    //   errors.push(`Reddit Auth Error: ${redditAuth.error}`);
+    //   console.error(`[GatherGlobalMentionsFlow] Reddit Auth Error: ${redditAuth.error}`);
+    // }
+    // const twitterMentions = fetchTwitterMentionsMock(keywords);
+    // allPotentialMentionsPartial.push(...twitterMentions);
+    // console.log(`[GatherGlobalMentionsFlow] Twitter/X (Mock) fetch complete. Found ${twitterMentions.length} mentions.`);
+
+
+    console.log(`[GatherGlobalMentionsFlow] Counts per platform: HN=${hnMentions.length}, GNewsMock=${googleNewsMentions.length}, WebMock=${webMentions.length}`);
     console.log(`[GatherGlobalMentionsFlow] Total potential mentions from all API sources BEFORE deduplication by ID: ${allPotentialMentionsPartial.length}`);
 
 
@@ -508,17 +507,20 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
                 const errorMsg = e instanceof Error ? e.message : String(e);
                 errors.push(`Exception during sentiment analysis for mention "${partialMentionToAnalyze.id}": ${errorMsg}`);
                 console.error(`[GatherGlobalMentionsFlow] CRITICAL EXCEPTION during sentiment analysis for mention "${partialMentionToAnalyze.id}" (Title: ${partialMentionToAnalyze.title?.substring(0,30)}...):`, e);
-                mentionsWithUpdatedSentiment.push({ // Still add it so it gets updated in DB, even if with 'unknown'
+                // Ensure all fields are present even if defaulting sentiment
+                mentionsWithUpdatedSentiment.push({
                     userId: userId,
                     id: partialMentionToAnalyze.id!,
                     platform: partialMentionToAnalyze.platform || 'Other',
-                    source: partialMentionToAnalyze.source || 'Unknown',
-                    title: partialMentionToAnalyze.title || 'No Title',
-                    excerpt: partialMentionToAnalyze.excerpt || '',
+                    source: partialMentionToAnalyze.source || 'Unknown Source',
+                    title: partialMentionToAnalyze.title || 'No Title Provided',
+                    excerpt: partialMentionToAnalyze.excerpt || 'No Excerpt Provided',
                     url: partialMentionToAnalyze.url || '#',
-                    timestamp: partialMentionToAnalyze.timestamp || new Date().toISOString(),
+                    timestamp: (partialMentionToAnalyze.timestamp instanceof Date)
+                                ? partialMentionToAnalyze.timestamp.toISOString()
+                                : String(partialMentionToAnalyze.timestamp || new Date().toISOString()),
                     matchedKeyword: partialMentionToAnalyze.matchedKeyword || 'unknown',
-                    sentiment: 'unknown',
+                    sentiment: 'unknown', // Default on critical error
                     fetchedAt: new Date().toISOString(),
                 } as Mention);
             }
@@ -553,7 +555,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log("======================================================================");
     return {
       totalMentionsFetched: uniqueApiMentionsFromSources.length,
-      newMentionsStored: totalItemsWrittenOrUpdated,
+      newMentionsStored: totalItemsWrittenOrUpdated, // This reflects items confirmed written in either phase
       errors,
     };
   }
@@ -581,3 +583,4 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
     };
   }
 }
+

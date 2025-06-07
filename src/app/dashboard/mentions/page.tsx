@@ -18,11 +18,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 const PlatformIcon: React.FC<{ platform: Mention['platform'] }> = ({ platform }) => {
   switch (platform) {
-    case 'Reddit':
+    case 'Reddit': // Kept for potential old data, but new flow won't fetch for Global Mentions
       return <MessageSquareText className="h-4 w-4 text-orange-500" />;
     case 'Hacker News':
       return <Rss className="h-4 w-4 text-red-600" />;
-    case 'Twitter/X':
+    case 'Twitter/X': // Kept for potential old data, but new flow won't fetch for Global Mentions
       return <TwitterIcon className="h-4 w-4 text-blue-500" />;
     case 'Google News':
       return <Globe className="h-4 w-4 text-green-500" />;
@@ -163,7 +163,7 @@ export default function MentionsAnalyticsPage() {
       return;
     }
     setIsRefreshing(true);
-    toast({ title: "Refreshing Global Mentions...", description: "Fetching latest mentions. This may take a few moments." });
+    toast({ title: "Refreshing Global Mentions...", description: "Fetching latest mentions from news, blogs, forums, and websites. This may take a few moments." });
     try {
       const result: GatherGlobalMentionsOutput = await gatherGlobalMentions({ userId: user.id });
 
@@ -187,14 +187,14 @@ export default function MentionsAnalyticsPage() {
   return (
     <DataTableShell
       title="Global Mentions Tracker"
-      description="Monitor mentions of your keywords across news, blogs, forums, webpages, and other websites."
+      description="Monitor mentions of your keywords across news, blogs, forums, and general webpages."
     >
       <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <Alert variant="default" className="w-full sm:w-auto sm:max-w-md bg-primary/10 border-primary/30">
             <Info className="h-4 w-4 text-primary" />
-            <AlertTitle className="text-primary font-semibold">Beta Feature</AlertTitle>
+            <AlertTitle className="text-primary font-semibold">Focus Area</AlertTitle>
             <AlertDescription className="text-primary/80 text-xs">
-            This tracker searches Reddit (live), Hacker News (live), and includes mock data for Twitter/X, Google News (news), and general Web Mentions (blogs, forums, webpages). More live sources coming soon! Refresh may take time.
+            This tracker focuses on Hacker News (live), and includes mock data for Google News (news channels), and general Web Mentions (blogs, forums, webpages). More live sources coming soon! Refresh may take time.
             </AlertDescription>
         </Alert>
         <Button onClick={handleRefreshMentions} disabled={isRefreshing || isLoadingMentions || noKeywordsAssigned} className="w-full sm:w-auto">
@@ -221,3 +221,4 @@ export default function MentionsAnalyticsPage() {
     </DataTableShell>
   );
 }
+
