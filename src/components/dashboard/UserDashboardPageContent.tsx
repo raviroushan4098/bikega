@@ -9,7 +9,7 @@ import UserRecentYouTubeActivity from './UserRecentYouTubeActivity';
 import UserTrendingMentions from './UserTrendingMentions';
 import { getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
 import { getFilteredData, mockTweets, mockMentions } from '@/lib/mock-data';
-import { searchYouTubeVideosByKeywords } from '@/lib/youtube-video-service'; // New import
+import { getStoredYouTubeMentions } from '@/lib/youtube-video-service';
 import { useToast } from '@/hooks/use-toast';
 
 interface UserDashboardPageContentProps {
@@ -26,7 +26,6 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
   
   const [isLoadingRedditCount, setIsLoadingRedditCount] = useState<boolean>(false);
 
-  // State for YouTube Mentions
   const [youtubeMentions, setYoutubeMentions] = useState<YouTubeMentionItem[]>([]);
   const [isLoadingYoutubeMentions, setIsLoadingYoutubeMentions] = useState<boolean>(false);
   const [youtubeMentionsError, setYoutubeMentionsError] = useState<string | null>(null);
@@ -66,21 +65,15 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
   }, [user, toast]);
 
   useEffect(() => {
-    const fetchUserYouTubeMentions = async () => {
-      if (user && user.id && user.assignedKeywords && user.assignedKeywords.length > 0) {
+    const fetchUserYouTubeMentionsFromFirestore = async () => {
+      if (user && user.id) {
         setIsLoadingYoutubeMentions(true);
         setYoutubeMentionsError(null);
         try {
-          // Pass user.id to save mentions for this user
-          const result = await searchYouTubeVideosByKeywords(user.assignedKeywords, user.id);
-          if (result.error) {
-            setYoutubeMentionsError(result.error);
-            setYoutubeMentions([]);
-          } else {
-            setYoutubeMentions(result.mentions);
-          }
+          const storedMentions = await getStoredYouTubeMentions(user.id);
+          setYoutubeMentions(storedMentions);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : "Failed to fetch YouTube mentions for dashboard.";
+          const msg = error instanceof Error ? error.message : "Failed to load YouTube mentions for dashboard.";
           setYoutubeMentionsError(msg);
           setYoutubeMentions([]);
         } finally {
@@ -94,7 +87,7 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
     };
 
     if (user?.role === 'user') {
-      fetchUserYouTubeMentions();
+      fetchUserYouTubeMentionsFromFirestore();
     }
   }, [user]);
 
@@ -131,4 +124,3 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
 };
 
 export default UserDashboardPageContent;
-

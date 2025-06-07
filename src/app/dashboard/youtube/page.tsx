@@ -7,7 +7,7 @@ import { GenericDataTable, renderImageCell } from '@/components/analytics/generi
 import { useAuth } from '@/contexts/auth-context';
 import type { ColumnConfig, YoutubeVideo, User as AuthUserType, YouTubeMentionItem } from '@/types';
 import { getUsers, assignYoutubeUrlToUser, removeYoutubeUrlFromUser, getUserById } from '@/lib/user-service';
-import { fetchBatchVideoDetailsFromYouTubeAPI, searchYouTubeVideosByKeywords } from '@/lib/youtube-video-service';
+import { fetchBatchVideoDetailsFromYouTubeAPI, searchYouTubeVideosByKeywords, getStoredYouTubeMentions, addYouTubeMentionsBatch } from '@/lib/youtube-video-service';
 import {
   Select,
   SelectContent,
@@ -31,11 +31,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, Eye as ViewsIcon, ThumbsUp, MessageSquare, RefreshCw } from 'lucide-react';
+import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import YouTubeAnalyticsSummary from '@/components/dashboard/YouTubeAnalyticsSummary';
-import YouTubeMentionsCard from '@/components/dashboard/YouTubeMentionsCard'; // New import
+import YouTubeMentionsCard from '@/components/dashboard/YouTubeMentionsCard';
 
 const addVideoSchema = z.object({
   url: z.string().url({ message: "Please enter a valid YouTube URL." }),
@@ -57,9 +57,8 @@ export default function YouTubeAnalyticsPage() {
   const [isAddVideoDialogOpen, setIsAddVideoDialogOpen] = useState(false);
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false);
 
-  // State for YouTube Mentions
   const [youtubeMentions, setYoutubeMentions] = useState<YouTubeMentionItem[]>([]);
-  const [isLoadingMentions, setIsLoadingMentions] = useState<boolean>(false);
+  const [isLoadingMentions, setIsLoadingMentions] = useState<boolean>(true); // Start true for initial load
   const [mentionsError, setMentionsError] = useState<string | null>(null);
   const [keywordsForMentions, setKeywordsForMentions] = useState<string[]>([]);
 
@@ -80,7 +79,7 @@ export default function YouTubeAnalyticsPage() {
     return videoDetails;
   }, []);
 
-  const fetchAndSetVideos = useCallback(async () => {
+  const fetchAndSetAssignedVideos = useCallback(async () => {
     if (authLoading || !currentUser) {
       setDisplayedVideos([]);
       setIsLoadingPageData(false);
@@ -91,29 +90,24 @@ export default function YouTubeAnalyticsPage() {
 
     try {
       if (currentUser.role === 'admin') {
-        if (isLoadingUsers && selectedUserIdForFilter === 'all' && allUsersForAdmin.length === 0) return;
+        if (isLoadingUsers && selectedUserIdForFilter === 'all' && allUsersForAdmin.length === 0) { setIsLoadingPageData(false); return; }
         const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
         const urlsToFetch: string[] = [];
 
-        if (selectedUserIdForFilter === 'all') {
-          if (!isLoadingUsers && allUsersForAdmin.length === 0) { setDisplayedVideos([]); setIsLoadingPageData(false); return; }
-          allUsersForAdmin.forEach(u => {
-            u.assignedYoutubeUrls?.forEach(url => {
-              const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
-              if (videoId) { if (!videoIdToAssignmentMap[videoId]) { urlsToFetch.push(url); videoIdToAssignmentMap[videoId] = { userId: u.id, userName: u.name }; } }
-            });
+        const usersToProcess = selectedUserIdForFilter === 'all' 
+          ? allUsersForAdmin 
+          : selectedUserIdForFilter 
+            ? [allUsersForAdmin.find(u => u.id === selectedUserIdForFilter) || await getUserById(selectedUserIdForFilter)].filter(Boolean) as AuthUserType[]
+            : [];
+        
+        usersToProcess.forEach(u => {
+          u.assignedYoutubeUrls?.forEach(url => {
+            const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
+            if (videoId) { if (!videoIdToAssignmentMap[videoId]) { urlsToFetch.push(url); videoIdToAssignmentMap[videoId] = { userId: u.id, userName: u.name }; } }
           });
-        } else if (selectedUserIdForFilter) {
-          const userDoc = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter) || await getUserById(selectedUserIdForFilter);
-          if (userDoc && userDoc.assignedYoutubeUrls && userDoc.assignedYoutubeUrls.length > 0) {
-            userDoc.assignedYoutubeUrls.forEach(url => {
-              const videoId = new URL(url).searchParams.get('v') || new URL(url).pathname.split('/').pop();
-              if (videoId) { urlsToFetch.push(url); videoIdToAssignmentMap[videoId] = { userId: userDoc.id, userName: userDoc.name }; }
-            });
-          }
-        }
+        });
         if (urlsToFetch.length > 0) fetchedVideos = await processAndFetchVideoDetails(urlsToFetch, videoIdToAssignmentMap); else fetchedVideos = [];
-      } else { // Regular user view
+      } else { 
         const videoIdToAssignmentMap: Record<string, { userId: string, userName?: string }> = {};
         const urlsToFetch: string[] = [];
         if (currentUser.assignedYoutubeUrls && currentUser.assignedYoutubeUrls.length > 0) {
@@ -126,67 +120,134 @@ export default function YouTubeAnalyticsPage() {
       }
       setDisplayedVideos(fetchedVideos);
     } catch (error) {
-      console.error("[YouTubePage] Error fetching or processing video data:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to load YouTube video data." });
+      console.error("[YouTubePage] Error fetching or processing assigned video data:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load assigned YouTube video data." });
       setDisplayedVideos([]);
     } finally {
         setIsLoadingPageData(false);
     }
   }, [currentUser, authLoading, selectedUserIdForFilter, processAndFetchVideoDetails, toast, allUsersForAdmin, isLoadingUsers]);
 
-  const fetchYouTubeMentions = useCallback(async () => {
+  const loadMentionsFromFirestore = useCallback(async (userIdForMentions: string) => {
+    setIsLoadingMentions(true);
+    setMentionsError(null);
+    try {
+      const storedMentions = await getStoredYouTubeMentions(userIdForMentions);
+      setYoutubeMentions(storedMentions);
+      console.log(`[YouTubePage] Loaded ${storedMentions.length} mentions from Firestore for user ${userIdForMentions}`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to load stored YouTube mentions.";
+      setMentionsError(msg);
+      setYoutubeMentions([]);
+      console.error(`[YouTubePage] Error loading mentions from Firestore for user ${userIdForMentions}:`, msg);
+    } finally {
+      setIsLoadingMentions(false);
+    }
+  }, []);
+  
+  const handleRefreshMentions = useCallback(async () => {
+    let userIdForMentions: string | undefined;
     let keywordsToSearch: string[] = [];
-    let userIdForSavingMentions: string | undefined;
 
-    if (currentUser?.role === 'user' && currentUser.assignedKeywords) {
+    if (currentUser?.role === 'user' && currentUser.id && currentUser.assignedKeywords) {
+      userIdForMentions = currentUser.id;
       keywordsToSearch = currentUser.assignedKeywords;
-      userIdForSavingMentions = currentUser.id;
     } else if (currentUser?.role === 'admin' && selectedUserIdForFilter && selectedUserIdForFilter !== 'all') {
       const selectedUser = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter);
-      if (selectedUser && selectedUser.assignedKeywords) {
+      if (selectedUser && selectedUser.id && selectedUser.assignedKeywords) {
+        userIdForMentions = selectedUser.id;
         keywordsToSearch = selectedUser.assignedKeywords;
-        userIdForSavingMentions = selectedUser.id;
       }
-    } else if (currentUser?.role === 'admin' && selectedUserIdForFilter === 'all') {
-      setYoutubeMentions([]);
-      setKeywordsForMentions([]);
-      setIsLoadingMentions(false);
-      setMentionsError(null);
-      return;
     }
 
     setKeywordsForMentions(keywordsToSearch);
 
-    if (keywordsToSearch.length === 0) {
-      setYoutubeMentions([]);
-      setIsLoadingMentions(false);
-      setMentionsError(null);
+    if (!userIdForMentions || keywordsToSearch.length === 0) {
+      toast({ title: "Cannot Refresh", description: "No user selected or no keywords assigned for mentions search.", variant: "default" });
+      setYoutubeMentions([]); // Clear mentions if no keywords/user
       return;
     }
 
     setIsLoadingMentions(true);
     setMentionsError(null);
+    toast({ title: "Refreshing YouTube Mentions...", description: `Searching for keywords: ${keywordsToSearch.join(', ')}` });
+
     try {
-      // Pass userIdForSavingMentions to the service function
-      const result = await searchYouTubeVideosByKeywords(keywordsToSearch, userIdForSavingMentions);
-      if (result.error) {
-        setMentionsError(result.error);
-        setYoutubeMentions([]);
-      } else {
-        setYoutubeMentions(result.mentions);
+      const apiResult = await searchYouTubeVideosByKeywords(keywordsToSearch);
+      if (apiResult.error) {
+        setMentionsError(apiResult.error);
+        // Don't clear existing mentions on API error, user might want to see old data
+        toast({ title: "API Error", description: `Failed to fetch from YouTube API: ${apiResult.error}`, variant: "destructive" });
+        return;
       }
+      
+      const apiMentions = apiResult.mentions;
+      const storedMentions = await getStoredYouTubeMentions(userIdForMentions);
+      const storedMentionIds = new Set(storedMentions.map(m => m.id));
+      
+      const newMentionsToSave = apiMentions.filter(apiMention => !storedMentionIds.has(apiMention.id));
+
+      if (newMentionsToSave.length > 0) {
+        console.log(`[YouTubePage] Found ${newMentionsToSave.length} new mentions from API to save for user ${userIdForMentions}.`);
+        // Add userId to each new mention before saving
+        const newMentionsWithUserId = newMentionsToSave.map(m => ({ ...m, userId: userIdForMentions! }));
+        const saveResult = await addYouTubeMentionsBatch(userIdForMentions, newMentionsWithUserId);
+        if (saveResult.errorCount > 0) {
+          toast({ title: "Save Error", description: `Failed to save some new mentions: ${saveResult.errors.join(', ')}`, variant: "destructive" });
+        } else {
+          toast({ title: "Mentions Updated", description: `${saveResult.successCount} new mentions saved.` });
+        }
+      } else {
+        toast({ title: "No New Mentions", description: "No new YouTube mentions found for the given keywords." });
+      }
+      // Always reload from Firestore after refresh operation to show the true state
+      await loadMentionsFromFirestore(userIdForMentions);
+
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Failed to fetch YouTube mentions.";
+      const msg = error instanceof Error ? error.message : "Failed to refresh YouTube mentions.";
       setMentionsError(msg);
-      setYoutubeMentions([]);
+      toast({ title: "Refresh Error", description: msg, variant: "destructive" });
     } finally {
       setIsLoadingMentions(false);
     }
-  }, [currentUser, selectedUserIdForFilter, allUsersForAdmin]);
+  }, [currentUser, selectedUserIdForFilter, allUsersForAdmin, toast, loadMentionsFromFirestore]);
 
 
-  useEffect(() => { fetchAndSetVideos(); fetchYouTubeMentions(); }, [fetchAndSetVideos, fetchYouTubeMentions]);
-  useEffect(() => { if (currentUser?.role === 'admin' && !isLoadingUsers && allUsersForAdmin.length === 0) { setIsLoadingUsers(true); getUsers().then(users => { setAllUsersForAdmin(users); }).catch(() => toast({ variant: "destructive", title: "Error", description: "Failed to fetch user list." })).finally(() => setIsLoadingUsers(false)); } else if (currentUser?.role === 'admin' && allUsersForAdmin.length > 0 && isLoadingUsers) { setIsLoadingUsers(false); } }, [currentUser, toast, allUsersForAdmin.length, isLoadingUsers]);
+  useEffect(() => {
+    fetchAndSetAssignedVideos();
+    
+    // Determine user and keywords for initial Firestore mentions load
+    let userIdForInitialMentionsLoad: string | undefined;
+    let currentKeywords: string[] = [];
+
+    if (currentUser?.role === 'user' && currentUser.id) {
+      userIdForInitialMentionsLoad = currentUser.id;
+      currentKeywords = currentUser.assignedKeywords || [];
+    } else if (currentUser?.role === 'admin' && selectedUserIdForFilter && selectedUserIdForFilter !== 'all') {
+      userIdForInitialMentionsLoad = selectedUserIdForFilter;
+      const user = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter);
+      currentKeywords = user?.assignedKeywords || [];
+    }
+    
+    setKeywordsForMentions(currentKeywords); // Update keywords for display in card
+
+    if (userIdForInitialMentionsLoad) {
+      loadMentionsFromFirestore(userIdForInitialMentionsLoad);
+    } else {
+      setYoutubeMentions([]); // Clear if no user selected (e.g. admin 'all' view)
+      setIsLoadingMentions(false);
+    }
+
+  }, [fetchAndSetAssignedVideos, loadMentionsFromFirestore, currentUser, selectedUserIdForFilter, allUsersForAdmin]);
+
+  useEffect(() => { 
+    if (currentUser?.role === 'admin' && !isLoadingUsers && allUsersForAdmin.length === 0) { 
+      setIsLoadingUsers(true); 
+      getUsers().then(users => { setAllUsersForAdmin(users); }).catch(() => toast({ variant: "destructive", title: "Error", description: "Failed to fetch user list." })).finally(() => setIsLoadingUsers(false)); 
+    } else if (currentUser?.role === 'admin' && allUsersForAdmin.length > 0 && isLoadingUsers) { 
+      setIsLoadingUsers(false); 
+    } 
+  }, [currentUser, toast, allUsersForAdmin.length, isLoadingUsers]);
 
   async function onSubmitAddVideo(data: AddVideoFormValues) {
     setIsSubmittingVideo(true);
@@ -198,8 +259,11 @@ export default function YouTubeAnalyticsPage() {
       if (result.success) {
         toast({ title: "Video Assigned", description: `Video URL assigned.` });
         addVideoForm.reset(); setIsAddVideoDialogOpen(false);
-        setAllUsersForAdmin(prev => prev.map(u => u.id === data.assignedToUserId ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), canonicalUrl].filter((v,i,a)=>a.indexOf(v)===i) } : u));
-        await fetchAndSetVideos();
+        // Optimistically update admin's local state of users to reflect new URL assignment
+        if (currentUser?.role === 'admin') {
+          setAllUsersForAdmin(prev => prev.map(u => u.id === data.assignedToUserId ? { ...u, assignedYoutubeUrls: [...(u.assignedYoutubeUrls || []), canonicalUrl].filter((v,i,a)=>a.indexOf(v)===i) } : u));
+        }
+        await fetchAndSetAssignedVideos(); // Re-fetch assigned videos to update table
       } else { toast({ variant: "destructive", title: "Assignment Failed", description: result.error || "Could not assign video." }); }
     } catch (error) { let m = error instanceof Error ? error.message : "An unexpected error."; if (error instanceof Error && error.message.includes("Invalid URL")) m = "Invalid YouTube URL."; toast({ variant: "destructive", title: "Error", description: m });
     } finally { setIsSubmittingVideo(false); }
@@ -211,8 +275,10 @@ export default function YouTubeAnalyticsPage() {
       const result = await removeYoutubeUrlFromUser(videoToRemove.assignedToUserId, videoToRemove.url);
       if (result.success) {
         toast({ title: "Video Removed", description: `Video unassigned.` });
-        setAllUsersForAdmin(prev => prev.map(u => u.id === videoToRemove.assignedToUserId ? { ...u, assignedYoutubeUrls: (u.assignedYoutubeUrls || []).filter(url => url !== videoToRemove.url) } : u));
-        await fetchAndSetVideos();
+         if (currentUser?.role === 'admin') {
+          setAllUsersForAdmin(prev => prev.map(u => u.id === videoToRemove.assignedToUserId ? { ...u, assignedYoutubeUrls: (u.assignedYoutubeUrls || []).filter(url => url !== videoToRemove.url) } : u));
+        }
+        await fetchAndSetAssignedVideos();
       } else { toast({ variant: "destructive", title: "Removal Failed", description: result.error || "Could not unassign." }); }
     } catch (e) { toast({ variant: "destructive", title: "Error", description: (e as Error).message || "Unexpected error." }); }
   };
@@ -260,7 +326,7 @@ export default function YouTubeAnalyticsPage() {
         mentions={youtubeMentions}
         isLoading={isLoadingMentions}
         error={mentionsError}
-        onRefresh={fetchYouTubeMentions}
+        onRefresh={handleRefreshMentions} // Pass the refresh handler
         keywordsUsed={keywordsForMentions}
       />
       <YouTubeAnalyticsSummary videos={displayedVideos} />
@@ -303,4 +369,3 @@ export default function YouTubeAnalyticsPage() {
     </div>
   );
 }
-

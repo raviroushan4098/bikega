@@ -3,17 +3,16 @@
 
 import type { YoutubeVideo, YouTubeMentionItem } from '@/types';
 import { getApiKeys } from './api-key-service';
-import { db } from './firebase'; // Added Firestore db import
-import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'; // Added Firestore imports
+import { db } from './firebase';
+import { collection, doc, writeBatch, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
 
 const YOUTUBE_API_KEY_SERVICE_NAME = "YouTube Data API Key";
 const FIRESTORE_YOUTUBE_MENTIONS_COLLECTION = 'youtube_mentions';
 const FIRESTORE_MENTIONS_SUBCOLLECTION = 'mentions';
 
 
-// Interface for the raw API response for video details
 interface YouTubeApiVideoItem {
-  id: string | { videoId: string }; // id can be string (for videos.list) or object (for search.list)
+  id: string | { videoId: string };
   snippet: {
     title: string;
     description: string;
@@ -25,7 +24,7 @@ interface YouTubeApiVideoItem {
     channelTitle: string;
     publishedAt: string;
   };
-  statistics?: { // Only available from videos.list, not search.list
+  statistics?: {
     likeCount?: string;
     commentCount?: string;
     viewCount?: string;
@@ -43,7 +42,6 @@ interface YouTubeApiSearchResponse {
 }
 
 
-// This function is now a local helper, not exported, so it's not treated as a Server Action.
 function extractYouTubeVideoId(url: string): string | null {
   let videoId: string | null = null;
   try {
@@ -86,7 +84,7 @@ export async function fetchVideoDetailsFromYouTubeAPI(
     url: videoUrlOrId.startsWith('http') ? videoUrlOrId : `https://www.youtube.com/watch?v=${videoId}`,
     assignedToUserId: assignedToUserId,
     assignedToUserName: assignedToUserName,
-    sentiment: 'neutral', // Default placeholder sentiment
+    sentiment: 'neutral',
   };
 
   if (!youtubeApiKeyEntry || !youtubeApiKeyEntry.keyValue) {
@@ -182,7 +180,7 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
       channelTitle: 'N/A',
       assignedToUserId: assignment.userId,
       assignedToUserName: assignment.userName,
-      sentiment: 'neutral', // Default placeholder sentiment
+      sentiment: 'neutral',
       dataAiHint: hint,
     };
   };
@@ -193,7 +191,7 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
   }
   const apiKey = youtubeApiKeyEntry.keyValue;
 
-  const CHUNK_SIZE = 50; // YouTube API allows up to 50 IDs per request for videos.list
+  const CHUNK_SIZE = 50;
 
   for (let i = 0; i < videoIds.length; i += CHUNK_SIZE) {
     const chunk = videoIds.slice(i, i + CHUNK_SIZE);
@@ -236,12 +234,11 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
             viewCount: statistics?.viewCount ? parseInt(statistics.viewCount, 10) : 0,
             assignedToUserId: assignment.userId,
             assignedToUserName: assignment.userName,
-            sentiment: 'neutral', // Default placeholder sentiment
+            sentiment: 'neutral',
             dataAiHint: hint.toLowerCase(),
           });
         });
       }
-      // Add placeholders for videos in the chunk that were not found in the API response
       chunk.forEach(videoId => {
         if (!foundIds.has(videoId)) {
           detailedVideos.push(createPlaceholderVideo(videoId, "Not Found", "video notfound"));
@@ -256,7 +253,7 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
   return detailedVideos;
 }
 
-async function addYouTubeMentionsBatch(userId: string, mentions: YouTubeMentionItem[]): Promise<{ successCount: number; errorCount: number; errors: string[] }> {
+export async function addYouTubeMentionsBatch(userId: string, mentions: YouTubeMentionItem[]): Promise<{ successCount: number; errorCount: number; errors: string[] }> {
   if (!userId || typeof userId !== 'string' || userId.trim() === "") {
     const msg = '[youtube-video-service (addYouTubeMentionsBatch)] Invalid or missing userId provided.';
     console.error(msg);
@@ -282,11 +279,10 @@ async function addYouTubeMentionsBatch(userId: string, mentions: YouTubeMentionI
 
     const mentionDocRef = doc(db, FIRESTORE_YOUTUBE_MENTIONS_COLLECTION, userId, FIRESTORE_MENTIONS_SUBCOLLECTION, mention.id);
     
-    // Ensure all fields are present and correctly typed for Firestore
     const mentionDataToSave = {
-      ...mention, // Spread existing properties
-      userId: userId, // Ensure the correct userId is set
-      fetchedAt: serverTimestamp(), // Add server timestamp for when it was fetched/saved
+      ...mention,
+      userId: userId,
+      fetchedAt: serverTimestamp(),
     };
     
     batch.set(mentionDocRef, mentionDataToSave, { merge: true });
@@ -314,8 +310,7 @@ async function addYouTubeMentionsBatch(userId: string, mentions: YouTubeMentionI
 
 
 export async function searchYouTubeVideosByKeywords(
-  keywords: string[],
-  userIdToSaveMentionsFor?: string // Optional: If provided, mentions will be saved for this user
+  keywords: string[]
 ): Promise<{ mentions: YouTubeMentionItem[], error?: string }> {
   if (!keywords || keywords.length === 0) {
     return { mentions: [] };
@@ -332,7 +327,7 @@ export async function searchYouTubeVideosByKeywords(
   const apiKey = youtubeApiKeyEntry.keyValue;
 
   const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR ');
-  const maxResults = 25;
+  const maxResults = 25; // Max results to fetch from API
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&order=date&publishedAfter=${encodeURIComponent(twentyFourHoursAgo)}&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
@@ -354,7 +349,7 @@ export async function searchYouTubeVideosByKeywords(
     if (data.items && data.items.length > 0) {
       for (const item of data.items) {
         const videoId = typeof item.id === 'string' ? item.id : item.id.videoId;
-        if (!videoId) continue; // Skip if videoId is somehow undefined
+        if (!videoId) continue;
         const snippet = item.snippet;
         const titleLower = snippet.title.toLowerCase();
         const descriptionLower = snippet.description.toLowerCase();
@@ -380,25 +375,12 @@ export async function searchYouTubeVideosByKeywords(
             descriptionSnippet: snippet.description.substring(0, 100) + (snippet.description.length > 100 ? '...' : ''),
             matchedKeywords: matchedKws,
             dataAiHint: hint,
+            // userId will be added by the calling function if saving to Firestore
           });
         }
       }
     }
-    console.log(`[youtube-video-service] Found ${fetchedMentions.length} relevant YouTube mentions published in the last 24 hours for keywords: "${keywords.join(', ')}"`);
-
-    // Save to Firestore if userIdToSaveMentionsFor is provided and mentions were found
-    if (userIdToSaveMentionsFor && fetchedMentions.length > 0) {
-      console.log(`[youtube-video-service] Attempting to save ${fetchedMentions.length} mentions for user ID: ${userIdToSaveMentionsFor}`);
-      const saveResult = await addYouTubeMentionsBatch(userIdToSaveMentionsFor, fetchedMentions);
-      if (saveResult.errorCount > 0) {
-        console.warn(`[youtube-video-service] Encountered ${saveResult.errorCount} errors while saving YouTube mentions for user ${userIdToSaveMentionsFor}: ${saveResult.errors.join('; ')}`);
-        // Optionally, append this to the main error to be returned, or just log
-      } else {
-        console.log(`[youtube-video-service] Successfully saved ${saveResult.successCount} YouTube mentions to Firestore for user ${userIdToSaveMentionsFor}.`);
-      }
-    }
-
-
+    console.log(`[youtube-video-service] Found ${fetchedMentions.length} relevant YouTube mentions from API for keywords: "${keywords.join(', ')}"`);
     return { mentions: fetchedMentions };
 
   } catch (error) {
@@ -408,3 +390,46 @@ export async function searchYouTubeVideosByKeywords(
   }
 }
 
+export async function getStoredYouTubeMentions(userId: string): Promise<YouTubeMentionItem[]> {
+  if (!userId || typeof userId !== 'string' || userId.trim() === "") {
+    console.warn('[youtube-video-service (getStoredYouTubeMentions)] Invalid or missing userId provided.');
+    return [];
+  }
+  const mentionsPath = `${FIRESTORE_YOUTUBE_MENTIONS_COLLECTION}/${userId}/${FIRESTORE_MENTIONS_SUBCOLLECTION}`;
+  console.log(`[youtube-video-service (getStoredYouTubeMentions)] Fetching stored YouTube mentions for user ${userId} from '${mentionsPath}'.`);
+  
+  try {
+    const mentionsCollectionRef = collection(db, FIRESTORE_YOUTUBE_MENTIONS_COLLECTION, userId, FIRESTORE_MENTIONS_SUBCOLLECTION);
+    // Order by publishedAt (original video publication) descending to get newest videos first
+    const q = query(mentionsCollectionRef, orderBy('publishedAt', 'desc'));
+    
+    const querySnapshot = await getDocs(q);
+    console.log(`[youtube-video-service (getStoredYouTubeMentions)] Firestore query for user '${userId}' returned ${querySnapshot.docs.length} documents.`);
+
+    const mentions = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        url: data.url || `https://www.youtube.com/watch?v=${docSnap.id}`,
+        title: data.title || 'No Title',
+        thumbnailUrl: data.thumbnailUrl || 'https://placehold.co/120x90.png',
+        channelTitle: data.channelTitle || 'Unknown Channel',
+        publishedAt: data.publishedAt || new Date(0).toISOString(),
+        descriptionSnippet: data.descriptionSnippet || '',
+        matchedKeywords: data.matchedKeywords || [],
+        dataAiHint: data.dataAiHint || 'youtube video',
+        userId: data.userId || userId, // Ensure userId is present
+        // fetchedAt is a serverTimestamp, will be a Timestamp object. Convert if needed for UI.
+      } as YouTubeMentionItem;
+    });
+    return mentions;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[youtube-video-service (getStoredYouTubeMentions)] Error fetching for user ${userId}: ${errorMessage}`, error);
+    // Check for Firestore index error
+    if (error instanceof Error && (error.message.includes('needs an index') || error.message.includes('requires an index'))) {
+        console.error(`[SERVICE] Firestore index missing for '${mentionsPath}', likely on 'publishedAt' (desc). The error message from Firestore should contain a link to create it.`);
+    }
+    return [];
+  }
+}
