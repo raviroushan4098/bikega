@@ -27,6 +27,18 @@ export interface YoutubeVideo {
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
 }
 
+export interface YouTubeMentionItem {
+  id: string; // Video ID
+  url: string; // Link to video
+  title: string;
+  thumbnailUrl: string;
+  channelTitle: string;
+  publishedAt: string; // ISO date string
+  descriptionSnippet?: string; // A short snippet from description showing keyword context
+  matchedKeywords: string[];
+  dataAiHint?: string;
+}
+
 export interface RedditPost {
   id:string; // Fullname from Reddit API (e.g., t3_xxxxxx or t1_yyyyyy)
   sno?: number; // Client-side serial number for table display

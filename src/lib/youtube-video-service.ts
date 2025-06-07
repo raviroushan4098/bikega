@@ -1,30 +1,42 @@
 
 'use server';
 
-import type { YoutubeVideo } from '@/types';
+import type { YoutubeVideo, YouTubeMentionItem } from '@/types';
 import { getApiKeys } from './api-key-service';
 
 const YOUTUBE_API_KEY_SERVICE_NAME = "YouTube Data API Key";
 
 // Interface for the raw API response for video details
 interface YouTubeApiVideoItem {
-  id: string;
+  id: string | { videoId: string }; // id can be string (for videos.list) or object (for search.list)
   snippet: {
     title: string;
+    description: string; 
     thumbnails: {
       default?: { url: string };
       medium?: { url: string };
       high?: { url: string };
     };
     channelTitle: string;
-    description?: string; // For dataAiHint
+    publishedAt: string;
   };
-  statistics?: {
+  statistics?: { // Only available from videos.list, not search.list
     likeCount?: string;
     commentCount?: string;
     viewCount?: string;
   };
 }
+
+
+interface YouTubeApiSearchResponse {
+  items: YouTubeApiVideoItem[];
+  nextPageToken?: string;
+  pageInfo?: {
+    totalResults: number;
+    resultsPerPage: number;
+  };
+}
+
 
 // This function is now a local helper, not exported, so it's not treated as a Server Action.
 function extractYouTubeVideoId(url: string): string | null {
@@ -176,7 +188,7 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
   }
   const apiKey = youtubeApiKeyEntry.keyValue;
 
-  const CHUNK_SIZE = 50;
+  const CHUNK_SIZE = 50; // YouTube API allows up to 50 IDs per request for videos.list
 
   for (let i = 0; i < videoIds.length; i += CHUNK_SIZE) {
     const chunk = videoIds.slice(i, i + CHUNK_SIZE);
@@ -195,10 +207,11 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
 
       if (data.items && data.items.length > 0) {
         data.items.forEach((item: YouTubeApiVideoItem) => {
-          foundIds.add(item.id);
+          const videoIdFromApi = typeof item.id === 'string' ? item.id : item.id.videoId;
+          foundIds.add(videoIdFromApi);
           const snippet = item.snippet;
           const statistics = item.statistics;
-          const assignment = assignedToUserMap[item.id] || { userId: 'unknown', userName: 'Unknown User' };
+          const assignment = assignedToUserMap[videoIdFromApi] || { userId: 'unknown', userName: 'Unknown User' };
 
           let hint = "youtube video";
           if (snippet.description && snippet.description.length > 10) {
@@ -208,8 +221,8 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
           }
 
           detailedVideos.push({
-            id: item.id,
-            url: `https://www.youtube.com/watch?v=${item.id}`,
+            id: videoIdFromApi,
+            url: `https://www.youtube.com/watch?v=${videoIdFromApi}`,
             title: snippet.title || 'N/A',
             thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || 'https://placehold.co/320x180.png',
             channelTitle: snippet.channelTitle || 'N/A',
@@ -236,4 +249,82 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
     }
   }
   return detailedVideos;
+}
+
+
+export async function searchYouTubeVideosByKeywords(
+  keywords: string[]
+): Promise<{ mentions: YouTubeMentionItem[], error?: string }> {
+  if (!keywords || keywords.length === 0) {
+    return { mentions: [] };
+  }
+
+  const apiKeys = await getApiKeys();
+  const youtubeApiKeyEntry = apiKeys.find(k => k.serviceName === YOUTUBE_API_KEY_SERVICE_NAME);
+
+  if (!youtubeApiKeyEntry || !youtubeApiKeyEntry.keyValue) {
+    const errorMsg = `'${YOUTUBE_API_KEY_SERVICE_NAME}' not found. Cannot search YouTube.`;
+    console.warn(`[youtube-video-service] ${errorMsg}`);
+    return { mentions: [], error: errorMsg };
+  }
+  const apiKey = youtubeApiKeyEntry.keyValue;
+
+  const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR '); // Search for exact phrases or keywords
+  const maxResults = 15; // Number of videos to fetch
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
+
+  const fetchedMentions: YouTubeMentionItem[] = [];
+
+  try {
+    console.log(`[youtube-video-service] Searching YouTube with query: "${query}"`);
+    const response = await fetch(searchUrl);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg = `YouTube API search error (${response.status}): ${errorData.error?.message || response.statusText}`;
+      console.error(`[youtube-video-service] ${errorMsg}`);
+      return { mentions: [], error: errorMsg };
+    }
+
+    const data: YouTubeApiSearchResponse = await response.json();
+
+    if (data.items && data.items.length > 0) {
+      for (const item of data.items) {
+        const videoId = typeof item.id === 'string' ? item.id : item.id.videoId;
+        const snippet = item.snippet;
+        const titleLower = snippet.title.toLowerCase();
+        const descriptionLower = snippet.description.toLowerCase();
+
+        const matchedKws = keywords.filter(kw => {
+          const kwLower = kw.toLowerCase();
+          return titleLower.includes(kwLower) || descriptionLower.includes(kwLower);
+        });
+
+        if (matchedKws.length > 0) { // Only include if an original keyword matched
+          let hint = "youtube video";
+          if (snippet.title) {
+            hint = snippet.title.split(" ").slice(0, 2).join(" ").toLowerCase();
+          }
+
+          fetchedMentions.push({
+            id: videoId,
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            title: snippet.title,
+            thumbnailUrl: snippet.thumbnails?.default?.url || 'https://placehold.co/120x90.png',
+            channelTitle: snippet.channelTitle,
+            publishedAt: snippet.publishedAt,
+            descriptionSnippet: snippet.description.substring(0, 100) + (snippet.description.length > 100 ? '...' : ''),
+            matchedKeywords: matchedKws,
+            dataAiHint: hint,
+          });
+        }
+      }
+    }
+    console.log(`[youtube-video-service] Found ${fetchedMentions.length} relevant YouTube mentions for keywords: "${keywords.join(', ')}"`);
+    return { mentions: fetchedMentions };
+
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error searching YouTube videos.";
+    console.error(`[youtube-video-service] Error searching YouTube: ${errorMsg}`, error);
+    return { mentions: [], error: errorMsg };
+  }
 }
