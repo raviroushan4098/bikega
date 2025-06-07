@@ -33,6 +33,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import RedditAnalyticsSummary from '@/components/dashboard/RedditAnalyticsSummary';
 import RedditItemCard from '@/components/dashboard/RedditItemCard'; // Import the new card component
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+
 
 const FETCH_PERIOD_DAYS = 30;
 
@@ -243,6 +245,9 @@ export default function RedditPage() {
   }, [currentUser, authLoading, fetchStoredUserRedditData]);
   
   useEffect(() => {
+    // Automatically display all posts when allRedditPosts data changes (e.g., after initial load or refresh)
+    // This ensures that filteredRedditPosts is always in sync with the latest full dataset initially.
+    // The explicit filtering happens only on "Show" button click.
     setFilteredRedditPosts(allRedditPosts);
   }, [allRedditPosts]);
 
@@ -278,6 +283,11 @@ export default function RedditPage() {
       if (result.success) {
         toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} items fetched/updated from Reddit.` });
         await fetchStoredUserRedditData(); 
+        // After fetching, if date filters are active, re-apply them.
+        // No, this is handled by useEffect on allRedditPosts now.
+        // if (startDate || endDate) {
+        //   handleShowFilteredData();
+        // }
       } else {
         toast({ variant: "destructive", title: "Refresh Failed", description: result.error || "Could not refresh Reddit data." });
       }
@@ -554,3 +564,4 @@ export default function RedditPage() {
   );
 }
     
+
