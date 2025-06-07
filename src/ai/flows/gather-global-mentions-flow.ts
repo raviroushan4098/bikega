@@ -106,35 +106,35 @@ const lpuMockNewsItems = [
     excerpt: "Edu-Leaders Conclave at LPU focused on innovative educational strategies and future trends, bringing together principals from various CBSE schools.",
     source: "Yes Punjab News",
     timestamp: new Date(Date.now() - 51 * 60 * 1000).toISOString(), // Approx 51 minutes ago
-    url: "https://www.yespunjab.com/education/lpu-edu-leaders-conclave-cbse-principals" // Simulated direct link
+    url: "https://yespunjab.com/edu-leaders-conclave-at-lpu-brought-together-cbse-school-principals-from-across-india/" // Corrected working URL
   },
   {
     title: "LPU Journalism Placements Reach INR 12 LPA: SJMC HoD",
     excerpt: "The School of Journalism and Mass Communication (SJMC) at LPU announced high placements, with the highest package reaching INR 12 LPA.",
     source: "Shiksha (By Mayank Uniyal)",
     timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // Approx 2 days ago
-    url: "https://www.shiksha.com/mass-communication-media/journalism/news/lpu-journalism-placements-12-lpa-sjmc-hod-p" // Simulated direct link
+    url: "https://www.shiksha.com/mass-communication-media/journalism/news/lpu-journalism-placements-12-lpa-sjmc-hod-p" // Plausible mock direct link
   },
   {
     title: "Internet of Things (IoT): What It Is, How It Works, and Career Paths",
     excerpt: "An article by Satvinder Pal Singh from LPU explores the fundamentals of IoT, its applications, and potential career opportunities in the field.",
     source: "LPU (By Satvinder Pal Singh)",
     timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // Approx 5 days ago
-    url: "https://www.lpu.in/news/iot-fundamentals-careers" // Simulated direct link to LPU's news section
+    url: "https://www.lpu.in/news/iot-fundamentals-careers" // Plausible mock direct link to LPU's news section
   },
   {
     title: "Governor of Punjab to Grace LPU’s ‘Operation Sindoor Vijay Yatra’ and Chair Vice Chancellor’s Conference at LPU",
     excerpt: "The Hon'ble Governor of Punjab is scheduled to attend LPU's 'Operation Sindoor Vijay Yatra' event and will also chair a conference of Vice Chancellors.",
     source: "Cityairnews",
     timestamp: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(), // Approx 19 hours ago
-    url: "https://www.cityairnews.com/content/governor-punjab-lpu-operation-sindoor-vijay-yatra-vc-conference" // Simulated direct link
+    url: "https://www.cityairnews.com/content/governor-punjab-lpu-operation-sindoor-vijay-yatra-vc-conference" // Plausible mock direct link
   },
   {
     title: "Hon'ble Governor of Punjab to Grace LPU's 'Operation Sindoor Vijay Yatra' and Chair Vice Chancellor's Conference at LPU",
     excerpt: "The upcoming 'Operation Sindoor Vijay Yatra' at LPU will be graced by the Hon'ble Governor of Punjab, who will also lead a Vice Chancellor's conference.",
     source: ":: India News Calling ::",
     timestamp: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(), // Approx 23 hours ago
-    url: "https://www.indianewscalling.com/news/punjab-governor-to-attend-lpu-event-chair-vc-conference" // Simulated direct link
+    url: "https://www.indianewscalling.com/news/punjab-governor-to-attend-lpu-event-chair-vc-conference" // Plausible mock direct link
   }
 ];
 
@@ -154,7 +154,7 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
         source: newsItem.source,
         title: newsItem.title,
         excerpt: newsItem.excerpt,
-        url: newsItem.url, // Using the simulated direct link
+        url: newsItem.url, // Using the direct (mock or real) link from the array
         timestamp: newsItem.timestamp,
         matchedKeyword: "LPU",
         sentiment: 'neutral'
@@ -163,7 +163,7 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
   }
   
   const otherKeywords = keywords.filter(kw => kw.toLowerCase() !== 'lpu');
-  otherKeywords.slice(0, 2).forEach((kw) => {
+  otherKeywords.slice(0, 2).forEach((kw) => { // Limit other keyword mocks
     outputMentions.push({
       id: `googlenews_mock_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
       platform: 'Google News',
@@ -171,7 +171,7 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
       title: `Simulated Top Story regarding ${kw}`,
       excerpt: `This is a simulated Google News article detailing recent developments and discussions related to ${kw}. Key figures and future implications are explored.`,
       url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`, // Other keywords still use search links
-      timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(),
+      timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(), // Random within last 7 days
       matchedKeyword: kw,
       sentiment: 'neutral'
     });
@@ -188,8 +188,8 @@ function fetchWebMentionsMock(keywords: string[]): Partial<Mention>[] {
   const webMentions: Partial<Mention>[] = [];
   let mockIdCounter = Date.now();
 
-  keywords.slice(0, 3).forEach(kw => {
-    for (let i = 0; i < (Math.random() > 0.5 ? 2 : 1); i++) {
+  keywords.slice(0, 3).forEach(kw => { // Limit total keywords processed to keep mock data manageable
+    for (let i = 0; i < (Math.random() > 0.5 ? 2 : 1); i++) { // 1 or 2 mentions per keyword
       const domain = ['awesomeblog.com', 'industryinsights.net', 'communityforum.org'][Math.floor(Math.random() * 3)];
       webMentions.push({
         id: `webmention_mock_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
@@ -200,7 +200,7 @@ function fetchWebMentionsMock(keywords: string[]): Partial<Mention>[] {
         url: `https://${domain}/article/${kw.replace(/\s+/g, '-')}-trends-2024-${mockIdCounter}`,
         timestamp: new Date(Date.now() - Math.random() * 86400000 * 14).toISOString(), // within last 14 days
         matchedKeyword: kw,
-        sentiment: Math.random() > 0.5 ? 'positive' : 'neutral',
+        sentiment: Math.random() > 0.5 ? 'positive' : 'neutral', // Random sentiment
       });
     }
   });
@@ -327,10 +327,11 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
 
     const mentionsToConsiderForSentiment = uniqueApiMentionsFromSources.map(partialApiMention => {
         const existingStoredMention = storedMentionsMap.get(partialApiMention.id!);
+        // Content change check: title OR excerpt. Use defaults if parts are missing.
         const contentChanged = existingStoredMention ?
             ( (partialApiMention.title || 'No Title') !== (existingStoredMention.title || 'No Title') ||
               (partialApiMention.excerpt || '') !== (existingStoredMention.excerpt || '')
-            ) : true;
+            ) : true; // If not existing, it's new, so content "changed" from nothing.
 
         return {
             ...partialApiMention,
@@ -388,9 +389,11 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
                 errors.push(`Exception during sentiment analysis for mention "${partialMentionToAnalyze.id}": ${errorMsg}`);
                 console.error(`[GatherGlobalMentionsFlow] CRITICAL EXCEPTION during sentiment analysis for mention "${partialMentionToAnalyze.id}" (Title: ${partialMentionToAnalyze.title?.substring(0,30)}...):`, e);
                 
+                // If sentiment analysis itself errors out, still try to push a version of the mention
+                // with 'unknown' sentiment so it can be stored/updated, rather than losing the item.
                 mentionsWithUpdatedSentiment.push({
                     userId: userId,
-                    id: partialMentionToAnalyze.id!,
+                    id: partialMentionToAnalyze.id!, // Assert non-null as it's checked earlier
                     platform: partialMentionToAnalyze.platform || 'Other',
                     source: partialMentionToAnalyze.source || 'Unknown Source',
                     title: partialMentionToAnalyze.title || 'No Title Provided',
@@ -400,7 +403,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
                                 ? partialMentionToAnalyze.timestamp.toISOString()
                                 : String(partialMentionToAnalyze.timestamp || new Date().toISOString()),
                     matchedKeyword: partialMentionToAnalyze.matchedKeyword || 'unknown',
-                    sentiment: 'unknown', 
+                    sentiment: 'unknown', // Default sentiment on error
                     fetchedAt: new Date().toISOString(),
                 } as Mention);
             }
@@ -427,6 +430,15 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log("======================================================================");
     console.log(`[GatherGlobalMentionsFlow] EXITING FLOW. UserID: ${user.id} (${user.name}). Timestamp: ${new Date().toISOString()}`);
 
+    // Determine how many items were truly new OR had their sentiment actively updated and re-saved.
+    // This logic assumes initialStore includes items that *might* get their sentiment updated later in this flow.
+    // A more accurate 'newOrUpdatedMentionsStored' might be a combination of:
+    // 1. Items in `initialStoreSuccessCount` that were NOT part of `mentionsWithUpdatedSentiment` (truly new, sentiment not analyzed this run).
+    // 2. Items in `sentimentUpdateSuccessCount` (had sentiment analyzed/updated this run).
+    // However, `addGlobalMentionsBatch` uses set({merge:true}), so `initialStoreSuccessCount` represents writes,
+    // and `sentimentUpdateSuccessCount` also represents writes (potentially overwriting).
+    // The `Math.max` approach is a simplification assuming distinct sets or just taking the larger number of writes.
+    // A more precise count would require tracking IDs. For now, this reflects the total # of docs written/overwritten.
     const totalItemsWrittenOrUpdated = Math.max(initialStoreSuccessCount, sentimentUpdateSuccessCount);
 
     console.log(`  Summary: Unique API Mentions Fetched This Run: ${uniqueApiMentionsFromSources.length}, Items Initially Stored: ${initialStoreSuccessCount}, Items with Sentiment Updated in DB: ${sentimentUpdateSuccessCount}, Total items created/updated in DB (approx): ${totalItemsWrittenOrUpdated}, Errors during flow: ${errors.length}`);
@@ -434,7 +446,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log("======================================================================");
     return {
       totalMentionsFetched: uniqueApiMentionsFromSources.length,
-      newMentionsStored: totalItemsWrittenOrUpdated,
+      newMentionsStored: totalItemsWrittenOrUpdated, // Represents # of docs successfully written to Firestore
       errors,
     };
   }
@@ -462,5 +474,7 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
   }
 }
 
+
+    
 
     
