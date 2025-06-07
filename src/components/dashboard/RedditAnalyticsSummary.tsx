@@ -55,7 +55,7 @@ const RedditAnalyticsSummary: React.FC<RedditAnalyticsSummaryProps> = ({ posts }
         title="Social Reach"
         value={
           <div className="flex items-baseline">
-            <p className="text-2xl font-bold text-card-foreground">{formatNumber(summary.socialReach)}</p>
+            <p className="text-xl font-bold text-card-foreground">{formatNumber(summary.socialReach)}</p>
             <span className="text-xs text-muted-foreground ml-1">unique authors</span>
           </div>
         }
@@ -66,7 +66,7 @@ const RedditAnalyticsSummary: React.FC<RedditAnalyticsSummaryProps> = ({ posts }
         title="Social Engagement"
         value={
           <div className="flex items-baseline">
-            <p className="text-2xl font-bold text-card-foreground">{formatNumber(summary.totalScore)}</p>
+            <p className="text-xl font-bold text-card-foreground">{formatNumber(summary.totalScore)}</p>
             <span className="text-xs text-muted-foreground ml-1">total score</span>
           </div>
         }

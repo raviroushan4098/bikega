@@ -25,15 +25,15 @@ const StatCard: React.FC<StatCardProps> = ({
   return (
     <Card className={cn("shadow-md overflow-hidden", className)}>
       <CardContent className="p-0 flex items-stretch h-full">
-        <div className={cn("w-20 h-full flex items-center justify-center p-4", iconBgClass)}>
-          <Icon className={cn("h-8 w-8", iconClass)} />
+        <div className={cn("w-16 h-full flex items-center justify-center p-3", iconBgClass)}>
+          <Icon className={cn("h-6 w-6", iconClass)} />
         </div>
-        <div className="flex flex-col justify-center p-4">
+        <div className="flex flex-col justify-center p-3">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">{title}</p>
           {typeof value === 'string' ? (
-            <p className="text-2xl font-bold text-card-foreground">{value}</p>
+            <p className="text-xl font-bold text-card-foreground">{value}</p>
           ) : (
-            value
+            value 
           )}
         </div>
       </CardContent>
