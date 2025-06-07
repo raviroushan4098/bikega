@@ -1,7 +1,7 @@
 
 'use server';
 
-import type { RedditPost } from '@/types';
+import type { RedditPost, ExternalRedditUserAnalysis } from '@/types';
 import { getApiKeys } from './api-key-service';
 import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '@/ai/flows/advanced-sentiment-flow';
 import { db } from './firebase';
@@ -466,3 +466,31 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   }
 }
 
+export async function getStoredRedditAnalyses(appUserId: string): Promise<ExternalRedditUserAnalysis[]> {
+  if (!appUserId) {
+    console.warn('[Reddit API Service] getStoredRedditAnalyses: No appUserId provided.');
+    return [];
+  }
+  const analyses: ExternalRedditUserAnalysis[] = [];
+  try {
+    const profilesCollectionRef = collection(db, 'ExternalRedditUser', appUserId, 'analyzedRedditProfiles');
+    // Order by lastRefreshedAt to show most recent first, if desired.
+    // Ensure you have a Firestore index for this: (lastRefreshedAt, desc) on the 'analyzedRedditProfiles' subcollection.
+    const q = query(profilesCollectionRef, orderBy('lastRefreshedAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+
+    querySnapshot.forEach((docSnap) => {
+      // The document ID is the Reddit username, so we add it to the object
+      analyses.push({ username: docSnap.id, ...docSnap.data() } as ExternalRedditUserAnalysis);
+    });
+    console.log(`[Reddit API Service] getStoredRedditAnalyses: Fetched ${analyses.length} stored analyses for appUser ${appUserId}.`);
+    return analyses;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching stored Reddit analyses.';
+    console.error(`[Reddit API Service] getStoredRedditAnalyses: Error for appUser ${appUserId}: ${errorMessage}`, error);
+    if (error instanceof Error && (error.message.includes('needs an index') || error.message.includes('requires an index'))) {
+        console.error(`[SERVICE] Firestore index missing for 'analyzedRedditProfiles' subcollection, likely on 'lastRefreshedAt' (descending). The error message from Firestore should contain a link to create it.`);
+    }
+    return []; 
+  }
+}
