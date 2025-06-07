@@ -28,7 +28,7 @@ export async function addOrUpdateGlobalMention(userId: string, mention: Mention)
     const mentionDocRef = doc(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION, mention.id);
     
     const mentionDataToSave = {
-      id: String(mention.id || `generated_${Date.now()}`), // Ensure id is always a string
+      id: String(mention.id || `generated_${Date.now()}`),
       platform: String(mention.platform || 'Unknown') as Mention['platform'],
       source: String(mention.source || 'Unknown Source'),
       title: String(mention.title || 'No Title'),
@@ -64,7 +64,7 @@ export async function getGlobalMentionsForUser(userId: string): Promise<Mention[
   console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Fetching global mentions for user ${userId} from path: '${mentionsCollectionPath}'.`);
   try {
     const mentionsCollectionRef = collection(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION);
-    // Temporarily simplify query to rule out orderBy fetchedAt issues - REVERTED, order by timestamp is desired.
+    // Original query with ordering
     const q = query(mentionsCollectionRef, orderBy('timestamp', 'desc'), limit(100)); 
     
     const querySnapshot = await getDocs(q);
@@ -78,7 +78,7 @@ export async function getGlobalMentionsForUser(userId: string): Promise<Mention[
     const mentions = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       if (docSnap.id === querySnapshot.docs[0].id) { 
-          console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Raw data for first doc ID ${docSnap.id} (User ${userId}): ${JSON.stringify(data)}`);
+          // console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Raw data for first doc ID ${docSnap.id} (User ${userId}): ${JSON.stringify(data)}`);
       }
       return {
         ...data,
@@ -94,7 +94,7 @@ export async function getGlobalMentionsForUser(userId: string): Promise<Mention[
         sentiment: data.sentiment && ['positive', 'negative', 'neutral', 'unknown'].includes(data.sentiment) ? data.sentiment : 'unknown',
       } as Mention;
     });
-    console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Successfully mapped ${mentions.length} mentions for user ${userId}. First item (if any): ${mentions.length > 0 ? JSON.stringify(mentions[0]) : 'N/A'}`);
+    // console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Successfully mapped ${mentions.length} mentions for user ${userId}. First item (if any): ${mentions.length > 0 ? JSON.stringify(mentions[0]) : 'N/A'}`);
     return mentions;
   } catch (error) {
     console.error(`[GlobalMentionsService (getGlobalMentionsForUser)] Error fetching global mentions for user ${userId}:`, error);
@@ -103,84 +103,87 @@ export async function getGlobalMentionsForUser(userId: string): Promise<Mention[
 }
 
 /**
- * DEBUG VERSION: Adds only the first valid mention using setDoc for a specific user.
+ * Adds a batch of global mentions to a user's subcollection in Firestore.
+ * It uses the provided mention.id as the document ID for each mention.
  */
 export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]): Promise<{ successCount: number; errorCount: number; errors: string[] }> {
   if (!userId || typeof userId !== 'string' || userId.trim() === "") {
     const msg = `User ID is required, must be a non-empty string. Received: '${userId}'`;
-    console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] CRITICAL: ${msg}`);
+    console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] CRITICAL: ${msg}`);
     return { successCount: 0, errorCount: mentions?.length || 0, errors: [msg] };
   }
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] UserID: ${userId}. Attempting to process ${mentions.length} mentions. Simplified DEBUG write (only first valid item).`);
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] UserID: ${userId}. Attempting to process ${mentions.length} mentions.`);
 
   if (!mentions || mentions.length === 0) {
-    console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] No mentions provided for user '${userId}'.`);
+    console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] No mentions provided for user '${userId}'.`);
     return { successCount: 0, errorCount: 0, errors: [] };
   }
 
+  const batch = writeBatch(db);
   const localErrors: string[] = [];
-  let successCount = 0;
+  let itemsInBatch = 0;
+  let skippedCount = 0;
 
-  const firstValidMention = mentions.find(m => m.id && typeof m.id === 'string' && m.id.trim() !== "");
+  for (const mention of mentions) {
+    if (!mention.id || typeof mention.id !== 'string' || mention.id.trim() === "") {
+      const skipMsg = `Skipping mention due to missing or invalid ID. Title: "${mention.title?.substring(0,30)}..." for user '${userId}'.`;
+      console.warn(`[GlobalMentionsService (addGlobalMentionsBatch)] ${skipMsg}`);
+      localErrors.push(skipMsg); // Still log as an "error" for this function's context.
+      skippedCount++;
+      continue;
+    }
 
-  if (!firstValidMention) {
-    const msg = `No valid mention with an ID found in the provided ${mentions.length} mentions for user '${userId}'. Cannot perform DEBUG write.`;
-    console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] ${msg}`);
-    // Do not add this specific message to localErrors to avoid confusing UI "error" display for a debug state.
-    return { successCount: 0, errorCount: 0, errors: [msg] }; // Return 0 errorCount but provide msg for critical failure
+    const mentionDocRef = doc(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION, mention.id);
+    // if (itemsInBatch === 0) { // Log path only for the first item in batch for brevity
+    //   console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] First document path (example): ${mentionDocRef.path}`);
+    // }
+
+    const mentionDataToSave = {
+      id: String(mention.id), // Ensured by check above
+      platform: String(mention.platform || 'Unknown') as Mention['platform'],
+      source: String(mention.source || 'Unknown Source'),
+      title: String(mention.title || 'No Title Provided'),
+      excerpt: String(mention.excerpt || 'No Excerpt Provided'),
+      url: String(mention.url || '#'),
+      timestamp: (mention.timestamp instanceof Date)
+                 ? mention.timestamp.toISOString()
+                 : String(mention.timestamp || new Date().toISOString()),
+      matchedKeyword: String(mention.matchedKeyword || 'general'),
+      sentiment: mention.sentiment && ['positive', 'negative', 'neutral', 'unknown'].includes(mention.sentiment)
+                 ? mention.sentiment
+                 : 'unknown',
+      fetchedAt: serverTimestamp(),
+    };
+    batch.set(mentionDocRef, mentionDataToSave, { merge: true });
+    itemsInBatch++;
   }
 
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Preparing to write one mention: ID ${firstValidMention.id}, Title: "${firstValidMention.title?.substring(0,30)}..." for user '${userId}'.`);
+  if (itemsInBatch === 0) {
+    console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] No valid mentions to commit for user '${userId}'. Skipped: ${skippedCount}.`);
+    return { successCount: 0, errorCount: localErrors.length, errors: localErrors };
+  }
 
-  const mentionDocRef = doc(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION, firstValidMention.id);
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Firestore document path for single write: ${mentionDocRef.path}`);
-
-  const mentionDataToSave = {
-    id: String(firstValidMention.id),
-    platform: String(firstValidMention.platform || 'Unknown') as Mention['platform'],
-    source: String(firstValidMention.source || 'Unknown Source'),
-    title: String(firstValidMention.title || 'No Title Provided'),
-    excerpt: String(firstValidMention.excerpt || 'No Excerpt Provided'),
-    url: String(firstValidMention.url || '#'),
-    timestamp: (firstValidMention.timestamp instanceof Date)
-               ? firstValidMention.timestamp.toISOString()
-               : String(firstValidMention.timestamp || new Date().toISOString()),
-    matchedKeyword: String(firstValidMention.matchedKeyword || 'general'),
-    sentiment: firstValidMention.sentiment && ['positive', 'negative', 'neutral', 'unknown'].includes(firstValidMention.sentiment)
-               ? firstValidMention.sentiment
-               : 'unknown',
-    fetchedAt: serverTimestamp(),
-  };
-
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Attempting to commit batch with ${itemsInBatch} mentions for user '${userId}'. Skipped ${skippedCount} due to invalid ID.`);
   try {
-    console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Attempting setDoc for mention ID ${firstValidMention.id} for user '${userId}'. Data (first 200 chars): ${JSON.stringify(mentionDataToSave).substring(0, 200)}...`);
-    await setDoc(mentionDocRef, mentionDataToSave, { merge: true });
-    console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] SUCCESS: setDoc completed for mention ID ${firstValidMention.id} for user '${userId}'.`);
-    successCount = 1; 
+    await batch.commit();
+    console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] SUCCESS: Batch committed ${itemsInBatch} mentions for user '${userId}'.`);
+    return { successCount: itemsInBatch, errorCount: localErrors.length, errors: localErrors };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown setDoc error.';
-    console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] FAILURE: Error during setDoc for mention ID ${firstValidMention.id} (user '${userId}'). Error: ${errorMessage}`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown batch.commit error.';
+    console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] FAILURE: Error committing batch for user '${userId}'. Error: ${errorMessage}`, error);
     
+    // Log more details about the error object
     if (error instanceof Error) {
-        console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] FAILURE DETAILS: Name: ${error.name}, Stack: ${error.stack}`);
-        if ('code' in error) { 
-            console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] FAILURE FirebaseError Code: ${(error as any).code}`);
+        console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] FAILURE DETAILS: Name: ${error.name}, Stack: ${error.stack}`);
+        if ('code' in error) { // Check if it's a FirebaseError-like object
+            console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] FAILURE FirebaseError Code: ${(error as any).code}`);
         }
     } else if (error && typeof error === 'object') {
-        console.error('[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Non-standard error object details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard error object details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     } else {
-         console.error('[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Non-standard, non-object error:', error);
+         console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard, non-object error:', error);
     }
-    localErrors.push(`DEBUG Write Failed for ${firstValidMention.id}: ${errorMessage}`);
+    localErrors.push(`Batch Commit Failed: ${errorMessage}`);
+    return { successCount: 0, errorCount: itemsInBatch + localErrors.length - 1 /* initial errors + all items in failed batch */, errors: localErrors };
   }
-  
-  const skippedCount = mentions.length - 1; 
-  if (skippedCount > 0) {
-      // Log this as info, don't add to `localErrors` to avoid UI treating it as an error
-      console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG INFO] ${skippedCount} other mentions were skipped in this DEBUG version (only processes first valid item).`);
-  }
-
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Returning. Success: ${successCount}, ErrorCount (actual errors): ${localErrors.length}, Skipped (not attempted beyond first): ${skippedCount}, Error Messages: ${localErrors.join('; ')}`);
-  return { successCount, errorCount: localErrors.length, errors: localErrors };
 }
-
