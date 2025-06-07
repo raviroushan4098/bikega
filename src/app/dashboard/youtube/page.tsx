@@ -7,9 +7,10 @@ import type { YouTubeMentionItem, User as AuthUserType } from '@/types';
 import { getUsers, getUserById } from '@/lib/user-service';
 import { searchYouTubeVideosByKeywords, getStoredYouTubeMentions, addYouTubeMentionsBatch } from '@/lib/youtube-video-service';
 import { Button } from '@/components/ui/button';
-import { Loader2, Eye, ThumbsUp, MessageSquare, Video } from 'lucide-react'; // Added Video icon
+import { Loader2, Video } from 'lucide-react'; // Removed unused icons
 import { useToast } from "@/hooks/use-toast";
 import YouTubeMentionsCard from '@/components/dashboard/YouTubeMentionsCard';
+import YouTubeMentionsSummary from '@/components/dashboard/YouTubeMentionsSummary'; // Added import
 import {
   Select,
   SelectContent,
@@ -18,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
-import Link from 'next/link'; // Added Link for navigation
+import Link from 'next/link';
 
 export default function YouTubeKeywordMentionsPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -33,7 +34,6 @@ export default function YouTubeKeywordMentionsPage() {
   const [mentionsError, setMentionsError] = useState<string | null>(null);
   const [keywordsForMentions, setKeywordsForMentions] = useState<string[]>([]);
 
-  // Fetch all users if current user is admin (for mentions filter dropdown)
   useEffect(() => {
     if (currentUser?.role === 'admin' && !authLoading) {
       setIsLoadingAdminUsers(true);
@@ -43,7 +43,6 @@ export default function YouTubeKeywordMentionsPage() {
         .finally(() => setIsLoadingAdminUsers(false));
     }
   }, [currentUser, authLoading, toast]);
-
 
   const loadMentionsFromFirestore = useCallback(async (userIdForMentions: string) => {
     setIsLoadingMentions(true);
@@ -104,6 +103,7 @@ export default function YouTubeKeywordMentionsPage() {
       const newMentionsToSave = apiMentions.filter(apiMention => !storedMentionIds.has(apiMention.id));
 
       if (newMentionsToSave.length > 0) {
+        // Add userId to each mention item before saving
         const newMentionsWithUserId = newMentionsToSave.map(m => ({ ...m, userId: userIdToRefresh! }));
         const saveResult = await addYouTubeMentionsBatch(userIdToRefresh, newMentionsWithUserId);
         if (saveResult.errorCount > 0) {
@@ -125,7 +125,6 @@ export default function YouTubeKeywordMentionsPage() {
     }
   }, [currentUser, selectedUserIdForMentionsFilter, allUsersForAdmin, toast, loadMentionsFromFirestore]);
 
-  // Effect for initial load of mentions and when selected user changes (for admin)
   useEffect(() => {
     let userIdForInitialLoad: string | undefined;
     let currentKeywords: string[] = [];
@@ -183,6 +182,10 @@ export default function YouTubeKeywordMentionsPage() {
             )}
           </div>
         )}
+
+      {(!isLoadingMentions && !mentionsError && youtubeMentions.length > 0) && (
+        <YouTubeMentionsSummary mentions={youtubeMentions} />
+      )}
 
       <YouTubeMentionsCard
         title={mentionsCardTitle}
