@@ -1,3 +1,4 @@
+
 import { BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +22,7 @@ export function AppLogo({ size = 'medium', className }: AppLogoProps) {
   return (
     <div className={cn("flex items-center gap-2 text-primary", className)}>
       <BarChart3 className={cn(iconSizeClasses[size], "text-accent")} />
-      <h1 className={cn("font-headline font-bold tracking-tight", sizeClasses[size])}>
+      <h1 className={cn("font-headline font-bold tracking-tight group-data-[collapsible=icon]:hidden", sizeClasses[size])}>
         Insight Stream
       </h1>
     </div>

@@ -87,7 +87,7 @@ export default function DashboardSidebar() {
               tooltip={item.label}
             >
               <item.icon className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground group-hover/menu-button:text-primary")} />
-              <span className="truncate">{item.label}</span>
+              <span className="truncate group-data-[collapsible=icon]:hidden">{item.label}</span>
             </SidebarMenuButton>
           </Link>
           {item.subItems && item.subItems.length > 0 && (
@@ -149,3 +149,4 @@ export default function DashboardSidebar() {
     </Sidebar>
   );
 }
+
