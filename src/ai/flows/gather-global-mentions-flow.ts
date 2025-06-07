@@ -9,30 +9,26 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'genkit'; // Keep z from genkit for ai.defineFlow if needed, or remove if only schemas use it
 import type { Mention, User } from '@/types';
 import { analyzeAdvancedSentiment } from '@/ai/flows/advanced-sentiment-flow';
 import { addGlobalMentionsBatch } from '@/lib/global-mentions-service';
 import { getRedditAccessToken } from '@/lib/reddit-api-service'; // For Reddit auth
 import { getUserById } from '@/lib/user-service';
+import { 
+  GatherGlobalMentionsInputSchema, 
+  type GatherGlobalMentionsInput, 
+  GatherGlobalMentionsOutputSchema,
+  type GatherGlobalMentionsOutput
+} from '@/types/global-mentions-schemas';
+
 
 const API_CALL_TIMEOUT_MS = 15000; // Timeout for external API calls like Algolia
 const SENTIMENT_ANALYSIS_DELAY_MS = 10000; // Delay between sentiment analysis calls
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export const GatherGlobalMentionsInputSchema = z.object({
-  userId: z.string().describe("The ID of the user for whom to gather mentions."),
-});
-export type GatherGlobalMentionsInput = z.infer<typeof GatherGlobalMentionsInputSchema>;
-
-export const GatherGlobalMentionsOutputSchema = z.object({
-  totalMentionsFetched: z.number().describe("Total mentions fetched across all platforms before filtering duplicates."),
-  newMentionsStored: z.number().describe("Number of new, unique mentions successfully processed and stored."),
-  errors: z.array(z.string()).describe("List of errors encountered during the process."),
-});
-export type GatherGlobalMentionsOutput = z.infer<typeof GatherGlobalMentionsOutputSchema>;
-
+// Schemas and types are now imported from '@/types/global-mentions-schemas'
 
 interface RedditApiItemData {
   id: string;
