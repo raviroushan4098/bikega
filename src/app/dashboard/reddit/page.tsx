@@ -331,8 +331,7 @@ export default function RedditPage() {
   };
 
   const handleExternalUserClick = () => {
-    console.log("External User button clicked!");
-    toast({ title: "External User Action", description: "This button is a placeholder for now." });
+    router.push('/dashboard/reddit/analyze-external');
   };
 
   if (authLoading) {
