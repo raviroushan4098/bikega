@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquare, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap, ListChecks } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquare, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap, ListChecks, Users, MessagesSquare, TrendingUp, MessageCircleReply } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +42,7 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
+import StatCard from '@/components/dashboard/StatCard';
 
 
 interface AnalysisResultDisplay {
@@ -75,7 +76,7 @@ const RedditAnalysisCardSkeleton: React.FC = () => (
           ))}
         </CardContent>
       </Card>
-      <Accordion type="multiple" className="w-full" defaultValue={['items-skeleton']}>
+      <Accordion type="single" collapsible className="w-full" defaultValue={'items-skeleton'}>
         <AccordionItem value="items-skeleton">
           <AccordionTrigger className="text-base font-medium hover:no-underline">
             <Skeleton className="h-6 w-1/3" />
@@ -93,6 +94,16 @@ const RedditAnalysisCardSkeleton: React.FC = () => (
     </CardFooter>
   </Card>
 );
+
+const formatStatNumber = (num: number): string => {
+  if (Math.abs(num) >= 1000000) {
+    return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  }
+  if (Math.abs(num) >= 1000) {
+    return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  }
+  return num.toString();
+};
 
 
 export default function AnalyzeExternalRedditUserPage() {
@@ -413,6 +424,29 @@ export default function AnalyzeExternalRedditUserPage() {
   
   const currentDisplayResults = analysisResults;
 
+  const summaryStats = useMemo(() => {
+    let totalUsernames = currentDisplayResults.length;
+    let totalPosts = 0;
+    let totalComments = 0;
+    let totalScore = 0;
+    let totalReplies = 0;
+
+    currentDisplayResults.forEach(result => {
+      if (result.data && !result.data._placeholder) {
+        result.data.fetchedPostsDetails.forEach(post => {
+          totalPosts++;
+          totalScore += post.score;
+          totalReplies += post.numComments || 0;
+        });
+        result.data.fetchedCommentsDetails.forEach(comment => {
+          totalComments++;
+          totalScore += comment.score;
+        });
+      }
+    });
+    return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies };
+  }, [currentDisplayResults]);
+
   if (authLoading) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -501,9 +535,9 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const renderDataTable = (items: ExternalRedditUserDataItem[], columns: ColumnConfig<ExternalRedditUserDataItem>[]) => {
     if (!items || items.length === 0) {
-      let message = `No posts or comments found.`;
+      let message = `No posts or comments found for this user.`;
       if (startDate || endDate) {
-        message = `No posts or comments match the selected date range.`;
+        message = `No posts or comments match the selected date range for this user.`;
       }
       return <p className="text-sm text-muted-foreground py-3 px-1">{message}</p>;
     }
@@ -538,6 +572,39 @@ export default function AnalyzeExternalRedditUserPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <StatCard
+          title="Total Usernames"
+          value={formatStatNumber(summaryStats.totalUsernames)}
+          icon={Users}
+          iconBgClass="bg-indigo-500"
+        />
+        <StatCard
+          title="Total Posts Fetched"
+          value={formatStatNumber(summaryStats.totalPosts)}
+          icon={FileText}
+          iconBgClass="bg-sky-500"
+        />
+        <StatCard
+          title="Total Comments Fetched"
+          value={formatStatNumber(summaryStats.totalComments)}
+          icon={MessagesSquare}
+          iconBgClass="bg-emerald-500"
+        />
+        <StatCard
+          title="Total Combined Score"
+          value={formatStatNumber(summaryStats.totalScore)}
+          icon={TrendingUp}
+          iconBgClass="bg-amber-500"
+        />
+        <StatCard
+          title="Total Post Replies"
+          value={formatStatNumber(summaryStats.totalReplies)}
+          icon={MessageCircleReply}
+          iconBgClass="bg-rose-500"
+        />
+      </div>
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-headline flex items-center">
@@ -695,7 +762,7 @@ export default function AnalyzeExternalRedditUserPage() {
             Filter Posts/Comments by Date
           </CardTitle>
           <CardDescription>
-            Select a date range to filter the posts and comments shown within each profile card below.
+            Select a date range to filter the posts and comments shown within each profile card below. Profile cards themselves will remain visible.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -818,10 +885,10 @@ export default function AnalyzeExternalRedditUserPage() {
               statusIconColor = "text-green-500";
             }
             
-            const combinedItemsUnfiltered = [
-              ...(result.data?.fetchedPostsDetails || []),
-              ...(result.data?.fetchedCommentsDetails || []),
-            ].sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+             const combinedItemsUnfiltered = (result.data && !result.data._placeholder) ? [
+              ...(result.data.fetchedPostsDetails || []),
+              ...(result.data.fetchedCommentsDetails || []),
+            ].sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()) : [];
         
             const filteredCombinedItems = combinedItemsUnfiltered.filter(item => {
                 if (!startDate && !endDate) return true;
@@ -898,7 +965,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         <AccordionItem value="combined-content">
                             <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
                                 <div className="flex items-center gap-2">
-                                    <ListChecks className="h-5 w-5" /> {/* Changed icon */}
+                                    <ListChecks className="h-5 w-5" /> 
                                     Fetched Posts and Comments ({filteredCombinedItems.length})
                                 </div>
                             </AccordionTrigger>
@@ -925,4 +992,6 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
+    
+
     
