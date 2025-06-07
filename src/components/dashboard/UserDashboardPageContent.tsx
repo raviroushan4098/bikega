@@ -67,11 +67,12 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
 
   useEffect(() => {
     const fetchUserYouTubeMentions = async () => {
-      if (user && user.assignedKeywords && user.assignedKeywords.length > 0) {
+      if (user && user.id && user.assignedKeywords && user.assignedKeywords.length > 0) {
         setIsLoadingYoutubeMentions(true);
         setYoutubeMentionsError(null);
         try {
-          const result = await searchYouTubeVideosByKeywords(user.assignedKeywords);
+          // Pass user.id to save mentions for this user
+          const result = await searchYouTubeVideosByKeywords(user.assignedKeywords, user.id);
           if (result.error) {
             setYoutubeMentionsError(result.error);
             setYoutubeMentions([]);
@@ -130,3 +131,4 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
 };
 
 export default UserDashboardPageContent;
+

@@ -3,8 +3,13 @@
 
 import type { YoutubeVideo, YouTubeMentionItem } from '@/types';
 import { getApiKeys } from './api-key-service';
+import { db } from './firebase'; // Added Firestore db import
+import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'; // Added Firestore imports
 
 const YOUTUBE_API_KEY_SERVICE_NAME = "YouTube Data API Key";
+const FIRESTORE_YOUTUBE_MENTIONS_COLLECTION = 'youtube_mentions';
+const FIRESTORE_MENTIONS_SUBCOLLECTION = 'mentions';
+
 
 // Interface for the raw API response for video details
 interface YouTubeApiVideoItem {
@@ -251,9 +256,66 @@ export async function fetchBatchVideoDetailsFromYouTubeAPI(
   return detailedVideos;
 }
 
+async function addYouTubeMentionsBatch(userId: string, mentions: YouTubeMentionItem[]): Promise<{ successCount: number; errorCount: number; errors: string[] }> {
+  if (!userId || typeof userId !== 'string' || userId.trim() === "") {
+    const msg = '[youtube-video-service (addYouTubeMentionsBatch)] Invalid or missing userId provided.';
+    console.error(msg);
+    return { successCount: 0, errorCount: mentions.length, errors: [msg] };
+  }
+
+  if (!mentions || mentions.length === 0) {
+    console.log(`[youtube-video-service (addYouTubeMentionsBatch)] No mentions provided for user '${userId}'. Nothing to store.`);
+    return { successCount: 0, errorCount: 0, errors: [] };
+  }
+
+  const batch = writeBatch(db);
+  const localErrors: string[] = [];
+  let itemsInBatch = 0;
+
+  for (const mention of mentions) {
+    if (!mention.id || typeof mention.id !== 'string' || mention.id.trim() === "") {
+      const skipMsg = `Skipping YouTube mention due to missing or invalid ID. Title: "${mention.title?.substring(0, 30)}..." for user '${userId}'.`;
+      console.warn(`[youtube-video-service (addYouTubeMentionsBatch)] ${skipMsg}`);
+      localErrors.push(skipMsg);
+      continue;
+    }
+
+    const mentionDocRef = doc(db, FIRESTORE_YOUTUBE_MENTIONS_COLLECTION, userId, FIRESTORE_MENTIONS_SUBCOLLECTION, mention.id);
+    
+    // Ensure all fields are present and correctly typed for Firestore
+    const mentionDataToSave = {
+      ...mention, // Spread existing properties
+      userId: userId, // Ensure the correct userId is set
+      fetchedAt: serverTimestamp(), // Add server timestamp for when it was fetched/saved
+    };
+    
+    batch.set(mentionDocRef, mentionDataToSave, { merge: true });
+    itemsInBatch++;
+  }
+
+  if (itemsInBatch === 0) {
+    const finalMsg = `No valid YouTube mentions to commit for user '${userId}'. Total initially: ${mentions.length}.`;
+    console.log(`[youtube-video-service (addYouTubeMentionsBatch)] ${finalMsg}`);
+    return { successCount: 0, errorCount: localErrors.length, errors: localErrors };
+  }
+
+  console.log(`[youtube-video-service (addYouTubeMentionsBatch)] Attempting to commit batch with ${itemsInBatch} YouTube mentions for user '${userId}'.`);
+  try {
+    await batch.commit();
+    console.log(`[youtube-video-service (addYouTubeMentionsBatch)] SUCCESS: Batch committed ${itemsInBatch} YouTube mentions for user '${userId}'.`);
+    return { successCount: itemsInBatch, errorCount: localErrors.length, errors: localErrors };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown batch.commit error for YouTube mentions.';
+    console.error(`[youtube-video-service (addYouTubeMentionsBatch)] FAILURE: Error committing batch for user '${userId}'. Error: ${errorMessage}`, error);
+    localErrors.push(`Batch Commit Failed for YouTube mentions for user '${userId}': ${errorMessage}`);
+    return { successCount: 0, errorCount: itemsInBatch + localErrors.length, errors: localErrors };
+  }
+}
+
 
 export async function searchYouTubeVideosByKeywords(
-  keywords: string[]
+  keywords: string[],
+  userIdToSaveMentionsFor?: string // Optional: If provided, mentions will be saved for this user
 ): Promise<{ mentions: YouTubeMentionItem[], error?: string }> {
   if (!keywords || keywords.length === 0) {
     return { mentions: [] };
@@ -269,15 +331,13 @@ export async function searchYouTubeVideosByKeywords(
   }
   const apiKey = youtubeApiKeyEntry.keyValue;
 
-  const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR '); // Search for exact phrases or keywords
-  const maxResults = 25; // Increased from 15
-
-  // Calculate the timestamp for 24 hours ago
+  const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR ');
+  const maxResults = 25;
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&order=date&publishedAfter=${encodeURIComponent(twentyFourHoursAgo)}&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
 
-  const fetchedMentions: YouTubeMentionItem[] = [];
+  let fetchedMentions: YouTubeMentionItem[] = [];
 
   try {
     console.log(`[youtube-video-service] Searching YouTube with query: "${query}", publishedAfter: ${twentyFourHoursAgo}, maxResults: ${maxResults}`);
@@ -294,6 +354,7 @@ export async function searchYouTubeVideosByKeywords(
     if (data.items && data.items.length > 0) {
       for (const item of data.items) {
         const videoId = typeof item.id === 'string' ? item.id : item.id.videoId;
+        if (!videoId) continue; // Skip if videoId is somehow undefined
         const snippet = item.snippet;
         const titleLower = snippet.title.toLowerCase();
         const descriptionLower = snippet.description.toLowerCase();
@@ -303,7 +364,7 @@ export async function searchYouTubeVideosByKeywords(
           return titleLower.includes(kwLower) || descriptionLower.includes(kwLower);
         });
 
-        if (matchedKws.length > 0) { // Only include if an original keyword matched
+        if (matchedKws.length > 0) {
           let hint = "youtube video";
           if (snippet.title) {
             hint = snippet.title.split(" ").slice(0, 2).join(" ").toLowerCase();
@@ -324,6 +385,20 @@ export async function searchYouTubeVideosByKeywords(
       }
     }
     console.log(`[youtube-video-service] Found ${fetchedMentions.length} relevant YouTube mentions published in the last 24 hours for keywords: "${keywords.join(', ')}"`);
+
+    // Save to Firestore if userIdToSaveMentionsFor is provided and mentions were found
+    if (userIdToSaveMentionsFor && fetchedMentions.length > 0) {
+      console.log(`[youtube-video-service] Attempting to save ${fetchedMentions.length} mentions for user ID: ${userIdToSaveMentionsFor}`);
+      const saveResult = await addYouTubeMentionsBatch(userIdToSaveMentionsFor, fetchedMentions);
+      if (saveResult.errorCount > 0) {
+        console.warn(`[youtube-video-service] Encountered ${saveResult.errorCount} errors while saving YouTube mentions for user ${userIdToSaveMentionsFor}: ${saveResult.errors.join('; ')}`);
+        // Optionally, append this to the main error to be returned, or just log
+      } else {
+        console.log(`[youtube-video-service] Successfully saved ${saveResult.successCount} YouTube mentions to Firestore for user ${userIdToSaveMentionsFor}.`);
+      }
+    }
+
+
     return { mentions: fetchedMentions };
 
   } catch (error) {

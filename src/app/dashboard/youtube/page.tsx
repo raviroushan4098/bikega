@@ -136,16 +136,18 @@ export default function YouTubeAnalyticsPage() {
 
   const fetchYouTubeMentions = useCallback(async () => {
     let keywordsToSearch: string[] = [];
+    let userIdForSavingMentions: string | undefined;
+
     if (currentUser?.role === 'user' && currentUser.assignedKeywords) {
       keywordsToSearch = currentUser.assignedKeywords;
+      userIdForSavingMentions = currentUser.id;
     } else if (currentUser?.role === 'admin' && selectedUserIdForFilter && selectedUserIdForFilter !== 'all') {
       const selectedUser = allUsersForAdmin.find(u => u.id === selectedUserIdForFilter);
       if (selectedUser && selectedUser.assignedKeywords) {
         keywordsToSearch = selectedUser.assignedKeywords;
+        userIdForSavingMentions = selectedUser.id;
       }
     } else if (currentUser?.role === 'admin' && selectedUserIdForFilter === 'all') {
-      // For "All Users" in admin view, we don't fetch mentions by default or aggregate all keywords.
-      // The mentions card will show a message to select a specific user.
       setYoutubeMentions([]);
       setKeywordsForMentions([]);
       setIsLoadingMentions(false);
@@ -165,7 +167,8 @@ export default function YouTubeAnalyticsPage() {
     setIsLoadingMentions(true);
     setMentionsError(null);
     try {
-      const result = await searchYouTubeVideosByKeywords(keywordsToSearch);
+      // Pass userIdForSavingMentions to the service function
+      const result = await searchYouTubeVideosByKeywords(keywordsToSearch, userIdForSavingMentions);
       if (result.error) {
         setMentionsError(result.error);
         setYoutubeMentions([]);
@@ -300,3 +303,4 @@ export default function YouTubeAnalyticsPage() {
     </div>
   );
 }
+
