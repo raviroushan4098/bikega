@@ -15,9 +15,9 @@ let accessToken: string | null = null;
 let tokenExpiry: number | null = null;
 
 const FETCH_PERIOD_DAYS = 30; // Fetch data from the last 30 days on refresh
-const COMMENTS_PER_POST_LIMIT = 5; // Max comments to fetch per post - User preference
+const COMMENTS_PER_POST_LIMIT = 5; // Max comments to fetch per post
 const COMMENT_FETCH_DEPTH = 1; // Depth of comments to fetch
-const API_CALL_DELAY_MS = 10000; // Delay in milliseconds between sentiment API calls - User preference (10 seconds)
+const API_CALL_DELAY_MS = 10000; // Delay in milliseconds between sentiment API calls (10 seconds)
 
 // Utility function to introduce a delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -133,7 +133,7 @@ async function fetchCommentsForPostInternal(
   queryKeywordsArray: string[],
   fetchSinceTimestamp: number,
   processedAt: string,
-  storedItemsMap: Map<string, RedditPost> // Added for checking existing sentiment
+  storedItemsMap: Map<string, RedditPost>
 ): Promise<RedditPost[]> {
   const postId = postFullname.startsWith('t3_') ? postFullname.substring(3) : postFullname;
   if (!postId) {
@@ -253,13 +253,12 @@ export async function refreshUserRedditData(
   const { token, userAgent } = authDetails;
   console.log("[Reddit API Service] refreshUserRedditData: Reddit token obtained.");
 
-  // Fetch existing stored items to compare against
   const storedItemsArray = await getStoredRedditFeedForUser(userId);
   const storedItemsMap = new Map(storedItemsArray.map(item => [item.id, item]));
   console.log(`[Reddit API Service] refreshUserRedditData: Fetched ${storedItemsMap.size} existing stored items for comparison.`);
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = 5; // Fetch up to 5 posts to reduce processing time
+  const limit = 1; // Fetch only 1 post to reduce processing time and avoid timeouts
   const sort = 'new';
   
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
@@ -295,7 +294,7 @@ export async function refreshUserRedditData(
       let finalPostSentiment: RedditPost['sentiment'] = 'unknown';
       
       const postContentForAnalysis = `${postData.title || ''} ${postData.selftext || ''}`.trim();
-      const existingPost = storedItemsMap.get(postData.name); // postData.name is the fullname e.g. t3_xxxx
+      const existingPost = storedItemsMap.get(postData.name);
       const storedPostContent = existingPost ? `${existingPost.title || ''} ${existingPost.content || ''}`.trim() : null;
 
       if (existingPost && storedPostContent === postContentForAnalysis && existingPost.sentiment && existingPost.sentiment !== 'unknown') {
@@ -324,7 +323,7 @@ export async function refreshUserRedditData(
       const flairValue = postData.link_flair_text === undefined ? null : postData.link_flair_text;
 
       fetchedItemsToStore.push({
-        id: postData.name, // Use full name (e.g., t3_xxxx) as ID
+        id: postData.name, 
         title: postData.title || 'No Title',
         content: postData.selftext || '',
         subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
@@ -341,7 +340,8 @@ export async function refreshUserRedditData(
       });
 
       // Max items to process in total for this refresh run (posts + comments)
-      const MAX_TOTAL_ITEMS_PER_REFRESH = limit * (1 + COMMENTS_PER_POST_LIMIT); 
+      // Adjusted for fetching 1 post + up to COMMENTS_PER_POST_LIMIT comments
+      const MAX_TOTAL_ITEMS_PER_REFRESH = 1 * (1 + COMMENTS_PER_POST_LIMIT); 
 
       if (postData.num_comments && postData.num_comments > 0 && fetchedItemsToStore.length < MAX_TOTAL_ITEMS_PER_REFRESH) { 
         const commentsForThisPost = await fetchCommentsForPostInternal(
@@ -353,7 +353,7 @@ export async function refreshUserRedditData(
             userKeywords, 
             fetchSinceTimestamp,
             processedAt,
-            storedItemsMap // Pass the map
+            storedItemsMap
         );
         fetchedItemsToStore.push(...commentsForThisPost);
       }
@@ -367,7 +367,6 @@ export async function refreshUserRedditData(
         try {
             const batch = writeBatch(db);
             fetchedItemsToStore.forEach(item => {
-                // Use the full Reddit ID (e.g., t3_xxxx or t1_yyyy) as Firestore document ID
                 const docId = item.id; 
                 if (!docId) { 
                     console.warn("[Reddit API Service] refreshUserRedditData: Invalid ID for Firestore doc:", item.id);
@@ -428,7 +427,7 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { serverTimestamp, sno, ...restOfData } = data; 
       return {
-        id: docSnap.id, // Use Firestore document ID which should be the Reddit full ID
+        id: docSnap.id, 
         ...restOfData,
         timestamp: restOfData.timestamp || new Date(0).toISOString(), 
         flair: restOfData.flair === undefined ? null : restOfData.flair, 
@@ -436,28 +435,26 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
       } as RedditPost;
     });
     
-    // De-duplicate based on 'id' to ensure unique keys for React rendering
     const initialCount = postsFromDb.length;
     const uniquePostsMap = new Map<string, RedditPost>();
     for (const post of postsFromDb) {
-      if (post && typeof post.id === 'string') {
+      if (post && typeof post.id === 'string') { // Ensure post and post.id are valid
         if (!uniquePostsMap.has(post.id)) {
           uniquePostsMap.set(post.id, post);
         } else {
-          // This log helps identify if Firestore somehow provided data leading to duplicate IDs post-mapping.
-          // Given docSnap.id is unique, this specific log for duplicates from mapping should ideally not occur frequently unless post.id was being sourced differently.
-          console.warn(`[SERVICE] getStoredRedditFeedForUser: Duplicate ID "${post.id}" encountered when de-duplicating mapped Firestore docs. Doc ID should be unique. Prioritizing first encountered item. Title: ${post.title}`);
+          console.warn(`[SERVICE] getStoredRedditFeedForUser: Duplicate ID "${post.id}" encountered during de-duplication for user ${userId}. Title: ${post.title}`);
         }
       } else {
-        console.warn('[SERVICE] getStoredRedditFeedForUser: Encountered post with invalid id during de-duplication:', post);
+        console.warn(`[SERVICE] getStoredRedditFeedForUser: Encountered post with invalid or missing id during de-duplication for user ${userId}:`, post);
       }
     }
     const uniquePostsArray = Array.from(uniquePostsMap.values());
 
     if (initialCount !== uniquePostsArray.length) {
-      console.warn(`[SERVICE] getStoredRedditFeedForUser: De-duplication was performed. Initial items from DB: ${initialCount}, Unique items returned: ${uniquePostsArray.length} for user ${userId}.`);
+      console.warn(`[SERVICE] getStoredRedditFeedForUser: De-duplication performed for user ${userId}. Initial: ${initialCount}, Unique: ${uniquePostsArray.length}.`);
     } else {
-      console.log(`[SERVICE] getStoredRedditFeedForUser: Fetched ${initialCount} items, all unique by ID, for user ${userId}.`);
+      // This console log might be too verbose if it logs for every successful fetch without duplicates.
+      // console.log(`[SERVICE] getStoredRedditFeedForUser: Fetched ${initialCount} items, all unique by ID, for user ${userId}.`);
     }
     
     return uniquePostsArray;
