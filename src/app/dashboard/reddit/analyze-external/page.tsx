@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,8 +74,28 @@ const RedditAnalysisCardSkeleton: React.FC = () => (
           ))}
         </CardContent>
       </Card>
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-10 w-full" />
+      <Accordion type="multiple" className="w-full" defaultValue={['posts-skeleton', 'comments-skeleton']}>
+        <AccordionItem value="posts-skeleton">
+          <AccordionTrigger className="text-base font-medium hover:no-underline">
+            <Skeleton className="h-6 w-1/4" />
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-2 mt-2">
+              {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="comments-skeleton">
+          <AccordionTrigger className="text-base font-medium hover:no-underline">
+            <Skeleton className="h-6 w-1/4" />
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-2 mt-2">
+              {[...Array(1)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </CardContent>
     <CardFooter className="p-4 bg-muted/20 rounded-b-lg justify-end">
       <Skeleton className="h-4 w-1/4" />
@@ -106,6 +126,8 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
+  const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false);
 
 
   const fetchAndSetStoredAnalyses = useCallback(async () => {
@@ -144,6 +166,7 @@ export default function AnalyzeExternalRedditUserPage() {
   const processSingleUsername = async (usernameToAnalyze: string, isRefreshOp: boolean = false, appUserIdForCall: string) => {
     setAnalysisResults(prevResults => {
         const currentEntry = prevResults.find(r => r.username === usernameToAnalyze);
+        // isLoading is true if it's the very first analysis (no data at all, or only placeholder)
         const isFirstTimeAnalysis = !currentEntry?.data || currentEntry.data._placeholder === true;
 
         return prevResults.map(r => {
@@ -153,7 +176,7 @@ export default function AnalyzeExternalRedditUserPage() {
                     isLoading: isFirstTimeAnalysis && !isRefreshOp, 
                     isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
                     error: undefined, 
-                    data: r.data ? { ...r.data, error: undefined } : undefined, 
+                    data: r.data ? { ...r.data, error: undefined, _placeholder: false } : undefined, // Ensure _placeholder is false on new analysis
                 };
             }
             return r;
@@ -166,14 +189,14 @@ export default function AnalyzeExternalRedditUserPage() {
         if (resultFromFlow.error) {
             console.error(`Error analyzing/refreshing user ${usernameToAnalyze} (from flow):`, resultFromFlow.error);
             if (!isUpdatingAll) { 
-                toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 5000 });
+                toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 7000 });
             }
             setAnalysisResults(prev => prev.map(r =>
                 r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data } : r 
             ));
         } else {
             setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: resultFromFlow, isLoading: false, isRefreshing: false, error: undefined } : r
+                r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: {...resultFromFlow, _placeholder: false}, isLoading: false, isRefreshing: false, error: undefined } : r
             ));
             if (!isUpdatingAll && isRefreshOp) {
                 toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
@@ -183,7 +206,7 @@ export default function AnalyzeExternalRedditUserPage() {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
         console.error(`[Client] Error calling analyzeExternalRedditUser for ${usernameToAnalyze}:`, error);
         if (!isUpdatingAll) { 
-            toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 5000 });
+            toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 7000 });
         }
         setAnalysisResults(prev => prev.map(r =>
             r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data } : r 
@@ -205,18 +228,20 @@ export default function AnalyzeExternalRedditUserPage() {
     const existingUserDisplayIndex = analysisResults.findIndex(r => r.username === trimmedUsername);
 
     if (existingUserDisplayIndex === -1) {
+      // User not in current display list. Add placeholder first, then analyze.
       const placeholderResult = await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
       if ('error' in placeholderResult) {
           toast({ variant: "destructive", title: "Registration Error", description: placeholderResult.error });
           return;
       }
       
+      // Add to local state immediately as a loading placeholder
       setAnalysisResults(prev => [{ 
           username: trimmedUsername, 
-          isLoading: true, 
+          isLoading: true, // Set to true because we will analyze immediately
           isRefreshing: false, 
           error: undefined, 
-          data: { 
+          data: { // Minimal placeholder data matching ExternalRedditUserAnalysis
               username: trimmedUsername, _placeholder: true, lastRefreshedAt: null,
               accountCreated: null, totalPostKarma: 0, totalCommentKarma: 0, subredditsPostedIn: [],
               totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
@@ -225,6 +250,7 @@ export default function AnalyzeExternalRedditUserPage() {
       }, ...prev]);
       await processSingleUsername(trimmedUsername, false, currentUser.id);
     } else {
+      // User already in display list, just refresh their data
       await processSingleUsername(trimmedUsername, true, currentUser.id);
     }
     setSingleUsername(''); 
@@ -255,7 +281,8 @@ export default function AnalyzeExternalRedditUserPage() {
       }
       
       let lines = text.split(/\\r\\n|\\n|\\r/); 
-      if (lines.length > 0 && lines[0].toLowerCase().includes('user')) { 
+      const header = lines[0].toLowerCase();
+      if (header.includes('user_name') || header.includes('username')) { 
         lines.shift(); 
       }
 
@@ -267,7 +294,7 @@ export default function AnalyzeExternalRedditUserPage() {
       const uniqueCsvUsernames = Array.from(new Set(csvUsernamesRaw));
 
       if (uniqueCsvUsernames.length === 0) {
-        toast({ variant: "destructive", title: "No Usernames", description: "No valid usernames found in the CSV file after skipping the header." });
+        toast({ variant: "destructive", title: "No Usernames", description: "No valid usernames found in the CSV file." });
         event.target.value = ''; 
         setFileName(null);
         setIsProcessingCsv(false);
@@ -275,26 +302,26 @@ export default function AnalyzeExternalRedditUserPage() {
       }
       
       let newPlaceholdersCreated = 0;
-      let alreadyExistedCount = 0;
+      let alreadyExistedOrRegisteredCount = 0;
 
       for (const username of uniqueCsvUsernames) {
         const result = await addOrUpdateRedditUserPlaceholder(currentUser.id, username);
         if ('error' in result) {
-          console.error(`Failed to add placeholder for ${username}: ${result.error}`);
+          console.error(`Failed to add/update placeholder for ${username}: ${result.error}`);
         } else if (result.new) {
           newPlaceholdersCreated++;
         } else {
-          alreadyExistedCount++;
+          alreadyExistedOrRegisteredCount++;
         }
       }
       
       toast({ 
         title: "CSV Processed", 
-        description: `${newPlaceholdersCreated} new usernames registered. ${alreadyExistedCount} already existed. Click "Update All Profiles" or individual "Analyze/Refresh" buttons for analysis.`,
+        description: `${newPlaceholdersCreated} new usernames registered. ${alreadyExistedOrRegisteredCount} already existed or were just registered. Click "Update All Profiles" or individual "Analyze" buttons to fetch data.`,
         duration: 7000 
       });
       
-      await fetchAndSetStoredAnalyses(); 
+      await fetchAndSetStoredAnalyses(); // Refresh the list to show new placeholders
 
       setIsProcessingCsv(false);
       event.target.value = ''; 
@@ -325,6 +352,7 @@ export default function AnalyzeExternalRedditUserPage() {
     const usernamesToProcess = analysisResults.map(r => r.username);
 
     for (const username of usernamesToProcess) {
+        // Pass 'true' for isRefreshOp to ensure existing data is treated as a refresh
         await processSingleUsername(username, true, currentUser.id);
     }
 
@@ -403,7 +431,7 @@ export default function AnalyzeExternalRedditUserPage() {
     }
     return analysisResults.filter(result => {
       if (!result.data?.lastRefreshedAt) {
-        return false; 
+        return false; // Exclude placeholders or items never successfully fetched when filtering
       }
       const itemDate = parseISO(result.data.lastRefreshedAt);
       let inRange = true;
@@ -442,7 +470,7 @@ export default function AnalyzeExternalRedditUserPage() {
   );
 
   const renderDataTable = (items: ExternalRedditUserDataItem[], type: 'Posts' | 'Comments') => {
-    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2 px-1">No {type.toLowerCase()} found in this analysis run.</p>;
+    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2 px-1">No recent {type.toLowerCase()} found in this analysis run.</p>;
     return (
       <div className="overflow-x-auto rounded-md border mt-2">
         <Table>
@@ -493,15 +521,15 @@ export default function AnalyzeExternalRedditUserPage() {
             External Reddit User Analyzer
           </CardTitle>
           <CardDescription>
-            Analyze Reddit user profiles. Enter a username or upload a CSV to register users.
-            Registered users appear below. Click "Update All Profiles" or individual "Analyze/Refresh" buttons to fetch data.
+            Analyze Reddit user profiles. Enter a username or upload a CSV to register users for analysis.
+            Data is fetched and stored in Firestore.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
             <div className="flex-grow space-y-1.5">
                 <label htmlFor="single-username-input" className="text-sm font-medium text-muted-foreground">
-                    Enter a single Reddit username (without u/) to analyze or add
+                    Enter a single Reddit username (without u/)
                 </label>
                 <Input
                     id="single-username-input"
@@ -518,7 +546,7 @@ export default function AnalyzeExternalRedditUserPage() {
               disabled={isProcessingCsv || isUpdatingAll || !singleUsername.trim() || analysisResults.some(r => r.isLoading || r.isRefreshing)}
               className="w-full sm:w-auto"
             >
-              <UserSearch className="mr-2 h-4 w-4" /> Analyze/Add User
+              <UserSearch className="mr-2 h-4 w-4" /> Add & Analyze User
             </Button>
           </div>
 
@@ -531,7 +559,7 @@ export default function AnalyzeExternalRedditUserPage() {
           <div className="space-y-3">
             <div className="space-y-1.5">
                 <label htmlFor="csv-upload" className="text-sm font-medium text-muted-foreground">
-                    Upload CSV to register usernames (1st line header e.g. "USER_NAME", then usernames)
+                    Upload CSV to register usernames (Header: "USER_NAME" or "username")
                 </label>
                 <div className="flex items-center gap-3">
                     <Input
@@ -540,7 +568,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         accept=".csv,text/csv"
                         onChange={handleFileUpload}
                         disabled={isProcessingCsv || isUpdatingAll || analysisResults.some(r => r.isLoading || r.isRefreshing)}
-                        className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer shadow-sm"
+                        className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer shadow-sm"
                     />
                     {fileName && !isProcessingCsv && (
                         <Badge variant="outline" className="text-xs whitespace-nowrap">
@@ -552,7 +580,7 @@ export default function AnalyzeExternalRedditUserPage() {
             <div className="flex flex-wrap gap-3">
                 <Button onClick={handleDownloadTemplate} variant="outline" size="sm" disabled={isProcessingCsv || isUpdatingAll || analysisResults.some(r => r.isLoading || r.isRefreshing)}>
                     <Download className="mr-2 h-4 w-4" />
-                    Download Template CSV
+                    Download CSV Template
                 </Button>
                  <Button onClick={handleUpdateAll} disabled={isLoadingStoredData || isUpdatingAll || isProcessingCsv || analysisResults.length === 0 || analysisResults.some(r => r.isLoading || r.isRefreshing)}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingAll ? 'animate-spin' : ''}`} />
@@ -560,7 +588,7 @@ export default function AnalyzeExternalRedditUserPage() {
                 </Button>
                 <Button onClick={handleOpenUserListDialog} variant="outline" size="sm" disabled={isProcessingCsv || isUpdatingAll || isLoadingUserListDialog || analysisResults.some(r => r.isLoading || r.isRefreshing)}>
                     <ListTree className="mr-2 h-4 w-4" />
-                    User_List
+                    Manage Registered Users
                 </Button>
             </div>
             {(isProcessingCsv || isUpdatingAll) && (
@@ -576,9 +604,9 @@ export default function AnalyzeExternalRedditUserPage() {
       <Dialog open={isUserListDialogOpen} onOpenChange={setIsUserListDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Saved Reddit Usernames for Analysis</DialogTitle>
+            <DialogTitle>Registered Reddit Usernames</DialogTitle>
             <DialogDescription>
-              This list shows Reddit usernames registered for analysis under your account.
+              Usernames registered for analysis. Delete to remove their stored data.
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="h-[300px] w-full rounded-md border p-4 my-4">
@@ -597,7 +625,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         className="h-6 w-6 opacity-50 group-hover:opacity-100 text-destructive hover:bg-destructive/10"
                         onClick={() => handleDeleteUserAnalysis(name)}
                         disabled={isDeletingUser && userToDelete === name}
-                        title={`Delete u/${name}`}
+                        title={`Delete analysis for u/${name}`}
                     >
                         {isDeletingUser && userToDelete === name ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                     </Button>
@@ -606,7 +634,7 @@ export default function AnalyzeExternalRedditUserPage() {
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">
-                No Reddit usernames have been registered for analysis yet.
+                No Reddit usernames are currently registered for analysis.
               </p>
             )}
           </ScrollArea>
@@ -623,14 +651,14 @@ export default function AnalyzeExternalRedditUserPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove analysis data for u/{userToDelete}? This action cannot be undone.
+              Are you sure you want to remove all analysis data for Reddit user u/{userToDelete}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setUserToDelete(null)} disabled={isDeletingUser}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} disabled={isDeletingUser} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
               {isDeletingUser ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-              Delete
+              Delete Permanently
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -641,10 +669,10 @@ export default function AnalyzeExternalRedditUserPage() {
         <CardHeader>
           <CardTitle className="text-lg font-headline flex items-center">
             <SearchCheck className="mr-2 h-5 w-5 text-primary" />
-            Filter Profiles by Date
+            Filter Profiles by Last Update Date
           </CardTitle>
           <CardDescription>
-            Select a date range to filter the displayed profiles by their 'Last Refreshed At' date.
+            Select a date range to filter profiles by their 'Last Refreshed At' date.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -652,7 +680,7 @@ export default function AnalyzeExternalRedditUserPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-grow">
               <div className="space-y-1.5">
                 <Label htmlFor="start-date">From Date</Label>
-                <Popover>
+                <Popover open={isStartDatePickerOpen} onOpenChange={setIsStartDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       id="start-date"
@@ -670,16 +698,18 @@ export default function AnalyzeExternalRedditUserPage() {
                     <Calendar
                       mode="single"
                       selected={startDate}
-                      onSelect={setStartDate}
+                      onSelect={(date) => {
+                        setStartDate(date);
+                        setTimeout(() => setIsStartDatePickerOpen(false), 0);
+                      }}
                       disabled={(date) => (endDate ? date > endDate : false) || date > new Date()}
-                      initialFocus
                     />
                   </PopoverContent>
                 </Popover>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="end-date">To Date</Label>
-                <Popover>
+                <Popover open={isEndDatePickerOpen} onOpenChange={setIsEndDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       id="end-date"
@@ -697,9 +727,11 @@ export default function AnalyzeExternalRedditUserPage() {
                     <Calendar
                       mode="single"
                       selected={endDate}
-                      onSelect={setEndDate}
+                      onSelect={(date) => {
+                        setEndDate(date);
+                        setTimeout(() => setIsEndDatePickerOpen(false), 0);
+                      }}
                       disabled={(date) => (startDate ? date < startDate : false) || date > new Date()}
-                      initialFocus
                     />
                   </PopoverContent>
                 </Popover>
@@ -707,71 +739,87 @@ export default function AnalyzeExternalRedditUserPage() {
             </div>
             <Button onClick={handleResetFilters} variant="outline" className="w-full sm:w-auto mt-2 sm:mt-0">
               <FilterX className="mr-2 h-4 w-4" />
-              Reset Filters
+              Reset Date Filters
             </Button>
           </div>
         </CardContent>
       </Card>
 
-
       {isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-            <p>Loading stored profiles...</p>
+            <Database className="h-10 w-10 text-primary mb-3 animate-pulse" />
+            <p>Loading stored profiles from database...</p>
         </div>
       )}
 
       {!isLoadingStoredData && currentDisplayResults.length === 0 && !isProcessingCsv && (
-         <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground bg-card rounded-lg shadow-lg p-8">
+         <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground bg-card rounded-lg shadow-lg p-8 border">
             <UserXIcon className="h-16 w-16 text-primary mb-4" /> 
             <p className="text-xl font-semibold mb-2">
-              { (startDate || endDate) ? "No Profiles Match Filter" : "No Profiles to Display"}
+              { (startDate || endDate) ? "No Profiles Match Date Filter" : "No Profiles Registered"}
             </p>
             <p className="text-sm">
               { (startDate || endDate) 
                 ? "No saved profiles match the selected date range. Try adjusting the dates or resetting the filters." 
-                : "Add a Reddit username above or upload a CSV file to begin analyzing profiles."
+                : "Add a Reddit username above or upload a CSV file to begin registering profiles for analysis."
               }
             </p>
-            { !(startDate || endDate) && <p className="text-xs mt-3">Your analyzed profiles will appear here.</p>}
+            { !(startDate || endDate) && <p className="text-xs mt-3">Your registered profiles will appear here after analysis.</p>}
         </div>
       )}
 
       {currentDisplayResults.length > 0 && (
         <div className="space-y-8 mt-8">
           {currentDisplayResults.map((result, index) => {
-            const isActualLoading = result.isLoading && !result.isRefreshing && (!result.data || result.data._placeholder);
-            const isPending = result.data?._placeholder && !result.isLoading && !result.isRefreshing && !result.error && !result.data.error;
+            const isInitialLoading = result.isLoading && !result.isRefreshing && (!result.data || result.data._placeholder);
+            const isActualRefreshing = result.isRefreshing;
+            const isPending = result.data?._placeholder === true && !result.isLoading && !result.isRefreshing && !result.error && !result.data.error;
             const hasFlowError = !!result.data?.error; 
             const hasClientError = !!result.error; 
             const displayError = result.data?.error || result.error;
 
-
             let cardBorderClass = "border-border/70"; 
-            if (result.isLoading || result.isRefreshing) cardBorderClass = "border-t-4 border-t-blue-500";
-            else if (hasFlowError || hasClientError) cardBorderClass = "border-t-4 border-t-red-500";
-            else if (isPending) cardBorderClass = "border-t-4 border-t-amber-500";
-            else if (result.data && !result.data._placeholder && result.data.lastRefreshedAt) cardBorderClass = "border-t-4 border-t-green-500";
+            let StatusIcon = InfoIcon;
+            let statusIconColor = "text-primary";
+
+            if (isInitialLoading || isActualRefreshing) {
+              cardBorderClass = "border-t-4 border-t-blue-500 animate-pulse";
+              StatusIcon = Hourglass;
+              statusIconColor = "text-blue-500";
+            } else if (hasFlowError || hasClientError) {
+              cardBorderClass = "border-t-4 border-t-red-500";
+              StatusIcon = AlertTriangle;
+              statusIconColor = "text-red-500";
+            } else if (isPending) {
+              cardBorderClass = "border-t-4 border-t-amber-500";
+              StatusIcon = InfoIcon;
+              statusIconColor = "text-amber-500";
+            } else if (result.data && !result.data._placeholder && result.data.lastRefreshedAt) {
+              cardBorderClass = "border-t-4 border-t-green-500";
+              StatusIcon = Clock; // Or CheckCircle for success
+              statusIconColor = "text-green-500";
+            }
 
             return (
             <Card key={`${result.username}-${index}`} className={cn("shadow-md transition-all duration-300 hover:shadow-xl", cardBorderClass)}>
               <CardHeader className="bg-muted/20 rounded-t-lg p-4">
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-lg font-semibold flex items-center">
-                    <span>Profile: <span className="text-primary font-bold">u/{result.username}</span></span>
-                    {(result.isLoading || result.isRefreshing) && !isActualLoading && <Loader2 className="ml-3 h-5 w-5 animate-spin text-primary" />}
+                      <StatusIcon className={cn("mr-2 h-5 w-5 flex-shrink-0", statusIconColor, (isInitialLoading || isActualRefreshing) && "animate-spin")} />
+                      <span>Profile: <span className="text-primary font-bold">u/{result.username}</span></span>
                     </CardTitle>
                     <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={() => handleRefreshAnalysis(result.username)}
                         disabled={result.isLoading || result.isRefreshing || isProcessingCsv || isUpdatingAll}
+                        className="whitespace-nowrap"
                     >
                         <RefreshCw className={`mr-2 h-4 w-4 ${(result.isLoading || result.isRefreshing) ? 'animate-spin' : ''}`} />
-                        {(result.data?._placeholder || (!result.data?.lastRefreshedAt && !displayError)) ? 'Analyze' : 'Refresh'}
+                        {(isPending || (!result.data?.lastRefreshedAt && !displayError)) ? 'Analyze' : 'Refresh'}
                     </Button>
                 </div>
-                 {result.data?.lastRefreshedAt && !displayError && (
+                 {result.data?.lastRefreshedAt && !displayError && !isPending && (
                     <div className="text-xs text-muted-foreground mt-1 flex items-center">
                         <Clock className="mr-1.5 h-3 w-3" />
                         Last updated: {formatDistanceToNow(parseISO(result.data.lastRefreshedAt), { addSuffix: true })}
@@ -779,10 +827,10 @@ export default function AnalyzeExternalRedditUserPage() {
                 )}
               </CardHeader>
               <CardContent className="p-4 md:p-6">
-                {isActualLoading ? (
+                {isInitialLoading ? (
                     <RedditAnalysisCardSkeleton />
                 ) : (displayError) ? (
-                  <div className="text-red-600 bg-red-50 p-4 rounded-md border border-red-200 flex items-start gap-3">
+                  <div className="text-red-600 bg-red-50/70 p-4 rounded-md border border-red-200 flex items-start gap-3">
                     <AlertTriangle className="h-6 w-6 text-red-700 flex-shrink-0 mt-0.5" />
                     <div>
                         <p className="font-semibold text-red-700">Analysis Error</p>
@@ -791,9 +839,9 @@ export default function AnalyzeExternalRedditUserPage() {
                   </div>
                 ) : isPending ? (
                      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                        <Info className="h-8 w-8 mb-2 text-amber-500"/>
+                        <InfoIcon className="h-8 w-8 mb-2 text-amber-500"/>
                         <p className="font-medium">Analysis pending for u/{result.username}.</p>
-                        <p className="text-xs">Click "Analyze" on this card or "Update All Profiles" above.</p>
+                        <p className="text-xs">Click "Analyze" on this card or "Update All Profiles".</p>
                     </div>
                 ) : result.data && result.data.lastRefreshedAt && (
                   <div className="space-y-4">
@@ -807,7 +855,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         {renderDataItem("Account Created", result.data.accountCreated ? format(parseISO(result.data.accountCreated), 'PPP') : 'N/A')}
                         {renderDataItem("Total Post Karma", result.data.totalPostKarma?.toLocaleString())}
                         {renderDataItem("Total Comment Karma", result.data.totalCommentKarma?.toLocaleString())}
-                        {renderDataItem("Subreddits Active In (from recent)", result.data.subredditsPostedIn?.length > 0 ? result.data.subredditsPostedIn.join(', ') : 'None found')}
+                        {renderDataItem("Subreddits Active In (recent)", result.data.subredditsPostedIn?.length > 0 ? result.data.subredditsPostedIn.slice(0,3).join(', ') + (result.data.subredditsPostedIn.length > 3 ? '...' : '') : 'None found')}
                         {renderDataItem("Recent Posts Fetched", result.data.totalPostsFetchedThisRun)}
                         {renderDataItem("Recent Comments Fetched", result.data.totalCommentsFetchedThisRun)}
                       </CardContent>
@@ -815,7 +863,7 @@ export default function AnalyzeExternalRedditUserPage() {
                     
                     <Accordion type="multiple" className="w-full" defaultValue={['posts', 'comments']}>
                         <AccordionItem value="posts">
-                            <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary">
+                            <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
                                 <div className="flex items-center gap-2">
                                     <MessageSquareText className="h-5 w-5" />
                                     Fetched Posts ({result.data.fetchedPostsDetails?.length || 0})
@@ -826,7 +874,7 @@ export default function AnalyzeExternalRedditUserPage() {
                             </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="comments">
-                            <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary">
+                            <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
                                 <div className="flex items-center gap-2">
                                     <MessageSquareText className="h-5 w-5" />
                                     Fetched Comments ({result.data.fetchedCommentsDetails?.length || 0})
@@ -855,6 +903,4 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
-
-
     
