@@ -63,7 +63,7 @@ interface RedditApiResponse {
 
 type RedditCommentsApiResponse = [RedditApiResponse, RedditApiResponse];
 
-async function getRedditAccessToken(): Promise<{ token: string; userAgent: string } | { error: string }> {
+export async function getRedditAccessToken(): Promise<{ token: string; userAgent: string } | { error: string }> {
   console.log('[Reddit API Service] getRedditAccessToken: Attempting to retrieve or generate Reddit access token.');
   const apiKeys = await getApiKeys();
   const clientIdEntry = apiKeys.find(k => k.serviceName === REDDIT_CLIENT_ID_SERVICE_NAME);
