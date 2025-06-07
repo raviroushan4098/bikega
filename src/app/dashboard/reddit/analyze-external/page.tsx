@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder } from '@/lib/reddit-api-service';
+import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder, deleteStoredRedditAnalysis } from '@/lib/reddit-api-service';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -87,6 +97,11 @@ export default function AnalyzeExternalRedditUserPage() {
   const [savedUsernamesForDialog, setSavedUsernamesForDialog] = useState<string[]>([]);
   const [isLoadingUserListDialog, setIsLoadingUserListDialog] = useState(false);
 
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+
   const fetchAndSetStoredAnalyses = useCallback(async () => {
       if (currentUser?.id) {
           setIsLoadingStoredData(true);
@@ -129,7 +144,7 @@ export default function AnalyzeExternalRedditUserPage() {
                 return {
                     ...r,
                     isLoading: isFirstTimeAnalysis && !isRefreshOp, 
-                    isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt), // Refresh if already data, or if placeholder being analyzed
+                    isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
                     error: undefined,
                 };
             }
@@ -172,8 +187,26 @@ export default function AnalyzeExternalRedditUserPage() {
 
     if (existingUserDisplayIndex === -1) {
       // New user, add placeholder first then analyze
-      setAnalysisResults(prev => [{ username: trimmedUsername, isLoading: true, isRefreshing: false, error: undefined, data: undefined }, ...prev]);
-      await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername); // Ensure placeholder exists in DB
+      await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
+      setAnalysisResults(prev => [{ 
+          username: trimmedUsername, 
+          isLoading: true, 
+          isRefreshing: false, 
+          error: undefined, 
+          data: { // Basic placeholder structure for immediate UI update before full fetch
+              username: trimmedUsername,
+              _placeholder: true,
+              lastRefreshedAt: null,
+              accountCreated: null,
+              totalPostKarma: 0,
+              totalCommentKarma: 0,
+              subredditsPostedIn: [],
+              totalPostsFetchedThisRun: 0,
+              totalCommentsFetchedThisRun: 0,
+              fetchedPostsDetails: [],
+              fetchedCommentsDetails: [],
+          }
+      }, ...prev]);
       await processSingleUsername(trimmedUsername, false, currentUser.id);
     } else {
       // Existing user, just trigger a refresh
@@ -204,8 +237,8 @@ export default function AnalyzeExternalRedditUserPage() {
           return;
       }
       
-      let lines = text.split(/\\r\\n|\\n|\\r/); // Handle different line endings
-      if (lines.length > 0) {
+      let lines = text.split(/\\r\\n|\\n|\\r/); 
+      if (lines.length > 0 && lines[0].toLowerCase().includes('user')) { // Simple header check
         lines.shift(); // Skip header row
       }
 
@@ -240,7 +273,7 @@ export default function AnalyzeExternalRedditUserPage() {
       
       toast({ 
         title: "CSV Processed", 
-        description: `${newPlaceholdersCreated} new usernames registered. ${alreadyExistedCount} already existed. Click "Update All Profiles" or individual "Analyze/Refresh" buttons.`,
+        description: `${newPlaceholdersCreated} new usernames registered. ${alreadyExistedCount} already existed. Click "Update All Profiles" or individual "Analyze/Refresh" buttons for analysis.`,
         duration: 7000 
       });
       
@@ -283,7 +316,7 @@ export default function AnalyzeExternalRedditUserPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const csvContent = "USER_NAME\n";
+    const csvContent = "USER_NAME\n"; // Header row as example
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     if (link.download !== undefined) { 
@@ -318,6 +351,29 @@ export default function AnalyzeExternalRedditUserPage() {
     }
   };
 
+  const handleDeleteUserAnalysis = (username: string) => {
+    setUserToDelete(username);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete || !currentUser?.id) return;
+
+    setIsDeletingUser(true);
+    const result = await deleteStoredRedditAnalysis(currentUser.id, userToDelete);
+    setIsDeletingUser(false);
+    setIsConfirmDeleteDialogOpen(false);
+
+    if (result.success) {
+      toast({ title: "Deletion Successful", description: `Analysis data for u/${userToDelete} has been removed.` });
+      setAnalysisResults(prev => prev.filter(r => r.username !== userToDelete));
+      setSavedUsernamesForDialog(prev => prev.filter(name => name !== userToDelete));
+    } else {
+      toast({ variant: "destructive", title: "Deletion Failed", description: result.error || "Could not remove user analysis." });
+    }
+    setUserToDelete(null);
+  };
+
 
   if (authLoading) {
     return (
@@ -343,7 +399,7 @@ export default function AnalyzeExternalRedditUserPage() {
   );
 
   const renderDataTable = (items: ExternalRedditUserDataItem[], type: 'Posts' | 'Comments') => {
-    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2">No {type.toLowerCase()} found in this analysis run.</p>;
+    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2 px-1">No {type.toLowerCase()} found in this analysis run.</p>;
     return (
       <div className="overflow-x-auto rounded-md border mt-2">
         <Table>
@@ -490,8 +546,18 @@ export default function AnalyzeExternalRedditUserPage() {
             ) : savedUsernamesForDialog.length > 0 ? (
               <ul className="space-y-1">
                 {savedUsernamesForDialog.map((name, index) => (
-                  <li key={index} className="text-sm p-1.5 bg-muted/50 rounded-sm">
-                    u/{name}
+                  <li key={index} className="text-sm p-1.5 bg-muted/50 rounded-sm flex justify-between items-center group">
+                    <span>u/{name}</span>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 opacity-50 group-hover:opacity-100 text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteUserAnalysis(name)}
+                        disabled={isDeletingUser && userToDelete === name}
+                        title={`Delete u/${name}`}
+                    >
+                        {isDeletingUser && userToDelete === name ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -509,6 +575,25 @@ export default function AnalyzeExternalRedditUserPage() {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove analysis data for u/{userToDelete}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToDelete(null)} disabled={isDeletingUser}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} disabled={isDeletingUser} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              {isDeletingUser ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+
       {isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
@@ -518,7 +603,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
       {!isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground bg-card rounded-lg shadow-lg p-8">
-            <UserXIcon className="h-16 w-16 text-primary mb-4" />
+            <UserXIcon className="h-16 w-16 text-primary mb-4" /> {/* Or DatabaseZap */}
             <p className="text-xl font-semibold mb-2">No Profiles to Display</p>
             <p className="text-sm">Add a Reddit username above or upload a CSV file to begin analyzing profiles.</p>
             <p className="text-xs mt-3">Your analyzed profiles will appear here.</p>
@@ -533,7 +618,7 @@ export default function AnalyzeExternalRedditUserPage() {
             const hasError = !!result.error;
             const hasData = result.data && !result.data._placeholder && result.data.lastRefreshedAt;
 
-            let cardBorderClass = "border-border/70";
+            let cardBorderClass = "border-border/70"; // Default border
             if (result.isLoading || result.isRefreshing) cardBorderClass = "border-t-4 border-t-blue-500";
             else if (hasError) cardBorderClass = "border-t-4 border-t-red-500";
             else if (isPending) cardBorderClass = "border-t-4 border-t-amber-500";

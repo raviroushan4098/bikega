@@ -5,7 +5,7 @@ import type { RedditPost, ExternalRedditUserAnalysis } from '@/types';
 import { getApiKeys } from './api-key-service';
 import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '@/ai/flows/advanced-sentiment-flow';
 import { db } from './firebase';
-import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
@@ -513,14 +513,10 @@ export async function getStoredRedditAnalyses(appUserId: string): Promise<Extern
   const analyses: ExternalRedditUserAnalysis[] = [];
   try {
     const profilesCollectionRef = collection(db, TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION, appUserId, ANALYZED_PROFILES_SUBCOLLECTION);
-    // Order by lastRefreshedAt to show most recent first, if desired.
-    // Ensure you have a Firestore index for this: (lastRefreshedAt, desc) on the 'analyzedRedditProfiles' subcollection.
-    // For now, let's order by username alphabetically for consistency, or skip ordering if not essential for initial display.
     const q = query(profilesCollectionRef, orderBy('username', 'asc'));
     const querySnapshot = await getDocs(q);
 
     querySnapshot.forEach((docSnap) => {
-      // The document ID is the Reddit username, which is also in the data.
       analyses.push(docSnap.data() as ExternalRedditUserAnalysis);
     });
     console.log(`[Reddit API Service] getStoredRedditAnalyses: Fetched ${analyses.length} stored analyses for appUser ${appUserId}.`);
@@ -529,8 +525,26 @@ export async function getStoredRedditAnalyses(appUserId: string): Promise<Extern
     const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching stored Reddit analyses.';
     console.error(`[Reddit API Service] getStoredRedditAnalyses: Error for appUser ${appUserId}: ${errorMessage}`, error);
     if (error instanceof Error && (error.message.includes('needs an index') || error.message.includes('requires an index'))) {
-        console.error(`[SERVICE] Firestore index missing for '${ANALYZED_PROFILES_SUBCOLLECTION}' subcollection, likely on 'username' (asc) or 'lastRefreshedAt' if that ordering is used. The error message from Firestore should contain a link to create it.`);
+        console.error(`[SERVICE] Firestore index missing for '${ANALYZED_PROFILES_SUBCOLLECTION}' subcollection, likely on 'username' (asc). The error message from Firestore should contain a link to create it.`);
     }
     return []; 
+  }
+}
+
+export async function deleteStoredRedditAnalysis(appUserId: string, redditUsername: string): Promise<{ success: boolean; error?: string }> {
+  if (!appUserId || !redditUsername) {
+    return { success: false, error: "App User ID and Reddit Username are required for deletion." };
+  }
+  const firestorePath = `${TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION}/${appUserId}/${ANALYZED_PROFILES_SUBCOLLECTION}/${redditUsername}`;
+  const analysisDocRef = doc(db, firestorePath);
+
+  try {
+    await deleteDoc(analysisDocRef);
+    console.log(`[Reddit API Service] Successfully deleted analysis for u/${redditUsername} (AppUser: ${appUserId}) from Firestore at ${firestorePath}`);
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error deleting stored Reddit analysis.";
+    console.error(`[Reddit API Service] Error deleting analysis for u/${redditUsername} (AppUser: ${appUserId}): ${errorMessage}`, error);
+    return { success: false, error: errorMessage };
   }
 }
