@@ -1,17 +1,17 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2 } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { format, parseISO, formatDistanceToNow, startOfDay, endOfDay } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
@@ -38,12 +38,15 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Label } from '@/components/ui/label';
 
 
 interface AnalysisResultDisplay {
   username: string;
-  data?: ExternalRedditUserAnalysis; // data.error will hold error from flow
-  error?: string; // For client-side errors before calling flow, or if flow result itself indicates client-side issue
+  data?: ExternalRedditUserAnalysis;
+  error?: string; 
   isLoading: boolean;
   isRefreshing?: boolean;
 }
@@ -101,6 +104,9 @@ export default function AnalyzeExternalRedditUserPage() {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
 
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+
 
   const fetchAndSetStoredAnalyses = useCallback(async () => {
       if (currentUser?.id) {
@@ -109,10 +115,10 @@ export default function AnalyzeExternalRedditUserPage() {
               const storedData = await getStoredRedditAnalyses(currentUser.id);
               const displayableResults: AnalysisResultDisplay[] = storedData.map(data => ({
                   username: data.username,
-                  data: data, // This now includes potential .error field from the flow
+                  data: data, 
                   isLoading: false,
                   isRefreshing: false,
-                  error: data.error, // Populate error from stored data if present
+                  error: data.error, 
               }));
               setAnalysisResults(displayableResults);
           } catch (error) {
@@ -146,8 +152,8 @@ export default function AnalyzeExternalRedditUserPage() {
                     ...r,
                     isLoading: isFirstTimeAnalysis && !isRefreshOp, 
                     isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
-                    error: undefined, // Clear previous client-side error
-                    data: r.data ? { ...r.data, error: undefined } : undefined, // Clear previous flow error from data
+                    error: undefined, 
+                    data: r.data ? { ...r.data, error: undefined } : undefined, 
                 };
             }
             return r;
@@ -173,7 +179,7 @@ export default function AnalyzeExternalRedditUserPage() {
                 toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
             }
         }
-    } catch (error) { // Catch client-side errors or truly unhandled server action failures
+    } catch (error) { 
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
         console.error(`[Client] Error calling analyzeExternalRedditUser for ${usernameToAnalyze}:`, error);
         if (!isUpdatingAll) { 
@@ -199,7 +205,6 @@ export default function AnalyzeExternalRedditUserPage() {
     const existingUserDisplayIndex = analysisResults.findIndex(r => r.username === trimmedUsername);
 
     if (existingUserDisplayIndex === -1) {
-      // New user, add placeholder first then analyze
       const placeholderResult = await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
       if ('error' in placeholderResult) {
           toast({ variant: "destructive", title: "Registration Error", description: placeholderResult.error });
@@ -220,7 +225,6 @@ export default function AnalyzeExternalRedditUserPage() {
       }, ...prev]);
       await processSingleUsername(trimmedUsername, false, currentUser.id);
     } else {
-      // Existing user, just trigger a refresh
       await processSingleUsername(trimmedUsername, true, currentUser.id);
     }
     setSingleUsername(''); 
@@ -386,6 +390,32 @@ export default function AnalyzeExternalRedditUserPage() {
     }
     setUserToDelete(null);
   };
+
+  const handleResetFilters = () => {
+    setStartDate(undefined);
+    setEndDate(undefined);
+    toast({ title: "Filters Reset", description: "Showing all profiles.", duration: 3000 });
+  };
+
+  const currentDisplayResults = useMemo(() => {
+    if (!startDate && !endDate) {
+      return analysisResults;
+    }
+    return analysisResults.filter(result => {
+      if (!result.data?.lastRefreshedAt) {
+        return false; 
+      }
+      const itemDate = parseISO(result.data.lastRefreshedAt);
+      let inRange = true;
+      if (startDate) {
+        inRange = inRange && (itemDate >= startOfDay(startDate));
+      }
+      if (endDate) {
+        inRange = inRange && (itemDate <= endOfDay(endDate));
+      }
+      return inRange;
+    });
+  }, [analysisResults, startDate, endDate]);
 
 
   if (authLoading) {
@@ -606,6 +636,83 @@ export default function AnalyzeExternalRedditUserPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Date Filter Section */}
+      <Card className="shadow-md">
+        <CardHeader>
+          <CardTitle className="text-lg font-headline flex items-center">
+            <SearchCheck className="mr-2 h-5 w-5 text-primary" />
+            Filter Profiles by Date
+          </CardTitle>
+          <CardDescription>
+            Select a date range to filter the displayed profiles by their 'Last Refreshed At' date.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-grow">
+              <div className="space-y-1.5">
+                <Label htmlFor="start-date">From Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="start-date"
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !startDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {startDate ? format(startDate, "PPP") : <span>Pick a start date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      disabled={(date) => (endDate ? date > endDate : false) || date > new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="end-date">To Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="end-date"
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !endDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {endDate ? format(endDate, "PPP") : <span>Pick an end date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      disabled={(date) => (startDate ? date < startDate : false) || date > new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            <Button onClick={handleResetFilters} variant="outline" className="w-full sm:w-auto mt-2 sm:mt-0">
+              <FilterX className="mr-2 h-4 w-4" />
+              Reset Filters
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
@@ -614,22 +721,29 @@ export default function AnalyzeExternalRedditUserPage() {
         </div>
       )}
 
-      {!isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
+      {!isLoadingStoredData && currentDisplayResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground bg-card rounded-lg shadow-lg p-8">
             <UserXIcon className="h-16 w-16 text-primary mb-4" /> 
-            <p className="text-xl font-semibold mb-2">No Profiles to Display</p>
-            <p className="text-sm">Add a Reddit username above or upload a CSV file to begin analyzing profiles.</p>
-            <p className="text-xs mt-3">Your analyzed profiles will appear here.</p>
+            <p className="text-xl font-semibold mb-2">
+              { (startDate || endDate) ? "No Profiles Match Filter" : "No Profiles to Display"}
+            </p>
+            <p className="text-sm">
+              { (startDate || endDate) 
+                ? "No saved profiles match the selected date range. Try adjusting the dates or resetting the filters." 
+                : "Add a Reddit username above or upload a CSV file to begin analyzing profiles."
+              }
+            </p>
+            { !(startDate || endDate) && <p className="text-xs mt-3">Your analyzed profiles will appear here.</p>}
         </div>
       )}
 
-      {analysisResults.length > 0 && (
+      {currentDisplayResults.length > 0 && (
         <div className="space-y-8 mt-8">
-          {analysisResults.map((result, index) => {
+          {currentDisplayResults.map((result, index) => {
             const isActualLoading = result.isLoading && !result.isRefreshing && (!result.data || result.data._placeholder);
             const isPending = result.data?._placeholder && !result.isLoading && !result.isRefreshing && !result.error && !result.data.error;
-            const hasFlowError = !!result.data?.error; // Error from the Genkit flow
-            const hasClientError = !!result.error; // Error from client-side processing or direct call
+            const hasFlowError = !!result.data?.error; 
+            const hasClientError = !!result.error; 
             const displayError = result.data?.error || result.error;
 
 
@@ -741,3 +855,6 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
+
+
+    
