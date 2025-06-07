@@ -106,30 +106,35 @@ const lpuMockNewsItems = [
     excerpt: "Edu-Leaders Conclave at LPU focused on innovative educational strategies and future trends, bringing together principals from various CBSE schools.",
     source: "Yes Punjab News",
     timestamp: new Date(Date.now() - 51 * 60 * 1000).toISOString(), // Approx 51 minutes ago
+    url: "https://www.yespunjab.com/education/lpu-edu-leaders-conclave-cbse-principals" // Simulated direct link
   },
   {
     title: "LPU Journalism Placements Reach INR 12 LPA: SJMC HoD",
     excerpt: "The School of Journalism and Mass Communication (SJMC) at LPU announced high placements, with the highest package reaching INR 12 LPA.",
     source: "Shiksha (By Mayank Uniyal)",
     timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // Approx 2 days ago
+    url: "https://www.shiksha.com/mass-communication-media/journalism/news/lpu-journalism-placements-12-lpa-sjmc-hod-p" // Simulated direct link
   },
   {
     title: "Internet of Things (IoT): What It Is, How It Works, and Career Paths",
     excerpt: "An article by Satvinder Pal Singh from LPU explores the fundamentals of IoT, its applications, and potential career opportunities in the field.",
     source: "LPU (By Satvinder Pal Singh)",
     timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // Approx 5 days ago
+    url: "https://www.lpu.in/news/iot-fundamentals-careers" // Simulated direct link to LPU's news section
   },
   {
     title: "Governor of Punjab to Grace LPU’s ‘Operation Sindoor Vijay Yatra’ and Chair Vice Chancellor’s Conference at LPU",
     excerpt: "The Hon'ble Governor of Punjab is scheduled to attend LPU's 'Operation Sindoor Vijay Yatra' event and will also chair a conference of Vice Chancellors.",
     source: "Cityairnews",
     timestamp: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(), // Approx 19 hours ago
+    url: "https://www.cityairnews.com/content/governor-punjab-lpu-operation-sindoor-vijay-yatra-vc-conference" // Simulated direct link
   },
   {
     title: "Hon'ble Governor of Punjab to Grace LPU's 'Operation Sindoor Vijay Yatra' and Chair Vice Chancellor's Conference at LPU",
     excerpt: "The upcoming 'Operation Sindoor Vijay Yatra' at LPU will be graced by the Hon'ble Governor of Punjab, who will also lead a Vice Chancellor's conference.",
     source: ":: India News Calling ::",
     timestamp: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(), // Approx 23 hours ago
+    url: "https://www.indianewscalling.com/news/punjab-governor-to-attend-lpu-event-chair-vc-conference" // Simulated direct link
   }
 ];
 
@@ -149,7 +154,7 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
         source: newsItem.source,
         title: newsItem.title,
         excerpt: newsItem.excerpt,
-        url: `https://news.google.com/search?q=${encodeURIComponent(newsItem.title)}`, // Search for the specific title
+        url: newsItem.url, // Using the simulated direct link
         timestamp: newsItem.timestamp,
         matchedKeyword: "LPU",
         sentiment: 'neutral'
@@ -165,7 +170,7 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
       source: 'Google News Mock Source',
       title: `Simulated Top Story regarding ${kw}`,
       excerpt: `This is a simulated Google News article detailing recent developments and discussions related to ${kw}. Key figures and future implications are explored.`,
-      url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`,
+      url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`, // Other keywords still use search links
       timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(),
       matchedKeyword: kw,
       sentiment: 'neutral'
@@ -457,3 +462,5 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
   }
 }
 
+
+    
