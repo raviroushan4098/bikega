@@ -341,7 +341,6 @@ export async function refreshUserRedditData(
       });
 
       // Max items to process in total for this refresh run (posts + comments)
-      // Let's say we aim for roughly (limit * (1+COMMENTS_PER_POST_LIMIT)) items
       const MAX_TOTAL_ITEMS_PER_REFRESH = limit * (1 + COMMENTS_PER_POST_LIMIT); 
 
       if (postData.num_comments && postData.num_comments > 0 && fetchedItemsToStore.length < MAX_TOTAL_ITEMS_PER_REFRESH) { 
@@ -370,7 +369,7 @@ export async function refreshUserRedditData(
             fetchedItemsToStore.forEach(item => {
                 // Use the full Reddit ID (e.g., t3_xxxx or t1_yyyy) as Firestore document ID
                 const docId = item.id; 
-                if (!docId) { // Should not happen if item.id is always postData.name or commentData.name
+                if (!docId) { 
                     console.warn("[Reddit API Service] refreshUserRedditData: Invalid ID for Firestore doc:", item.id);
                     return; 
                 }
@@ -424,7 +423,7 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
     const q = query(itemsCollectionRef, orderBy('timestamp', 'desc')); 
     const querySnapshot = await getDocs(q);
 
-    const posts = querySnapshot.docs.map(docSnap => {
+    const postsFromDb = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { serverTimestamp, sno, ...restOfData } = data; 
@@ -437,8 +436,32 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
       } as RedditPost;
     });
     
-    console.log(`[Reddit API Service] getStoredRedditFeedForUser: Fetched ${posts.length} items for user ${userId}.`);
-    return posts;
+    // De-duplicate based on 'id' to ensure unique keys for React rendering
+    const initialCount = postsFromDb.length;
+    const uniquePostsMap = new Map<string, RedditPost>();
+    for (const post of postsFromDb) {
+      if (post && typeof post.id === 'string') {
+        if (!uniquePostsMap.has(post.id)) {
+          uniquePostsMap.set(post.id, post);
+        } else {
+          // This log helps identify if Firestore somehow provided data leading to duplicate IDs post-mapping.
+          // Given docSnap.id is unique, this specific log for duplicates from mapping should ideally not occur frequently unless post.id was being sourced differently.
+          console.warn(`[SERVICE] getStoredRedditFeedForUser: Duplicate ID "${post.id}" encountered when de-duplicating mapped Firestore docs. Doc ID should be unique. Prioritizing first encountered item. Title: ${post.title}`);
+        }
+      } else {
+        console.warn('[SERVICE] getStoredRedditFeedForUser: Encountered post with invalid id during de-duplication:', post);
+      }
+    }
+    const uniquePostsArray = Array.from(uniquePostsMap.values());
+
+    if (initialCount !== uniquePostsArray.length) {
+      console.warn(`[SERVICE] getStoredRedditFeedForUser: De-duplication was performed. Initial items from DB: ${initialCount}, Unique items returned: ${uniquePostsArray.length} for user ${userId}.`);
+    } else {
+      console.log(`[SERVICE] getStoredRedditFeedForUser: Fetched ${initialCount} items, all unique by ID, for user ${userId}.`);
+    }
+    
+    return uniquePostsArray;
+
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching stored feed.';
     console.error(`[Reddit API Service] getStoredRedditFeedForUser: Error for user ${userId}: ${errorMessage}`, error);
