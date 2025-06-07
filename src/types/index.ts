@@ -37,6 +37,9 @@ export interface YouTubeMentionItem {
   descriptionSnippet?: string; // A short snippet from description showing keyword context
   matchedKeywords: string[];
   dataAiHint?: string;
+  viewCount?: number;
+  likeCount?: number;
+  commentCount?: number;
 }
 
 export interface RedditPost {
