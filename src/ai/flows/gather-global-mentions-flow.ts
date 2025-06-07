@@ -24,7 +24,7 @@ import {
 
 
 const API_CALL_TIMEOUT_MS = 15000; // Timeout for external API calls like Algolia
-const SENTIMENT_ANALYSIS_DELAY_MS = 1000; // Delay between sentiment analysis calls (reduced from 10000ms)
+const SENTIMENT_ANALYSIS_DELAY_MS = 200; // Delay between sentiment analysis calls (reduced from 1000ms)
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
