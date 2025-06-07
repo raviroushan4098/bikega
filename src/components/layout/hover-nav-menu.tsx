@@ -112,7 +112,7 @@ const HoverNavMenu = () => {
   };
 
   return (
-    <div className="fixed top-2 left-4 z-50">
+    <div className="fixed top-2 left-4 z-50"> {/* Changed top-3 to top-2 */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
