@@ -165,12 +165,10 @@ export default function MentionsAnalyticsPage() {
     try {
       const result: GatherGlobalMentionsOutput = await gatherGlobalMentions({ userId: user.id });
       
-      // The 'newMentionsStored' from the DEBUG version of addGlobalMentionsBatch will be 0 or 1.
-      // The toast message might be slightly misleading during this debug phase.
-      let description = `Fetched ${result.totalMentionsFetched} potential items. DEBUG Store Attempt: ${result.newMentionsStored} item(s).`;
+      let description = `Fetched ${result.totalMentionsFetched} potential items from APIs. ${result.newMentionsStored} items created/updated in database.`;
       if(result.errors && result.errors.length > 0) {
-        description += ` Encountered ${result.errors.length} errors/skipped items. Check console for details.`;
-        console.error("Errors/Skipped during global mention refresh:", result.errors);
+        description += ` Encountered ${result.errors.length} errors/issues during processing. Check console for details.`;
+        console.error("Errors/Issues during global mention refresh:", result.errors);
       }
       toast({ title: "Refresh Complete", description, duration: 7000 });
       await fetchMentions(); // Re-fetch to update the table
