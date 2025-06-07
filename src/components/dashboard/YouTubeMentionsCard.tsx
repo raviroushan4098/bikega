@@ -3,11 +3,11 @@
 
 import React from 'react';
 import type { YouTubeMentionItem } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, AlertTriangle, ExternalLink, Rss, SearchX, Eye, ThumbsUp, MessageSquare } from 'lucide-react';
+import { Loader2, AlertTriangle, ExternalLink, Rss, SearchX, Eye, ThumbsUp, MessageSquare, SmilePlus, Frown, MinusCircle } from 'lucide-react';
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
@@ -28,6 +28,38 @@ const StatDisplay: React.FC<{ icon: React.ElementType; value?: number; label: st
     <span>{value?.toLocaleString() ?? '0'}</span>
   </div>
 );
+
+const SentimentBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
+  let Icon = MinusCircle;
+  let text = "Unknown";
+  let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "outline";
+
+  switch (sentiment) {
+    case 'positive':
+      Icon = SmilePlus;
+      text = "Positive";
+      badgeVariant = "default";
+      break;
+    case 'negative':
+      Icon = Frown;
+      text = "Negative";
+      badgeVariant = "destructive";
+      break;
+    case 'neutral':
+      Icon = MinusCircle; // Or another neutral icon
+      text = "Neutral";
+      badgeVariant = "secondary";
+      break;
+  }
+
+  return (
+    <Badge variant={badgeVariant} className="flex items-center gap-1 text-xs px-1.5 py-0.5">
+      <Icon className="h-3 w-3" />
+      {text}
+    </Badge>
+  );
+};
+
 
 const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
   mentions,
@@ -99,10 +131,10 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
                 <div key={item.id} className="flex items-start gap-3 p-3 border rounded-md hover:bg-accent/50 transition-colors">
                   <Link href={item.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
                     <Image
-                      src={item.thumbnailUrl || "https://placehold.co/120x90.png"}
+                      src={item.thumbnailUrl || "https://placehold.co/120x68.png"}
                       alt={`Thumbnail for ${item.title}`}
                       width={120}
-                      height={68} // Adjusted for 16:9 aspect ratio based on common thumbnail size
+                      height={68} 
                       className="rounded-md object-cover aspect-video"
                       data-ai-hint={item.dataAiHint || "video content"}
                     />
@@ -123,10 +155,13 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
                       <StatDisplay icon={ThumbsUp} value={item.likeCount} label="Likes" />
                       <StatDisplay icon={MessageSquare} value={item.commentCount} label="Comments" />
                     </div>
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {item.matchedKeywords.map((kw, idx) => (
-                        <Badge key={idx} variant="secondary" className="text-xs px-1.5 py-0.5">{kw}</Badge>
-                      ))}
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="flex flex-wrap gap-1">
+                        {item.matchedKeywords.map((kw, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-xs px-1.5 py-0.5">{kw}</Badge>
+                        ))}
+                      </div>
+                      <SentimentBadge sentiment={item.sentiment} />
                     </div>
                   </div>
                    <Link href={item.url} target="_blank" rel="noopener noreferrer" legacyBehavior>

@@ -40,6 +40,7 @@ export interface YouTubeMentionItem {
   viewCount?: number;
   likeCount?: number;
   commentCount?: number;
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; // Added sentiment field
 }
 
 export interface RedditPost {

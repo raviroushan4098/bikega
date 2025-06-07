@@ -4,7 +4,7 @@
 import React, { useMemo } from 'react';
 import type { YouTubeMentionItem } from '@/types';
 import StatCard from './StatCard';
-import { MessageSquare, Eye, ThumbsUp, Smile } from 'lucide-react'; // Using ThumbsUp for engagement
+import { MessageSquare, Eye, ThumbsUp, Smile, TrendingUp, TrendingDown, Minus } from 'lucide-react'; // Added Trending icons
 
 interface YouTubeMentionsSummaryProps {
   mentions: YouTubeMentionItem[];
@@ -26,12 +26,14 @@ const YouTubeMentionsSummary: React.FC<YouTubeMentionsSummaryProps> = ({ mention
     const totalMentions = mentions.length;
     const totalViews = mentions.reduce((sum, mention) => sum + (mention.viewCount || 0), 0);
     const totalLikes = mentions.reduce((sum, mention) => sum + (mention.likeCount || 0), 0);
-    const totalComments = mentions.reduce((sum, mention) => sum + (mention.commentCount || 0), 0);
-    const totalEngagement = totalLikes + totalComments;
+    const totalCommentsOnMentions = mentions.reduce((sum, mention) => sum + (mention.commentCount || 0), 0);
+    const totalEngagement = totalLikes + totalCommentsOnMentions;
 
-    // Sentiment is not available in YouTubeMentionItem, so we'll use placeholders
-    const positiveSentiments = 0;
-    const negativeSentiments = 0;
+    const positiveSentiments = mentions.filter(m => m.sentiment === 'positive').length;
+    const negativeSentiments = mentions.filter(m => m.sentiment === 'negative').length;
+    const neutralSentiments = mentions.filter(m => m.sentiment === 'neutral').length;
+    const unknownSentiments = mentions.filter(m => m.sentiment === 'unknown' || !m.sentiment).length;
+
 
     return {
       totalMentions,
@@ -39,6 +41,8 @@ const YouTubeMentionsSummary: React.FC<YouTubeMentionsSummaryProps> = ({ mention
       totalEngagement,
       positiveSentiments,
       negativeSentiments,
+      neutralSentiments,
+      unknownSentiments
     };
   }, [mentions]);
 
@@ -53,10 +57,10 @@ const YouTubeMentionsSummary: React.FC<YouTubeMentionsSummaryProps> = ({ mention
           </div>
         }
         icon={MessageSquare}
-        iconBgClass="bg-pink-600" // Similar to image 'TOTAL MENTIONS'
+        iconBgClass="bg-pink-600" 
       />
       <StatCard
-        title="Total Views" // Renamed from "Social Reach" to be more specific to YouTube views
+        title="Total Views" 
         value={
           <div className="flex items-baseline">
             <p className="text-xl font-bold text-card-foreground">{formatStatNumber(summary.totalViews)}</p>
@@ -64,7 +68,7 @@ const YouTubeMentionsSummary: React.FC<YouTubeMentionsSummaryProps> = ({ mention
           </div>
         }
         icon={Eye}
-        iconBgClass="bg-sky-500" // Similar to image 'SOCIAL REACH'
+        iconBgClass="bg-sky-500" 
       />
       <StatCard
         title="Total Engagement"
@@ -74,27 +78,38 @@ const YouTubeMentionsSummary: React.FC<YouTubeMentionsSummaryProps> = ({ mention
             <span className="text-xs text-muted-foreground ml-1">interactions</span>
           </div>
         }
-        icon={ThumbsUp} // Using ThumbsUp as a general engagement icon
-        iconBgClass="bg-orange-500" // Similar to image 'SOCIAL ENGAGEMENT'
+        icon={ThumbsUp} 
+        iconBgClass="bg-orange-500" 
       />
       <StatCard
-        title="Sentiment Analysis"
+        title="Mention Sentiment"
         value={
-          <div className="text-sm">
+          <div className="text-sm space-y-0.5">
             <div className="flex items-center text-green-600">
+              <TrendingUp className="h-3.5 w-3.5 mr-1" /> 
               {summary.positiveSentiments} positive
             </div>
             <div className="flex items-center text-red-600">
+              <TrendingDown className="h-3.5 w-3.5 mr-1" />
               {summary.negativeSentiments} negative
             </div>
-            <p className="text-xs text-muted-foreground mt-1">(Sentiment N/A for mentions)</p>
+             <div className="flex items-center text-gray-500">
+              <Minus className="h-3.5 w-3.5 mr-1" />
+              {summary.neutralSentiments} neutral
+            </div>
+            {summary.unknownSentiments > 0 && (
+                <div className="text-xs text-muted-foreground/80">
+                    ({summary.unknownSentiments} unknown)
+                </div>
+            )}
           </div>
         }
         icon={Smile}
-        iconBgClass="bg-green-500" // Similar to image 'SENTIMENT ANALYSIS'
+        iconBgClass="bg-green-500" 
       />
     </div>
   );
 };
 
 export default YouTubeMentionsSummary;
+
