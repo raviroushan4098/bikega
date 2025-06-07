@@ -139,5 +139,6 @@ export interface ExternalRedditUserAnalysis {
   totalCommentsFetchedThisRun: number;
   fetchedPostsDetails: ExternalRedditUserDataItem[];
   fetchedCommentsDetails: ExternalRedditUserDataItem[];
-  lastRefreshedAt?: string; // ISO string
+  lastRefreshedAt?: string | null; // ISO string, can be null if pending
+  _placeholder?: boolean; // True if this is just a placeholder, not a full analysis
 }

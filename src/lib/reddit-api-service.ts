@@ -5,11 +5,15 @@ import type { RedditPost, ExternalRedditUserAnalysis } from '@/types';
 import { getApiKeys } from './api-key-service';
 import { analyzeAdvancedSentiment, type AdvancedSentimentInput } from '@/ai/flows/advanced-sentiment-flow';
 import { db } from './firebase';
-import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, Timestamp, doc, serverTimestamp as firestoreServerTimestamp, orderBy, getDoc, setDoc } from 'firebase/firestore';
 
 const REDDIT_CLIENT_ID_SERVICE_NAME = "Reddit Client ID";
 const REDDIT_CLIENT_SECRET_SERVICE_NAME = "Reddit Client Secret";
 const REDDIT_USER_AGENT_SERVICE_NAME = "Reddit User Agent";
+
+const TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION = 'ExternalRedditUser';
+const ANALYZED_PROFILES_SUBCOLLECTION = 'analyzedRedditProfiles';
+
 
 let accessToken: string | null = null;
 let tokenExpiry: number | null = null;
@@ -229,7 +233,7 @@ export async function refreshUserRedditData(
 ): Promise<{ success: boolean; itemsFetchedAndStored: number; error?: string }> {
   console.log(`[Reddit API Service] refreshUserRedditData: Starting refresh for userID: ${userId}, Keywords: "${userKeywords.join('", "')}"`);
   
-  const testDocRef = doc(db, 'users', 'connectivity-test-doc-do-not-create');
+  const testDocRef = doc(db, TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION, 'connectivity-test-doc-do-not-create');
   try {
     console.log("[Reddit API Service] refreshUserRedditData: Performing Firebase connectivity check...");
     await getDoc(testDocRef); 
@@ -452,9 +456,6 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
 
     if (initialCount !== uniquePostsArray.length) {
       console.warn(`[SERVICE] getStoredRedditFeedForUser: De-duplication performed for user ${userId}. Initial: ${initialCount}, Unique: ${uniquePostsArray.length}.`);
-    } else {
-      // This console log might be too verbose if it logs for every successful fetch without duplicates.
-      // console.log(`[SERVICE] getStoredRedditFeedForUser: Fetched ${initialCount} items, all unique by ID, for user ${userId}.`);
     }
     
     return uniquePostsArray;
@@ -466,6 +467,44 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
   }
 }
 
+export async function addOrUpdateRedditUserPlaceholder(appUserId: string, username: string): Promise<{ new: boolean, id: string } | { error: string }> {
+  if (!appUserId || !username) {
+    return { error: "App User ID and Reddit Username are required." };
+  }
+  const firestorePath = `${TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION}/${appUserId}/${ANALYZED_PROFILES_SUBCOLLECTION}/${username}`;
+  const placeholderDocRef = doc(db, firestorePath);
+
+  try {
+    const docSnap = await getDoc(placeholderDocRef);
+    if (docSnap.exists()) {
+      console.log(`[Reddit API Service] Placeholder for u/${username} (AppUser: ${appUserId}) already exists.`);
+      return { new: false, id: username };
+    }
+
+    const placeholderData: ExternalRedditUserAnalysis = {
+      username: username,
+      _placeholder: true,
+      lastRefreshedAt: null,
+      accountCreated: null,
+      totalPostKarma: 0,
+      totalCommentKarma: 0,
+      subredditsPostedIn: [],
+      totalPostsFetchedThisRun: 0,
+      totalCommentsFetchedThisRun: 0,
+      fetchedPostsDetails: [],
+      fetchedCommentsDetails: [],
+    };
+    await setDoc(placeholderDocRef, placeholderData);
+    console.log(`[Reddit API Service] Created placeholder for u/${username} (AppUser: ${appUserId}).`);
+    return { new: true, id: username };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error creating placeholder.";
+    console.error(`[Reddit API Service] Error creating placeholder for u/${username} (AppUser: ${appUserId}): ${errorMessage}`, error);
+    return { error: errorMessage };
+  }
+}
+
+
 export async function getStoredRedditAnalyses(appUserId: string): Promise<ExternalRedditUserAnalysis[]> {
   if (!appUserId) {
     console.warn('[Reddit API Service] getStoredRedditAnalyses: No appUserId provided.');
@@ -473,15 +512,16 @@ export async function getStoredRedditAnalyses(appUserId: string): Promise<Extern
   }
   const analyses: ExternalRedditUserAnalysis[] = [];
   try {
-    const profilesCollectionRef = collection(db, 'ExternalRedditUser', appUserId, 'analyzedRedditProfiles');
+    const profilesCollectionRef = collection(db, TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION, appUserId, ANALYZED_PROFILES_SUBCOLLECTION);
     // Order by lastRefreshedAt to show most recent first, if desired.
     // Ensure you have a Firestore index for this: (lastRefreshedAt, desc) on the 'analyzedRedditProfiles' subcollection.
-    const q = query(profilesCollectionRef, orderBy('lastRefreshedAt', 'desc'));
+    // For now, let's order by username alphabetically for consistency, or skip ordering if not essential for initial display.
+    const q = query(profilesCollectionRef, orderBy('username', 'asc'));
     const querySnapshot = await getDocs(q);
 
     querySnapshot.forEach((docSnap) => {
-      // The document ID is the Reddit username, so we add it to the object
-      analyses.push({ username: docSnap.id, ...docSnap.data() } as ExternalRedditUserAnalysis);
+      // The document ID is the Reddit username, which is also in the data.
+      analyses.push(docSnap.data() as ExternalRedditUserAnalysis);
     });
     console.log(`[Reddit API Service] getStoredRedditAnalyses: Fetched ${analyses.length} stored analyses for appUser ${appUserId}.`);
     return analyses;
@@ -489,7 +529,7 @@ export async function getStoredRedditAnalyses(appUserId: string): Promise<Extern
     const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching stored Reddit analyses.';
     console.error(`[Reddit API Service] getStoredRedditAnalyses: Error for appUser ${appUserId}: ${errorMessage}`, error);
     if (error instanceof Error && (error.message.includes('needs an index') || error.message.includes('requires an index'))) {
-        console.error(`[SERVICE] Firestore index missing for 'analyzedRedditProfiles' subcollection, likely on 'lastRefreshedAt' (descending). The error message from Firestore should contain a link to create it.`);
+        console.error(`[SERVICE] Firestore index missing for '${ANALYZED_PROFILES_SUBCOLLECTION}' subcollection, likely on 'username' (asc) or 'lastRefreshedAt' if that ordering is used. The error message from Firestore should contain a link to create it.`);
     }
     return []; 
   }
