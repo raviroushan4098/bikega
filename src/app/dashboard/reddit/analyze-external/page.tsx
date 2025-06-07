@@ -97,12 +97,18 @@ export default function AnalyzeExternalRedditUserPage() {
             toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
             return;
         }
-        const usernames = text.split(/[\n,]+/) 
-          .map(line => line.trim().replace(/^u\//i, '')) 
-          .filter(username => username !== ''); 
+        
+        const lines = text.split('\n');
+        if (lines.length > 0) {
+          lines.shift(); // Remove the first line (header)
+        }
+        const usernames = lines
+          .flatMap(line => line.split(',')) // Split each data line by comma, and flatten
+          .map(usernamePart => usernamePart.trim().replace(/^u\//i, '')) // Clean each potential username
+          .filter(username => username !== ''); // Filter out empty ones
 
         if (usernames.length === 0) {
-          toast({ variant: "destructive", title: "No Usernames", description: "No usernames found in the CSV file." });
+          toast({ variant: "destructive", title: "No Usernames", description: "No usernames found in the CSV file after skipping the header." });
           return;
         }
         
@@ -135,7 +141,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
 
   const handleDownloadTemplate = () => {
-    const csvContent = "USER_NAME\n";
+    const csvContent = "USER_NAME\n"; // Header row
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     if (link.download !== undefined) { 
@@ -225,7 +231,7 @@ export default function AnalyzeExternalRedditUserPage() {
             External Reddit User Analyzer
           </CardTitle>
           <CardDescription>
-            Analyze Reddit user profiles by entering a username or uploading a CSV file (one username per line/comma-separated, no header). 
+            Analyze Reddit user profiles by entering a username or uploading a CSV file (one username per line/comma-separated, first line is header). 
             The analysis fetches recent activity and profile information. Results are saved per app user.
           </CardDescription>
         </CardHeader>
@@ -263,7 +269,7 @@ export default function AnalyzeExternalRedditUserPage() {
           <div className="space-y-3">
             <div className="space-y-1.5">
                 <label htmlFor="csv-upload" className="text-sm font-medium text-muted-foreground">
-                    Upload a CSV file with usernames (one per line, or comma-separated)
+                    Upload a CSV file with usernames (first line is header e.g. "USER_NAME")
                 </label>
                 <div className="flex items-center gap-3">
                     <Input
@@ -394,3 +400,6 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
+
+
+    
