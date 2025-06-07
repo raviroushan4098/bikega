@@ -271,7 +271,7 @@ export async function searchYouTubeVideosByKeywords(
 
   const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR '); // Search for exact phrases or keywords
   const maxResults = 15; // Number of videos to fetch
-  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&order=date&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
 
   const fetchedMentions: YouTubeMentionItem[] = [];
 
@@ -328,3 +328,4 @@ export async function searchYouTubeVideosByKeywords(
     return { mentions: [], error: errorMsg };
   }
 }
+
