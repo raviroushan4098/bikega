@@ -1,17 +1,17 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
 import { GenericDataTable } from '@/components/analytics/generic-data-table';
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw } from 'lucide-react'; // Added RefreshCw
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw, CalendarIcon, FilterX, SearchCheck } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
-import { refreshUserRedditData, getStoredRedditFeedForUser } from '@/lib/reddit-api-service'; // Renamed sync to refresh
+import { refreshUserRedditData, getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
 import {
   Select,
   SelectContent,
@@ -25,11 +25,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format } from 'date-fns';
+import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
 
-const FETCH_PERIOD_DAYS = 30; // Used in description text
+const FETCH_PERIOD_DAYS = 30;
 
 const editKeywordsSchema = z.object({
   keywords: z.string().optional(),
@@ -179,10 +181,13 @@ export default function RedditPage() {
     defaultValues: { keywords: "" },
   });
 
-  const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
+  const [allRedditPosts, setAllRedditPosts] = useState<RedditPost[]>([]);
+  const [filteredRedditPosts, setFilteredRedditPosts] = useState<RedditPost[]>([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(true); 
   const [isRefreshingFeed, setIsRefreshingFeed] = useState<boolean>(false);
 
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
@@ -205,17 +210,18 @@ export default function RedditPage() {
     }
   }, [selectedUserId, allUsers, currentUser, editKeywordsForm]);
 
-
   const fetchStoredUserRedditData = useCallback(async () => {
     if (!currentUser || currentUser.role !== 'user' || authLoading) {
-      setRedditPosts([]);
+      setAllRedditPosts([]);
+      setFilteredRedditPosts([]);
       setIsLoadingFeed(false);
       return;
     }
     setIsLoadingFeed(true);
     try {
       const storedItems = await getStoredRedditFeedForUser(currentUser.id);
-      setRedditPosts(storedItems);
+      setAllRedditPosts(storedItems);
+      setFilteredRedditPosts(storedItems); // Initialize filtered list
       if (storedItems.length === 0 && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0)) {
         toast({ title: "No Keywords", description: "No keywords assigned for Reddit.", duration: 5000 });
       } else if (storedItems.length === 0) {
@@ -227,7 +233,8 @@ export default function RedditPage() {
       }
     } catch (e) {
        toast({ variant: "destructive", title: "Fetch Error", description: "Could not load stored Reddit items." });
-       setRedditPosts([]);
+       setAllRedditPosts([]);
+       setFilteredRedditPosts([]);
     } finally {
       setIsLoadingFeed(false);
     }
@@ -235,11 +242,22 @@ export default function RedditPage() {
 
   useEffect(() => {
     if (currentUser?.role === 'user' && !authLoading) {
-      fetchStoredUserRedditData(); // Load initially from storage
+      fetchStoredUserRedditData();
     } else if (currentUser?.role !== 'user') {
         setIsLoadingFeed(false); 
     }
   }, [currentUser, authLoading, fetchStoredUserRedditData]);
+
+  // Update filtered posts when allRedditPosts changes (e.g., after refresh)
+  useEffect(() => {
+    if (startDate || endDate) {
+        handleShowFilteredData(); // Re-apply filter if dates are set
+    } else {
+        setFilteredRedditPosts(allRedditPosts);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRedditPosts]);
+
 
   const handleRefreshFeed = async () => {
     if (!currentUser || currentUser.role !== 'user' || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
@@ -253,7 +271,7 @@ export default function RedditPage() {
       const result = await refreshUserRedditData(currentUser.id, currentUser.assignedKeywords);
       if (result.success) {
         toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} items fetched/updated from Reddit.` });
-        await fetchStoredUserRedditData(); // Fetch updated data from storage
+        await fetchStoredUserRedditData(); // This will update allRedditPosts and trigger re-filter
       } else {
         toast({ variant: "destructive", title: "Refresh Failed", description: result.error || "Could not refresh Reddit data." });
       }
@@ -263,7 +281,6 @@ export default function RedditPage() {
       setIsRefreshingFeed(false);
     }
   };
-
 
   const onEditKeywordsSubmit = async (data: EditKeywordsFormValues) => {
     if (!selectedUserId || currentUser?.role !== 'admin') return;
@@ -290,6 +307,30 @@ export default function RedditPage() {
     }
   };
 
+  const handleShowFilteredData = () => {
+    let filtered = [...allRedditPosts];
+    if (startDate) {
+      const start = startOfDay(startDate);
+      filtered = filtered.filter(post => parseISO(post.timestamp) >= start);
+    }
+    if (endDate) {
+      const end = endOfDay(endDate);
+      filtered = filtered.filter(post => parseISO(post.timestamp) <= end);
+    }
+    setFilteredRedditPosts(filtered);
+    if (filtered.length === 0 && allRedditPosts.length > 0) {
+        toast({ title: "No Results", description: "No Reddit items match the selected date range.", duration: 4000 });
+    } else if (filtered.length > 0) {
+        toast({ title: "Filter Applied", description: `Showing ${filtered.length} items.`, duration: 3000 });
+    }
+  };
+
+  const handleResetFilters = () => {
+    setStartDate(undefined);
+    setEndDate(undefined);
+    setFilteredRedditPosts(allRedditPosts);
+    toast({ title: "Filters Reset", description: "Showing all stored Reddit items.", duration: 3000 });
+  };
 
   if (authLoading) {
     return (
@@ -384,7 +425,7 @@ export default function RedditPage() {
     } else if (isLoadingFeed) {
       userPageDescription = `Loading your stored Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"...`;
     } else {
-      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${redditPosts.length} items shown from storage. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
+      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${filteredRedditPosts.length} of ${allRedditPosts.length} items shown. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
     }
 
     return (
@@ -392,12 +433,79 @@ export default function RedditPage() {
         title="Your Reddit Keyword Feed"
         description={userPageDescription}
       >
-        <div className="mb-4 flex justify-end">
-            <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0}>
-                {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Refresh Feed
-            </Button>
+        <div className="mb-6 p-4 border rounded-md bg-card space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-end md:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto md:flex-grow">
+                <div className="space-y-1.5 flex-1 min-w-[180px]">
+                    <Label htmlFor="start-date">From Date</Label>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                        <Button
+                            id="start-date"
+                            variant={"outline"}
+                            className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !startDate && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                        <Calendar
+                            mode="single"
+                            selected={startDate}
+                            onSelect={setStartDate}
+                            initialFocus
+                            disabled={(date) => (endDate ? date > endDate : false) || date > new Date()}
+                        />
+                        </PopoverContent>
+                    </Popover>
+                </div>
+                <div className="space-y-1.5 flex-1 min-w-[180px]">
+                    <Label htmlFor="end-date">To Date</Label>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                        <Button
+                            id="end-date"
+                            variant={"outline"}
+                            className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !endDate && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                        <Calendar
+                            mode="single"
+                            selected={endDate}
+                            onSelect={setEndDate}
+                            initialFocus
+                            disabled={(date) => (startDate ? date < startDate : false) || date > new Date()}
+                        />
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2 md:pt-0 md:items-end shrink-0">
+                <Button onClick={handleShowFilteredData} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
+                    <SearchCheck className="mr-2 h-4 w-4" />
+                    Show
+                </Button>
+                <Button onClick={handleResetFilters} variant="destructive" className="w-full sm:w-auto">
+                    <FilterX className="mr-2 h-4 w-4" />
+                    Reset
+                </Button>
+                <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0} className="w-full sm:w-auto">
+                    {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    Refresh Feed
+                </Button>
+            </div>
         </div>
+
 
         {isLoadingFeed && (
           <div className="flex justify-center items-center py-10">
@@ -418,22 +526,24 @@ export default function RedditPage() {
           </div>
         )}
         
-        {!isLoadingFeed && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && redditPosts.length === 0 && (
+        {!isLoadingFeed && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && filteredRedditPosts.length === 0 && (
           <div className="text-center py-10">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
             <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
             <p className="text-muted-foreground">
-              No items found in stored data for keywords: "{currentUser.assignedKeywords.join(', ')}".
-              Try the "Refresh Feed" button to fetch latest data.
+              { (startDate || endDate) 
+                ? `No items found for keywords: "${currentUser.assignedKeywords.join(', ')}" within the selected date range.`
+                : `No items found in stored data for keywords: "${currentUser.assignedKeywords.join(', ')}". Try the "Refresh Feed" button to fetch latest data.`
+              }
             </p>
           </div>
         )}
 
-        {!isLoadingFeed && redditPosts.length > 0 && (
+        {!isLoadingFeed && filteredRedditPosts.length > 0 && (
           <GenericDataTable<RedditPost>
-            data={redditPosts}
+            data={filteredRedditPosts}
             columns={redditPostColumnsUserView} 
-            caption={`Displaying ${redditPosts.length} items from your stored Reddit feed. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`}
+            caption={`Displaying ${filteredRedditPosts.length} of ${allRedditPosts.length} stored Reddit items. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`}
           />
         )}
       </DataTableShell>
@@ -446,4 +556,6 @@ export default function RedditPage() {
     </div>
   );
 }
+    
+
     
