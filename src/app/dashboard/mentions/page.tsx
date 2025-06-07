@@ -194,7 +194,7 @@ export default function MentionsAnalyticsPage() {
             <Info className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary font-semibold">Beta Feature</AlertTitle>
             <AlertDescription className="text-primary/80 text-xs">
-            This tracker searches Reddit, Hacker News, and includes mock data for Twitter/X, Google News, and Web Mentions. More sources coming soon! Refresh may take time.
+            This tracker searches Reddit (live), Hacker News (live), and includes mock data for Twitter/X, Google News (news), and general Web Mentions (blogs, forums, webpages). More live sources coming soon! Refresh may take time.
             </AlertDescription>
         </Alert>
         <Button onClick={handleRefreshMentions} disabled={isRefreshing || isLoadingMentions || noKeywordsAssigned} className="w-full sm:w-auto">
