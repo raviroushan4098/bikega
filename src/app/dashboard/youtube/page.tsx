@@ -31,9 +31,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, Eye as ViewsIcon } from 'lucide-react';
+import { PlusCircle, Loader2, Rss, Trash2, ExternalLink, Eye as ViewsIcon, ThumbsUp, MessageSquare } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
+import YouTubeAnalyticsSummary from '@/components/dashboard/YouTubeAnalyticsSummary'; // Added import
 
 const addVideoSchema = z.object({
   url: z.string().url({ message: "Please enter a valid YouTube URL." }),
@@ -385,144 +386,148 @@ export default function YouTubeAnalyticsPage() {
   const noDataMessageText = !isLoadingPageData && displayedVideos.length === 0 && (currentUser?.role !== 'admin' || !!selectedUserIdForFilter) ? getTableCaption() : null;
 
   return (
-    <DataTableShell
-      title="YouTube Video Assignments"
-      description={
-        currentUser?.role === 'admin'
-        ? "Assign YouTube video URLs to users. Select a user or 'Show All' to view assignments. Video details are fetched from YouTube API."
-        : "View YouTube videos assigned to you. Video details are fetched from YouTube API."
-      }
-    >
-      {currentUser?.role === 'admin' && (
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="user-select-filter" className="text-sm font-medium shrink-0">View videos for:</Label>
-            {isLoadingUsers && allUsersForAdmin.length === 0 ? (
-              <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...</div>
-            ) : (
-              <Select
-                value={selectedUserIdForFilter}
-                onValueChange={(value) => {
-                  console.log("[YouTubePage] Admin selected option from filter dropdown. New selectedUserIdForFilter:", value);
-                  setSelectedUserIdForFilter(value);
-                }}
-              >
-                <SelectTrigger id="user-select-filter" className="w-full sm:w-[320px] bg-background shadow-sm">
-                  <SelectValue placeholder="-- Select View Option --" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Show All Assigned Videos</SelectItem>
-                  {allUsersForAdmin.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-          <Dialog open={isAddVideoDialogOpen} onOpenChange={setIsAddVideoDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto" disabled={isLoadingUsers && allUsersForAdmin.length === 0}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Assign Video URL
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[480px]">
-              <DialogHeader>
-                <DialogTitle>Assign New YouTube Video URL</DialogTitle>
-                <DialogDescription>Enter video URL and assign to a user. The URL will be stored in the user's record. Details are fetched from YouTube API.</DialogDescription>
-              </DialogHeader>
-              <Form {...addVideoForm}>
-                <form onSubmit={addVideoForm.handleSubmit(onSubmitAddVideo)} className="space-y-4 py-4">
-                  <FormField
-                    control={addVideoForm.control}
-                    name="url"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>YouTube Video URL</FormLabel>
-                        <FormControl>
-                          <Input placeholder="https://www.youtube.com/watch?v=..." {...field} disabled={isSubmittingVideo} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={addVideoForm.control}
-                    name="assignedToUserId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Assign to User</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled={isSubmittingVideo || isLoadingUsers}>
+    <div className="space-y-6"> {/* Added space-y-6 for overall padding */}
+      <YouTubeAnalyticsSummary videos={displayedVideos} />
+      
+      <DataTableShell
+        title="YouTube Video Assignments"
+        description={
+          currentUser?.role === 'admin'
+          ? "Assign YouTube video URLs to users. Select a user or 'Show All' to view assignments. Video details are fetched from YouTube API."
+          : "View YouTube videos assigned to you. Video details are fetched from YouTube API."
+        }
+      >
+        {currentUser?.role === 'admin' && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="user-select-filter" className="text-sm font-medium shrink-0">View videos for:</Label>
+              {isLoadingUsers && allUsersForAdmin.length === 0 ? (
+                <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users...</div>
+              ) : (
+                <Select
+                  value={selectedUserIdForFilter}
+                  onValueChange={(value) => {
+                    console.log("[YouTubePage] Admin selected option from filter dropdown. New selectedUserIdForFilter:", value);
+                    setSelectedUserIdForFilter(value);
+                  }}
+                >
+                  <SelectTrigger id="user-select-filter" className="w-full sm:w-[320px] bg-background shadow-sm">
+                    <SelectValue placeholder="-- Select View Option --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Show All Assigned Videos</SelectItem>
+                    {allUsersForAdmin.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <Dialog open={isAddVideoDialogOpen} onOpenChange={setIsAddVideoDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full sm:w-auto" disabled={isLoadingUsers && allUsersForAdmin.length === 0}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Assign Video URL
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle>Assign New YouTube Video URL</DialogTitle>
+                  <DialogDescription>Enter video URL and assign to a user. The URL will be stored in the user's record. Details are fetched from YouTube API.</DialogDescription>
+                </DialogHeader>
+                <Form {...addVideoForm}>
+                  <form onSubmit={addVideoForm.handleSubmit(onSubmitAddVideo)} className="space-y-4 py-4">
+                    <FormField
+                      control={addVideoForm.control}
+                      name="url"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>YouTube Video URL</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={isLoadingUsers ? "Loading users..." : "Select a user"} />
-                            </SelectTrigger>
+                            <Input placeholder="https://www.youtube.com/watch?v=..." {...field} disabled={isSubmittingVideo} />
                           </FormControl>
-                          <SelectContent>
-                            {allUsersForAdmin.map((u) => (
-                              <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setIsAddVideoDialogOpen(false)} disabled={isSubmittingVideo}>Cancel</Button>
-                    <Button type="submit" disabled={isSubmittingVideo || !addVideoForm.formState.isValid}>
-                      {isSubmittingVideo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Save Assignment
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={addVideoForm.control}
+                      name="assignedToUserId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Assign to User</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled={isSubmittingVideo || isLoadingUsers}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder={isLoadingUsers ? "Loading users..." : "Select a user"} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {allUsersForAdmin.map((u) => (
+                                <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setIsAddVideoDialogOpen(false)} disabled={isSubmittingVideo}>Cancel</Button>
+                      <Button type="submit" disabled={isSubmittingVideo || !addVideoForm.formState.isValid}>
+                        {isSubmittingVideo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Save Assignment
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        )}
 
-      {!showMainLoader && noDataMessageText && (
-        <div className="text-center py-10 text-muted-foreground">
-            <Rss className="mx-auto h-12 w-12 mb-3" />
-            <p className="text-lg font-semibold mb-1">
-                {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" :
-                 noDataMessageText.startsWith("Loading") ? "Loading..." : "No Videos Found"}
-            </p>
-            <p>{noDataMessageText}</p>
+        {!showMainLoader && noDataMessageText && (
+          <div className="text-center py-10 text-muted-foreground">
+              <Rss className="mx-auto h-12 w-12 mb-3" />
+              <p className="text-lg font-semibold mb-1">
+                  {noDataMessageText.startsWith("Please select") ? "Awaiting Selection" :
+                  noDataMessageText.startsWith("Loading") ? "Loading..." : "No Videos Found"}
+              </p>
+              <p>{noDataMessageText}</p>
 
-            {currentUser?.role === 'admin' &&
-             selectedUserIdForFilter &&
-             selectedUserIdForFilter !== 'all' &&
-             displayedVideos.length === 0 &&
-             !isLoadingPageData && (
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 shadow">
-                <p className="font-semibold mb-2">Admin Tip:</p>
-                <p>
-                  If you're certain this user has videos assigned, the "No Videos Found" message might be due to a missing Firestore index for this specific query.
-                </p>
-                <p className="mt-2">
-                  Please check your browser's developer console (usually F12, then click the "Console" tab) for any error messages from Firestore.
-                  Look for a message that includes a link similar to:
-                  <code className="block bg-blue-100 p-1 rounded text-xs my-1 break-all">https://console.firebase.google.com/project/.../firestore/indexes?create_composite=...</code>
-                </p>
-                <p className="mt-2">
-                  This link will guide you to create the required composite index. With the current data model (URLs in user docs), specific user video fetches are done by retrieving the user document directly, so Firestore indexes on a separate video collection are not applicable here. If videos are not showing for a user, verify their `assignedYoutubeUrls` array in their Firestore user document.
-                </p>
-                 <p className="mt-2 text-xs">
-                    (Note: If issues persist for a specific user and you've verified their `assignedYoutubeUrls` array is correctly populated in Firestore, and no console errors appear related to fetching the user document itself, the issue might be in the YouTube API fetching step or data processing after fetching the URLs.)
-                </p>
-              </div>
-            )}
-        </div>
-      )}
+              {currentUser?.role === 'admin' &&
+              selectedUserIdForFilter &&
+              selectedUserIdForFilter !== 'all' &&
+              displayedVideos.length === 0 &&
+              !isLoadingPageData && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 shadow">
+                  <p className="font-semibold mb-2">Admin Tip:</p>
+                  <p>
+                    If you're certain this user has videos assigned, the "No Videos Found" message might be due to a missing Firestore index for this specific query.
+                  </p>
+                  <p className="mt-2">
+                    Please check your browser's developer console (usually F12, then click the "Console" tab) for any error messages from Firestore.
+                    Look for a message that includes a link similar to:
+                    <code className="block bg-blue-100 p-1 rounded text-xs my-1 break-all">https://console.firebase.google.com/project/.../firestore/indexes?create_composite=...</code>
+                  </p>
+                  <p className="mt-2">
+                    This link will guide you to create the required composite index. With the current data model (URLs in user docs), specific user video fetches are done by retrieving the user document directly, so Firestore indexes on a separate video collection are not applicable here. If videos are not showing for a user, verify their `assignedYoutubeUrls` array in their Firestore user document.
+                  </p>
+                  <p className="mt-2 text-xs">
+                      (Note: If issues persist for a specific user and you've verified their `assignedYoutubeUrls` array is correctly populated in Firestore, and no console errors appear related to fetching the user document itself, the issue might be in the YouTube API fetching step or data processing after fetching the URLs.)
+                  </p>
+                </div>
+              )}
+          </div>
+        )}
 
-      {!showMainLoader && displayedVideos.length > 0 && (
-        <GenericDataTable<YoutubeVideo>
-          data={displayedVideos}
-          columns={columns}
-          caption={getTableCaption()}
-        />
-      )}
-    </DataTableShell>
+        {!showMainLoader && displayedVideos.length > 0 && (
+          <GenericDataTable<YoutubeVideo>
+            data={displayedVideos}
+            columns={columns}
+            caption={getTableCaption()}
+          />
+        )}
+      </DataTableShell>
+    </div>
   );
 }
