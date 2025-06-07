@@ -196,7 +196,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
 
       // Save to Firestore if appUserId is provided
       if (input.appUserId && input.username) {
-        const firestorePath = `users/${input.appUserId}/analyzedRedditProfiles/${input.username}`;
+        const firestorePath = `ExternalRedditUser/${input.appUserId}/analyzedRedditProfiles/${input.username}`;
         const analysisDocRef = doc(db, firestorePath);
         try {
           await setDoc(analysisDocRef, result, { merge: true });
@@ -237,3 +237,4 @@ export async function analyzeExternalRedditUser(input: ExternalRedditUserAnalysi
     throw new Error(`Critical flow error for u/${input.username}: ${errorMessage}. Check server logs.`);
   }
 }
+
