@@ -131,10 +131,12 @@ export default function MentionsAnalyticsPage() {
 
   const fetchMentions = useCallback(async () => {
     if (!user || !user.id) {
+      console.log('[MentionsPage] fetchMentions: No user or user.id, clearing data.');
       setMentionsData([]);
       setIsLoadingMentions(false);
       return;
     }
+    console.log(`[MentionsPage] fetchMentions: Fetching data for user ID: ${user.id}, Name: ${user.name}`);
     setIsLoadingMentions(true);
     try {
       const fetchedMentions = await getGlobalMentionsForUser(user.id);
@@ -163,10 +165,12 @@ export default function MentionsAnalyticsPage() {
     try {
       const result: GatherGlobalMentionsOutput = await gatherGlobalMentions({ userId: user.id });
       
-      let description = `Fetched ${result.totalMentionsFetched} potential items. Stored ${result.newMentionsStored} new mentions.`;
+      // The 'newMentionsStored' from the DEBUG version of addGlobalMentionsBatch will be 0 or 1.
+      // The toast message might be slightly misleading during this debug phase.
+      let description = `Fetched ${result.totalMentionsFetched} potential items. DEBUG Store Attempt: ${result.newMentionsStored} item(s).`;
       if(result.errors && result.errors.length > 0) {
-        description += ` Encountered ${result.errors.length} errors. Check console for details.`;
-        console.error("Errors during global mention refresh:", result.errors);
+        description += ` Encountered ${result.errors.length} errors/skipped items. Check console for details.`;
+        console.error("Errors/Skipped during global mention refresh:", result.errors);
       }
       toast({ title: "Refresh Complete", description, duration: 7000 });
       await fetchMentions(); // Re-fetch to update the table

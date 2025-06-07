@@ -38,12 +38,11 @@ export async function addOrUpdateGlobalMention(userId: string, mention: Mention)
       timestamp: (mention.timestamp instanceof Date) ? mention.timestamp.toISOString() : String(mention.timestamp || new Date().toISOString()),
       matchedKeyword: String(mention.matchedKeyword || 'general'),
       sentiment: mention.sentiment && ['positive', 'negative', 'neutral', 'unknown'].includes(mention.sentiment) ? mention.sentiment : 'unknown',
-      fetchedAt: serverTimestamp(),
+      fetchedAt: serverTimestamp(), // Use serverTimestamp for consistency
     };
     
     // Ensure sentiment is not explicitly undefined for Firestore
     if (mentionDataToSave.sentiment === undefined) {
-      // This case should ideally not be hit due to the line above, but as a safeguard:
       console.log(`[GlobalMentionsService (addOrUpdateGlobalMention)] Mention ID ${mention.id} had undefined sentiment, explicitly setting to 'unknown'.`);
       mentionDataToSave.sentiment = 'unknown';
     }
@@ -69,13 +68,15 @@ export async function getGlobalMentionsForUser(userId: string): Promise<Mention[
     console.warn('[GlobalMentionsService (getGlobalMentionsForUser)] Invalid or missing userId provided. Received:', userId);
     return [];
   }
-  console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Fetching global mentions for user ${userId}.`);
+  const mentionsCollectionPath = `users/${userId}/${GLOBAL_MENTIONS_SUBCOLLECTION}`;
+  console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Fetching global mentions for user ${userId} from path: '${mentionsCollectionPath}'.`);
   try {
     const mentionsCollectionRef = collection(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION);
-    const q = query(mentionsCollectionRef, orderBy('timestamp', 'desc'), orderBy('fetchedAt', 'desc'), limit(100));
+    // Temporarily simplify query to rule out orderBy fetchedAt issues
+    const q = query(mentionsCollectionRef, orderBy('timestamp', 'desc'), limit(100)); 
     
     const querySnapshot = await getDocs(q);
-    console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Firestore query for user '${userId}' returned ${querySnapshot.docs.length} raw documents.`);
+    console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] Firestore query for user '${userId}' (path: ${mentionsCollectionRef.path}) returned ${querySnapshot.docs.length} raw documents.`);
 
     if (querySnapshot.empty) {
       console.log(`[GlobalMentionsService (getGlobalMentionsForUser)] No documents found for user '${userId}'.`);
@@ -110,82 +111,81 @@ export async function getGlobalMentionsForUser(userId: string): Promise<Mention[
 }
 
 /**
- * Adds multiple mentions in a batch for a specific user.
+ * DEBUG VERSION: Adds only the first valid mention using setDoc for a specific user.
  */
 export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]): Promise<{ successCount: number; errorCount: number; errors: string[] }> {
   if (!userId || typeof userId !== 'string' || userId.trim() === "") {
     const msg = `User ID is required, must be a non-empty string. Received: '${userId}'`;
-    console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] CRITICAL: ${msg}`);
+    console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] CRITICAL: ${msg}`);
     return { successCount: 0, errorCount: mentions?.length || 0, errors: [msg] };
   }
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] UserID: ${userId}. Attempting to process ${mentions.length} mentions. Simplified DEBUG write (only first valid item).`);
+
   if (!mentions || mentions.length === 0) {
-    console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] No mentions provided in batch to store for user '${userId}'.`);
+    console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] No mentions provided for user '${userId}'.`);
     return { successCount: 0, errorCount: 0, errors: [] };
   }
 
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Starting batch add for user '${userId}'. ${mentions.length} mentions to process.`);
-  const batch = writeBatch(db);
-  const userMentionsColRef = collection(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION);
-  let processedForBatchCount = 0;
   const localErrors: string[] = [];
-  let firstDocPathForLogging: string | null = null;
+  let successCount = 0;
 
-  mentions.forEach((mention, index) => {
-    if (!mention.id || typeof mention.id !== 'string' || mention.id.trim() === "") {
-      localErrors.push(`Mention at index ${index} (title "${mention.title?.substring(0,30)}...") is missing a valid ID. Skipping.`);
-      console.warn(`[GlobalMentionsService (addGlobalMentionsBatch)] Mention at index ${index} is missing an ID. Title: "${mention.title?.substring(0,30)}..."`);
-      return;
-    }
-    const mentionDocRef = doc(userMentionsColRef, mention.id);
-    if (!firstDocPathForLogging) {
-        firstDocPathForLogging = mentionDocRef.path;
-    }
-    
-    // Ensure data consistency before saving
-    const mentionDataToSave: Omit<Mention, 'fetchedAt'> & { fetchedAt: any } = {
-      id: String(mention.id), // Ensure ID is a string
-      platform: String(mention.platform || 'Unknown') as Mention['platform'],
-      source: String(mention.source || 'Unknown Source'),
-      title: String(mention.title || 'No Title Provided'),
-      excerpt: String(mention.excerpt || 'No Excerpt Provided'),
-      url: String(mention.url || '#'), // Default to '#' if URL is missing
-      timestamp: (mention.timestamp instanceof Date) 
-                 ? mention.timestamp.toISOString() 
-                 : String(mention.timestamp || new Date().toISOString()), // Default to now if missing
-      matchedKeyword: String(mention.matchedKeyword || 'general'), // Default if missing
-      sentiment: mention.sentiment && ['positive', 'negative', 'neutral', 'unknown'].includes(mention.sentiment) 
-                 ? mention.sentiment 
-                 : 'unknown', // Default to 'unknown'
-      fetchedAt: serverTimestamp(),
-    };
+  const firstValidMention = mentions.find(m => m.id && typeof m.id === 'string' && m.id.trim() !== "");
 
-    batch.set(mentionDocRef, mentionDataToSave, { merge: true });
-    processedForBatchCount++;
-  });
-
-  if (processedForBatchCount === 0 && localErrors.length > 0) {
-      console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] No valid mentions to commit for user '${userId}' due to missing IDs. Errors: ${localErrors.join('; ')}`);
-      return { successCount: 0, errorCount: mentions.length, errors: localErrors };
-  }
-  if (processedForBatchCount === 0 && localErrors.length === 0) {
-      console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] No mentions were processed for batch commit for user '${userId}', although no explicit errors with IDs. Original count: ${mentions.length}`);
-      return { successCount: 0, errorCount: 0, errors: [] };
+  if (!firstValidMention) {
+    const msg = `No valid mention with an ID found in the provided ${mentions.length} mentions for user '${userId}'. Cannot perform DEBUG write.`;
+    console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] ${msg}`);
+    return { successCount: 0, errorCount: mentions.length, errors: [msg] };
   }
 
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Attempting to commit batch with ${processedForBatchCount} mentions for user '${userId}'. First document path (example): ${firstDocPathForLogging || 'N/A'}`);
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Preparing to write one mention: ID ${firstValidMention.id}, Title: "${firstValidMention.title?.substring(0,30)}..." for user '${userId}'.`);
+
+  const mentionDocRef = doc(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION, firstValidMention.id);
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Firestore document path for single write: ${mentionDocRef.path}`);
+
+  const mentionDataToSave = {
+    id: String(firstValidMention.id),
+    platform: String(firstValidMention.platform || 'Unknown') as Mention['platform'],
+    source: String(firstValidMention.source || 'Unknown Source'),
+    title: String(firstValidMention.title || 'No Title Provided'),
+    excerpt: String(firstValidMention.excerpt || 'No Excerpt Provided'),
+    url: String(firstValidMention.url || '#'),
+    timestamp: (firstValidMention.timestamp instanceof Date)
+               ? firstValidMention.timestamp.toISOString()
+               : String(firstValidMention.timestamp || new Date().toISOString()),
+    matchedKeyword: String(firstValidMention.matchedKeyword || 'general'),
+    sentiment: firstValidMention.sentiment && ['positive', 'negative', 'neutral', 'unknown'].includes(firstValidMention.sentiment)
+               ? firstValidMention.sentiment
+               : 'unknown',
+    fetchedAt: serverTimestamp(),
+  };
+
   try {
-    await batch.commit();
-    console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] SUCCESS: Batch committed ${processedForBatchCount} mentions for user '${userId}'.`);
-    return { successCount: processedForBatchCount, errorCount: localErrors.length, errors: localErrors };
+    console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Attempting setDoc for mention ID ${firstValidMention.id} for user '${userId}'. Data (first 200 chars): ${JSON.stringify(mentionDataToSave).substring(0, 200)}...`);
+    await setDoc(mentionDocRef, mentionDataToSave, { merge: true });
+    console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] SUCCESS: setDoc completed for mention ID ${firstValidMention.id} for user '${userId}'.`);
+    successCount = 1; 
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown batch commit error.';
-    console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] FAILURE: Error committing batch for user '${userId}'. Error: ${errorMessage}`, error);
-    if (!(error instanceof Error) && error && typeof error === 'object') {
-        console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard error object details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-    } else if (!(error instanceof Error)) {
-         console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard, non-object error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown setDoc error.';
+    console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] FAILURE: Error during setDoc for mention ID ${firstValidMention.id} (user '${userId}'). Error: ${errorMessage}`, error);
+    
+    if (error instanceof Error) {
+        console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] FAILURE DETAILS: Name: ${error.name}, Stack: ${error.stack}`);
+        if ('code' in error) { // Check if it's a FirebaseError
+            console.error(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] FAILURE FirebaseError Code: ${(error as any).code}`);
+        }
+    } else if (error && typeof error === 'object') {
+        console.error('[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Non-standard error object details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    } else {
+         console.error('[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Non-standard, non-object error:', error);
     }
-    return { successCount: 0, errorCount: processedForBatchCount + localErrors.length, errors: [...localErrors, `Batch commit failed: ${errorMessage}`] };
+    localErrors.push(`DEBUG Write Failed for ${firstValidMention.id}: ${errorMessage}`);
   }
-}
+  
+  const skippedCount = mentions.length - 1; // All other mentions are skipped in this debug version
+  if (skippedCount > 0) {
+      localErrors.push(`${skippedCount} other mentions were skipped in this DEBUG version.`);
+  }
 
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch) DEBUG] Returning. Success: ${successCount}, Errors: ${localErrors.length}, Skipped (not attempted): ${skippedCount}, Error Messages: ${localErrors.join('; ')}`);
+  return { successCount, errorCount: localErrors.length, errors: localErrors };
+}
