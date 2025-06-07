@@ -39,9 +39,14 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
             {title}
           </CardTitle>
           {keywordsUsed && keywordsUsed.length > 0 && (
-             <CardDescription className="text-xs mt-1">
-                Displaying mentions for: {keywordsUsed.map((kw, i) => <Badge key={i} variant="outline" className="mr-1 text-xs">{kw}</Badge>)}
-            </CardDescription>
+             <div className="text-xs text-muted-foreground mt-1"> {/* Changed from CardDescription to div */}
+                Displaying mentions for: {/* Ensure Badges are inline or handled correctly */}
+                {keywordsUsed.map((kw, i) => (
+                  <Badge key={i} variant="outline" className="mr-1 ml-1 text-xs"> {/* Added ml-1 for spacing after text */}
+                    {kw}
+                  </Badge>
+                ))}
+            </div>
           )}
            {keywordsUsed && keywordsUsed.length === 0 && !isLoading && !error && (
             <CardDescription className="text-xs mt-1">No keywords configured to search for mentions.</CardDescription>
@@ -128,3 +133,4 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
 };
 
 export default YouTubeMentionsCard;
+
