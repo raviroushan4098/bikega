@@ -15,9 +15,9 @@ let accessToken: string | null = null;
 let tokenExpiry: number | null = null;
 
 const FETCH_PERIOD_DAYS = 30; // Fetch data from the last 30 days on refresh
-const COMMENTS_PER_POST_LIMIT = 5; // Max comments to fetch per post
+const COMMENTS_PER_POST_LIMIT = 5; // Max comments to fetch per post - User preference
 const COMMENT_FETCH_DEPTH = 1; // Depth of comments to fetch
-const API_CALL_DELAY_MS = 1500; // Delay in milliseconds between sentiment API calls (1.5 seconds)
+const API_CALL_DELAY_MS = 10000; // Delay in milliseconds between sentiment API calls - User preference (10 seconds)
 
 // Utility function to introduce a delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -132,7 +132,8 @@ async function fetchCommentsForPostInternal(
   userAgent: string,
   queryKeywordsArray: string[],
   fetchSinceTimestamp: number,
-  processedAt: string
+  processedAt: string,
+  storedItemsMap: Map<string, RedditPost> // Added for checking existing sentiment
 ): Promise<RedditPost[]> {
   const postId = postFullname.startsWith('t3_') ? postFullname.substring(3) : postFullname;
   if (!postId) {
@@ -172,34 +173,40 @@ async function fetchCommentsForPostInternal(
     for (const child of rawCommentItems) {
         const commentData = child.data as RedditApiItemData;
         const commentBody = commentData.body || '';
-        let sentimentResult = { sentiment: 'neutral' as RedditPost['sentiment'], error: undefined as string | undefined };
-        
-        if (commentBody.trim()) {
-            const sentimentAnalysisInput: AdvancedSentimentInput = { text: commentBody };
+        let finalSentiment: RedditPost['sentiment'] = 'unknown';
+
+        const existingComment = storedItemsMap.get(commentData.name);
+        if (existingComment && existingComment.content === commentBody && existingComment.sentiment && existingComment.sentiment !== 'unknown') {
+            console.log(`[Reddit API Service] COMMENT: Skipping sentiment analysis for comment ${commentData.id}. Content unchanged, using stored sentiment: ${existingComment.sentiment}`);
+            finalSentiment = existingComment.sentiment;
+        } else if (commentBody.trim()) {
             console.log(`[Reddit API Service] COMMENT: Preparing to analyze sentiment for comment ID: ${commentData.id}, Text (first 30): "${commentBody.substring(0,30)}..."`);
-            await delay(API_CALL_DELAY_MS); // Add delay here
-            sentimentResult = await analyzeAdvancedSentiment(sentimentAnalysisInput);
+            await delay(API_CALL_DELAY_MS);
+            const sentimentResult = await analyzeAdvancedSentiment({ text: commentBody });
             console.log(`[Reddit API Service] COMMENT: Sentiment analysis COMPLETE for comment ID: ${commentData.id}. Raw Result: ${JSON.stringify(sentimentResult)}`);
+            finalSentiment = sentimentResult.sentiment;
+            if (sentimentResult.error) {
+                console.warn(`[Reddit API Service] Advanced sentiment analysis failed for comment ${commentData.id}: ${sentimentResult.error}. Defaulting to 'unknown'.`);
+                finalSentiment = 'unknown';
+            }
+        } else {
+             console.log(`[Reddit API Service] COMMENT: Skipping sentiment analysis for comment ${commentData.id} (empty body). Setting to 'neutral'.`);
+             finalSentiment = 'neutral';
         }
+
 
         const commentTimestampMs = new Date((commentData.created_utc || 0) * 1000).getTime();
-        let finalSentiment = sentimentResult.sentiment;
-        if (sentimentResult.error) {
-            console.warn(`[Reddit API Service] Advanced sentiment analysis failed for comment ${commentData.id}: ${sentimentResult.error}. Defaulting to 'unknown'.`);
-            finalSentiment = 'unknown';
-        }
-
         mappedComments.push({
-            id: commentData.name,
+            id: commentData.name, // Use full name (e.g., t1_xxxx) as ID
             title: postTitle,
             content: commentBody,
             subreddit: postSubredditPrefixed,
             author: commentData.author || '[deleted]',
             timestamp: new Date(commentTimestampMs).toISOString(),
             score: commentData.score || 0,
-            numComments: 0, 
+            numComments: 0,
             url: `https://www.reddit.com${commentData.permalink}`,
-            flair: null, 
+            flair: null,
             sentiment: finalSentiment,
             type: 'Comment',
             matchedKeyword: queryKeywordsArray.find(kw => commentData.body?.toLowerCase().includes(kw.toLowerCase())) || queryKeywordsArray[0] || 'general',
@@ -246,8 +253,13 @@ export async function refreshUserRedditData(
   const { token, userAgent } = authDetails;
   console.log("[Reddit API Service] refreshUserRedditData: Reddit token obtained.");
 
+  // Fetch existing stored items to compare against
+  const storedItemsArray = await getStoredRedditFeedForUser(userId);
+  const storedItemsMap = new Map(storedItemsArray.map(item => [item.id, item]));
+  console.log(`[Reddit API Service] refreshUserRedditData: Fetched ${storedItemsMap.size} existing stored items for comparison.`);
+
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = 100; // Fetch up to 100 posts
+  const limit = 5; // Fetch up to 5 posts to reduce processing time
   const sort = 'new';
   
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
@@ -280,22 +292,28 @@ export async function refreshUserRedditData(
     for (const child of rawItems) {
       const postData = child.data as RedditApiItemData;
       const postTimestampMs = new Date((postData.created_utc || 0) * 1000).getTime();
+      let finalPostSentiment: RedditPost['sentiment'] = 'unknown';
       
-      let postSentimentResult = { sentiment: 'neutral' as RedditPost['sentiment'], error: undefined as string | undefined };
-      const postSentimentText = `${postData.title || ''} ${postData.selftext || ''}`;
-      
-      if (postSentimentText.trim()) {
-          const sentimentAnalysisInput: AdvancedSentimentInput = { text: postSentimentText };
-          console.log(`[Reddit API Service] POST: Preparing to analyze sentiment for post ID: ${postData.id}, Text (first 30): "${postSentimentText.substring(0,30)}..."`);
-          await delay(API_CALL_DELAY_MS); // Add delay here
-          postSentimentResult = await analyzeAdvancedSentiment(sentimentAnalysisInput);
+      const postContentForAnalysis = `${postData.title || ''} ${postData.selftext || ''}`.trim();
+      const existingPost = storedItemsMap.get(postData.name); // postData.name is the fullname e.g. t3_xxxx
+      const storedPostContent = existingPost ? `${existingPost.title || ''} ${existingPost.content || ''}`.trim() : null;
+
+      if (existingPost && storedPostContent === postContentForAnalysis && existingPost.sentiment && existingPost.sentiment !== 'unknown') {
+          console.log(`[Reddit API Service] POST: Skipping sentiment analysis for post ${postData.id}. Content unchanged, using stored sentiment: ${existingPost.sentiment}`);
+          finalPostSentiment = existingPost.sentiment;
+      } else if (postContentForAnalysis) {
+          console.log(`[Reddit API Service] POST: Preparing to analyze sentiment for post ID: ${postData.id}, Text (first 30): "${postContentForAnalysis.substring(0,30)}..."`);
+          await delay(API_CALL_DELAY_MS);
+          const postSentimentResult = await analyzeAdvancedSentiment({ text: postContentForAnalysis });
           console.log(`[Reddit API Service] POST: Sentiment analysis COMPLETE for post ID: ${postData.id}. Raw Result: ${JSON.stringify(postSentimentResult)}`);
-      }
-      
-      let finalPostSentiment = postSentimentResult.sentiment;
-      if (postSentimentResult.error) {
-          console.warn(`[Reddit API Service] Advanced sentiment analysis failed for post ${postData.id}: ${postSentimentResult.error}. Defaulting to 'unknown'.`);
-          finalPostSentiment = 'unknown';
+          finalPostSentiment = postSentimentResult.sentiment;
+          if (postSentimentResult.error) {
+              console.warn(`[Reddit API Service] Advanced sentiment analysis failed for post ${postData.id}: ${postSentimentResult.error}. Defaulting to 'unknown'.`);
+              finalPostSentiment = 'unknown';
+          }
+      } else {
+          console.log(`[Reddit API Service] POST: Skipping sentiment analysis for post ${postData.id} (empty content). Setting to 'neutral'.`);
+          finalPostSentiment = 'neutral';
       }
       
       const matchedKw = userKeywords.find(kw =>
@@ -306,7 +324,7 @@ export async function refreshUserRedditData(
       const flairValue = postData.link_flair_text === undefined ? null : postData.link_flair_text;
 
       fetchedItemsToStore.push({
-        id: postData.name,
+        id: postData.name, // Use full name (e.g., t3_xxxx) as ID
         title: postData.title || 'No Title',
         content: postData.selftext || '',
         subreddit: postData.subreddit_name_prefixed || `r/${postData.subreddit}` || 'N/A',
@@ -322,7 +340,11 @@ export async function refreshUserRedditData(
         processedAt: processedAt,
       });
 
-      if (postData.num_comments && postData.num_comments > 0 && fetchedItemsToStore.length < (limit * 1.5)) { 
+      // Max items to process in total for this refresh run (posts + comments)
+      // Let's say we aim for roughly (limit * (1+COMMENTS_PER_POST_LIMIT)) items
+      const MAX_TOTAL_ITEMS_PER_REFRESH = limit * (1 + COMMENTS_PER_POST_LIMIT); 
+
+      if (postData.num_comments && postData.num_comments > 0 && fetchedItemsToStore.length < MAX_TOTAL_ITEMS_PER_REFRESH) { 
         const commentsForThisPost = await fetchCommentsForPostInternal(
             postData.name, 
             postData.title || 'No Title',
@@ -331,7 +353,8 @@ export async function refreshUserRedditData(
             userAgent,
             userKeywords, 
             fetchSinceTimestamp,
-            processedAt
+            processedAt,
+            storedItemsMap // Pass the map
         );
         fetchedItemsToStore.push(...commentsForThisPost);
       }
@@ -345,8 +368,9 @@ export async function refreshUserRedditData(
         try {
             const batch = writeBatch(db);
             fetchedItemsToStore.forEach(item => {
-                const docId = item.id.includes('_') ? item.id.split('_')[1] : item.id; 
-                if (!docId) {
+                // Use the full Reddit ID (e.g., t3_xxxx or t1_yyyy) as Firestore document ID
+                const docId = item.id; 
+                if (!docId) { // Should not happen if item.id is always postData.name or commentData.name
                     console.warn("[Reddit API Service] refreshUserRedditData: Invalid ID for Firestore doc:", item.id);
                     return; 
                 }
@@ -405,7 +429,7 @@ export async function getStoredRedditFeedForUser(userId: string): Promise<Reddit
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { serverTimestamp, sno, ...restOfData } = data; 
       return {
-        id: docSnap.id, 
+        id: docSnap.id, // Use Firestore document ID which should be the Reddit full ID
         ...restOfData,
         timestamp: restOfData.timestamp || new Date(0).toISOString(), 
         flair: restOfData.flair === undefined ? null : restOfData.flair, 
