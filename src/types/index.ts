@@ -59,6 +59,7 @@ export interface Tweet {
 
 export interface Mention {
   id: string; // Should be unique across platforms, e.g., platform_originalId
+  userId: string; // ID of the user this mention belongs to
   platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Other';
   source: string; // e.g., "Reddit r/webdev", "Hacker News", "TechCrunch"
   title: string;
