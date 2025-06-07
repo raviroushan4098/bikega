@@ -11,6 +11,7 @@ import { Menu as MenuIcon } from "lucide-react"; // For a potential mobile trigg
 const getPageTitle = (pathname: string): string => {
   if (pathname === "/dashboard") return "Overview";
   if (pathname.startsWith("/dashboard/youtube")) return "YouTube Analytics";
+  if (pathname.startsWith("/dashboard/reddit/analyze-external")) return "External Reddit User Analyzer";
   if (pathname.startsWith("/dashboard/reddit")) return "Reddit Analytics";
   if (pathname.startsWith("/dashboard/twitter")) return "Twitter/X Analytics";
   if (pathname.startsWith("/dashboard/mentions")) return "Global Mentions";
@@ -40,7 +41,7 @@ export default function DashboardHeader() {
       */}
       
       <div className="flex-1 md:flex-none"> {/* Allow title to take space on mobile, fix on md+ */}
-         <h1 className="text-lg md:text-xl font-semibold font-headline">{pageTitle}</h1>
+         <h1 className="text-lg md:text-xl font-semibold font-headline mt-1">{pageTitle}</h1>
       </div>
       
       {/* User avatar and other header items could go here if needed */}
