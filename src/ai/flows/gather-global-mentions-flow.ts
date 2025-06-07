@@ -240,7 +240,8 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
         console.error(`${invalidUserIdMsg} Received: '${input.userId}'`);
         return { totalMentionsFetched: 0, newMentionsStored: 0, errors: [invalidUserIdMsg.replace('[GatherGlobalMentionsFlow] CRITICAL: ', '')] };
     }
-    console.log(`[GatherGlobalMentionsFlow] ENTERING FLOW. Input UserID: ${input.userId}. Timestamp: ${new Date().toISOString()}`);
+    const userId = input.userId; // Use validated userId
+    console.log(`[GatherGlobalMentionsFlow] ENTERING FLOW. Input UserID: ${userId}. Timestamp: ${new Date().toISOString()}`);
     console.log("======================================================================");
 
     const errors: string[] = [];
@@ -248,9 +249,9 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     let initialMentionsStoredCount = 0;
     let sentimentUpdatedCount = 0;
 
-    const user = await getUserById(input.userId);
+    const user = await getUserById(userId);
     if (!user || !user.id) {
-      const notFoundMsg = `User with ID ${input.userId} not found or user object is invalid.`;
+      const notFoundMsg = `User with ID ${userId} not found or user object is invalid.`;
       errors.push(notFoundMsg);
       console.error(`[GatherGlobalMentionsFlow] ${notFoundMsg} User object from getUserById: ${JSON.stringify(user)}`);
       return { totalMentionsFetched: 0, newMentionsStored: 0, errors };
@@ -305,7 +306,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     // Add userId to all partial mentions and prepare for unique check
     const allPotentialMentionsWithUserId: Mention[] = allPotentialMentionsPartial.map(m => ({
       ...m,
-      userId: input.userId, // Add the userId from input
+      userId: userId, // Add the userId from input
       // Ensure required fields are present, even if partial, for type conformity
       id: m.id || `generated_${Date.now()}_${Math.random()}`,
       platform: m.platform || 'Other',
@@ -315,7 +316,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
       url: m.url || '#',
       timestamp: m.timestamp || new Date().toISOString(),
       matchedKeyword: m.matchedKeyword || 'unknown',
-      sentiment: m.sentiment || 'unknown',
+      sentiment: m.sentiment || 'unknown', // Default sentiment to 'unknown'
     }));
 
 
@@ -340,13 +341,14 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
       console.log(`[GatherGlobalMentionsFlow] Phase 1: Preparing initial batch store for ${uniquePotentialMentions.length} unique mentions for user ${user.id}.`);
       const mentionsForInitialStore = uniquePotentialMentions.map(m => ({
         ...m,
-        sentiment: m.sentiment || 'unknown' 
+        sentiment: m.sentiment || 'unknown' // Ensure sentiment is 'unknown' if not already set
       }));
       
       const mentionIdsForInitialStore = mentionsForInitialStore.map(m => m.id).join(', ');
       console.log(`[GatherGlobalMentionsFlow] Attempting to initially store ${mentionsForInitialStore.length} mentions. IDs: ${mentionIdsForInitialStore.substring(0, 200)}${mentionIdsForInitialStore.length > 200 ? '...' : ''}`);
       
-      const initialStoreResult = await addGlobalMentionsBatch(mentionsForInitialStore); // Pass mentions directly
+      // Pass userId separately for the new service signature
+      const initialStoreResult = await addGlobalMentionsBatch(userId, mentionsForInitialStore);
       initialMentionsStoredCount = initialStoreResult.successCount;
       if (initialStoreResult.errorCount > 0) {
         errors.push(...initialStoreResult.errors.map(e => `Initial Storage Error: ${e}`));
@@ -378,18 +380,18 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
           if (sentimentResult.error) {
             errors.push(`Sentiment analysis error for mention "${mention.id}": ${sentimentResult.error}`);
             console.warn(`[GatherGlobalMentionsFlow] Sentiment analysis error for mention "${mention.id}" (Title: ${mention.title?.substring(0,30)}...): ${sentimentResult.error}. Defaulting to 'unknown'.`);
-            mention.sentiment = 'unknown'; 
+            mention.sentiment = 'unknown'; // Set to unknown if error
           } else {
-             mention.sentiment = newSentiment; 
+             mention.sentiment = newSentiment; // Update the sentiment on the original mention object
           }
           console.log(`[GatherGlobalMentionsFlow] Sentiment for "${mention.id}": ${mention.sentiment}.`);
-          mentionsWithUpdatedSentiment.push({...mention}); 
+          mentionsWithUpdatedSentiment.push({...mention}); // Collect mentions that had their sentiment processed (even if errored and set to unknown)
 
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : String(e);
           errors.push(`Exception during sentiment analysis for mention "${mention.id}": ${errorMsg}`);
           console.error(`[GatherGlobalMentionsFlow] CRITICAL EXCEPTION during sentiment analysis for mention "${mention.id}" (Title: ${mention.title?.substring(0,30)}...):`, e);
-          const erroredMentionCopy = {...mention, sentiment: 'unknown' as const}; // Ensure sentiment is set
+          const erroredMentionCopy = {...mention, sentiment: 'unknown' as const}; // Ensure sentiment is 'unknown'
           mentionsWithUpdatedSentiment.push(erroredMentionCopy);
         }
       }
@@ -399,7 +401,8 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
         const mentionIdsForUpdateStore = mentionsWithUpdatedSentiment.map(m => m.id).join(', ');
         console.log(`[GatherGlobalMentionsFlow] Attempting to update ${mentionsWithUpdatedSentiment.length} mentions with new sentiments. IDs: ${mentionIdsForUpdateStore.substring(0, 200)}${mentionIdsForUpdateStore.length > 200 ? '...' : ''}`);
         
-        const updateStoreResult = await addGlobalMentionsBatch(mentionsWithUpdatedSentiment); // Pass mentions directly
+        // Pass userId separately for the new service signature
+        const updateStoreResult = await addGlobalMentionsBatch(userId, mentionsWithUpdatedSentiment);
         sentimentUpdatedCount = updateStoreResult.successCount;
         if (updateStoreResult.errorCount > 0) {
           errors.push(...updateStoreResult.errors.map(e => `Sentiment Update Storage Error: ${e}`));
@@ -420,7 +423,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log("======================================================================");
     return {
       totalMentionsFetched: totalMentionsFetchedUnique,
-      newMentionsStored: initialMentionsStoredCount,
+      newMentionsStored: initialMentionsStoredCount, // This reflects initial storage. Updates are merged.
       errors,
     };
   }
@@ -448,3 +451,4 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
     };
   }
 }
+
