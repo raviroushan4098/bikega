@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,17 @@ import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getStoredRedditAnalyses } from '@/lib/reddit-api-service';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 interface AnalysisResultDisplay {
   username: string;
@@ -38,11 +49,16 @@ export default function AnalyzeExternalRedditUserPage() {
   const [isLoadingStoredData, setIsLoadingStoredData] = useState<boolean>(true);
   const [isUpdatingAll, setIsUpdatingAll] = useState<boolean>(false);
 
+  const [isUserListDialogOpen, setIsUserListDialogOpen] = useState(false);
+  const [savedUsernamesForDialog, setSavedUsernamesForDialog] = useState<string[]>([]);
+  const [isLoadingUserListDialog, setIsLoadingUserListDialog] = useState(false);
+
+
   useEffect(() => {
     const fetchAndSetStoredAnalyses = async () => {
         if (currentUser?.id) {
             setIsLoadingStoredData(true);
-            setAnalysisResults([]); // Clear previous results
+            setAnalysisResults([]); 
             try {
                 const storedData = await getStoredRedditAnalyses(currentUser.id);
                 const displayableResults: AnalysisResultDisplay[] = storedData.map(data => ({
@@ -60,11 +76,11 @@ export default function AnalyzeExternalRedditUserPage() {
             }
         } else {
             setAnalysisResults([]);
-            setIsLoadingStoredData(false); // Not logged in or no user ID
+            setIsLoadingStoredData(false); 
         }
     };
 
-    if (!authLoading) { // Only run if auth state is resolved
+    if (!authLoading) { 
         fetchAndSetStoredAnalyses();
     }
   }, [currentUser, authLoading, toast]);
@@ -74,8 +90,21 @@ export default function AnalyzeExternalRedditUserPage() {
     if (!isRefreshOp && !isUpdatingAll && !analysisResults.find(r => r.username === usernameToAnalyze && r.data)) {
         toast({ title: `${isRefreshOp ? 'Refreshing' : 'Analyzing'} User`, description: `Processing u/${usernameToAnalyze}... This may take a moment.` });
     } else if (isRefreshOp && !isUpdatingAll) {
-        console.log(`Refreshing u/${usernameToAnalyze}`); // Minimal log for single refresh
+        console.log(`Refreshing u/${usernameToAnalyze}`); 
     }
+    
+    // Ensure the entry exists and mark as loading/refreshing
+    setAnalysisResults(prev => {
+        const existingIndex = prev.findIndex(r => r.username === usernameToAnalyze);
+        if (existingIndex !== -1) {
+            return prev.map((r, idx) => 
+                idx === existingIndex ? { ...r, isLoading: true, isRefreshing: isRefreshOp, error: undefined } : r
+            );
+        }
+        // This case should ideally be handled by handleAnalyzeSingleUser or handleFileUpload first
+        // by adding a loading placeholder.
+        return [{ username: usernameToAnalyze, isLoading: true, isRefreshing: isRefreshOp, error: undefined }, ...prev];
+    });
 
     try {
         const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
@@ -85,11 +114,11 @@ export default function AnalyzeExternalRedditUserPage() {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
         console.error(`Error analyzing/refreshing user ${usernameToAnalyze}:`, error);
-        if (!isUpdatingAll) {
+        if (!isUpdatingAll) { // Only show individual toast if not part of "Update All"
             toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 5000 });
         }
         setAnalysisResults(prev => prev.map(r =>
-            r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data } : r // Keep old data on error
+            r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data } : r 
         ));
     }
   };
@@ -108,12 +137,13 @@ export default function AnalyzeExternalRedditUserPage() {
     setAnalysisResults(prevResults => {
         const existingIndex = prevResults.findIndex(r => r.username === trimmedUsername);
         if (existingIndex !== -1) {
+            // User exists, mark for refresh/re-analysis
             return prevResults.map((r, idx) => 
-                idx === existingIndex ? { ...r, data: r.data, isLoading: true, isRefreshing: true, error: undefined } : r
+                idx === existingIndex ? { ...r, isLoading: true, isRefreshing: true, data: r.data, error: undefined } : r
             );
         } else {
-            // Add new user to the top of the list for immediate visibility
-            return [{ username: trimmedUsername, isLoading: true, error: undefined }, ...prevResults];
+            // New user, add to the top with loading state
+            return [{ username: trimmedUsername, isLoading: true, isRefreshing: false, error: undefined }, ...prevResults];
         }
     });
     await processSingleUsername(trimmedUsername, false, currentUser.id);
@@ -130,7 +160,6 @@ export default function AnalyzeExternalRedditUserPage() {
         return;
       }
       setFileName(file.name);
-      // Clear previous results when a new CSV is uploaded
       setAnalysisResults([]); 
       setIsLoadingStoredData(false); 
 
@@ -144,7 +173,7 @@ export default function AnalyzeExternalRedditUserPage() {
         
         const lines = text.split('\n');
         if (lines.length > 0) {
-          lines.shift(); // Remove the first line (header)
+          lines.shift(); 
         }
         const usernames = lines
           .flatMap(line => line.split(',')) 
@@ -159,7 +188,7 @@ export default function AnalyzeExternalRedditUserPage() {
         toast({ title: "CSV Processing", description: `Found ${usernames.length} usernames. Starting analysis...` });
         setIsProcessingCsv(true);
 
-        const initialCsvResults: AnalysisResultDisplay[] = usernames.map(username => ({ username, isLoading: true }));
+        const initialCsvResults: AnalysisResultDisplay[] = usernames.map(username => ({ username, isLoading: true, isRefreshing: false }));
         setAnalysisResults(initialCsvResults);
 
         for (const username of usernames) {
@@ -184,9 +213,6 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const handleRefreshAnalysis = async (username: string) => {
     if (!currentUser?.id) return;
-    setAnalysisResults(prev => prev.map(r => 
-        r.username === username ? { ...r, data: r.data, isLoading: true, isRefreshing: true, error: undefined } : r
-    ));
     await processSingleUsername(username, true, currentUser.id);
   };
 
@@ -197,11 +223,11 @@ export default function AnalyzeExternalRedditUserPage() {
     }
     setIsUpdatingAll(true);
     toast({ title: "Updating All Analyses", description: `Starting refresh for ${analysisResults.length} profiles. This may take some time.`, duration: 5000 });
-
-    setAnalysisResults(prev => prev.map(r => ({ ...r, isLoading: true, isRefreshing: true, error: undefined })));
     
     for (const result of analysisResults) {
-        await processSingleUsername(result.username, true, currentUser.id);
+        if (result.data) { // Only refresh if there's existing data
+            await processSingleUsername(result.username, true, currentUser.id);
+        }
     }
 
     setIsUpdatingAll(false);
@@ -223,6 +249,27 @@ export default function AnalyzeExternalRedditUserPage() {
       URL.revokeObjectURL(url);
     }
   };
+
+  const handleOpenUserListDialog = async () => {
+    if (!currentUser?.id) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot fetch list: User not authenticated." });
+        return;
+    }
+    setIsUserListDialogOpen(true);
+    setIsLoadingUserListDialog(true);
+    setSavedUsernamesForDialog([]);
+    try {
+        const storedAnalyses = await getStoredRedditAnalyses(currentUser.id);
+        const usernames = storedAnalyses.map(analysis => analysis.username);
+        setSavedUsernamesForDialog(usernames);
+    } catch (error) {
+        console.error("Error fetching usernames for dialog:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to fetch list of saved usernames." });
+    } finally {
+        setIsLoadingUserListDialog(false);
+    }
+  };
+
 
   if (authLoading) {
     return (
@@ -355,14 +402,18 @@ export default function AnalyzeExternalRedditUserPage() {
                     )}
                 </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-wrap gap-3">
                 <Button onClick={handleDownloadTemplate} variant="outline" size="sm" disabled={isProcessingCsv || isUpdatingAll || analysisResults.some(r => r.isLoading)}>
                     <Download className="mr-2 h-4 w-4" />
                     Download Template CSV
                 </Button>
-                 <Button onClick={handleUpdateAll} disabled={isLoadingStoredData || isUpdatingAll || isProcessingCsv || analysisResults.length === 0}>
+                 <Button onClick={handleUpdateAll} disabled={isLoadingStoredData || isUpdatingAll || isProcessingCsv || analysisResults.length === 0 || analysisResults.every(r => !r.data)}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingAll ? 'animate-spin' : ''}`} />
                     {isUpdatingAll ? 'Updating All...' : 'Update All Profiles'}
+                </Button>
+                <Button onClick={handleOpenUserListDialog} variant="outline" size="sm" disabled={isProcessingCsv || isUpdatingAll || isLoadingUserListDialog}>
+                    <ListTree className="mr-2 h-4 w-4" />
+                    User_List
                 </Button>
             </div>
             {(isProcessingCsv || isUpdatingAll) && (
@@ -374,6 +425,43 @@ export default function AnalyzeExternalRedditUserPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog for Saved Usernames */}
+      <Dialog open={isUserListDialogOpen} onOpenChange={setIsUserListDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Saved Reddit Usernames for Analysis</DialogTitle>
+            <DialogDescription>
+              This list shows Reddit usernames whose analysis data is stored for your account.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[300px] w-full rounded-md border p-4 my-4">
+            {isLoadingUserListDialog ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : savedUsernamesForDialog.length > 0 ? (
+              <ul className="space-y-1">
+                {savedUsernamesForDialog.map((name, index) => (
+                  <li key={index} className="text-sm p-1.5 bg-muted/50 rounded-sm">
+                    u/{name}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No Reddit usernames have been analyzed and saved yet.
+              </p>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button onClick={() => setIsUserListDialogOpen(false)} variant="outline">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
@@ -404,7 +492,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         variant="outline" 
                         size="sm" 
                         onClick={() => handleRefreshAnalysis(result.username)}
-                        disabled={result.isLoading || result.isRefreshing || isProcessingCsv || isUpdatingAll}
+                        disabled={result.isLoading || result.isRefreshing || isProcessingCsv || isUpdatingAll || !result.data}
                     >
                         <RefreshCw className={`mr-2 h-4 w-4 ${result.isRefreshing ? 'animate-spin' : ''}`} />
                         Refresh
@@ -489,3 +577,4 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
+
