@@ -95,7 +95,7 @@ async function fetchRedditMentions(keywords: string[], token: string, userAgent:
   // Fetch recent posts (last 7 days, max 25 items)
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=25&sort=new&t=week&type=t3&restrict_sr=false&include_over_18=on`;
 
-  console.log(`[RedditMentions] Fetching from: ${searchUrl.substring(0, 150)}...`);
+  console.log(`[RedditMentions] Fetching from: ${searchUrl.substring(0, 150)}... for keywords: ${keywords.join(', ')}`);
 
   try {
     const response = await fetch(searchUrl, {
@@ -111,12 +111,17 @@ async function fetchRedditMentions(keywords: string[], token: string, userAgent:
     const responseData: RedditApiResponse = await response.json();
     const rawPosts = (responseData.data?.children || []).filter(child => child.kind === 't3' && child.data);
 
+    console.log(`[RedditMentions] Received ${rawPosts.length} raw posts from API.`);
     for (const child of rawPosts) {
       const post = child.data;
       const matchedKeyword = keywords.find(kw =>
         (post.title?.toLowerCase().includes(kw.toLowerCase()) || post.selftext?.toLowerCase().includes(kw.toLowerCase()))
       );
-      if (!matchedKeyword) continue;
+      if (!matchedKeyword) {
+        console.log(`[RedditMentions] Post ID ${post.id} (Title: "${post.title?.substring(0,30)}...") did not match any keyword. Skipping.`);
+        continue;
+      }
+      console.log(`[RedditMentions] Post ID ${post.id} matched keyword "${matchedKeyword}". Adding to list.`);
 
       mentions.push({
         id: `reddit_${post.name}`, // e.g. reddit_t3_xxxxxx
@@ -133,7 +138,7 @@ async function fetchRedditMentions(keywords: string[], token: string, userAgent:
   } catch (error) {
     console.error(`[RedditMentions] Exception: ${error instanceof Error ? error.message : String(error)}`);
   }
-  console.log(`[RedditMentions] Fetched ${mentions.length} potential mentions.`);
+  console.log(`[RedditMentions] Fetched ${mentions.length} potential mentions matching keywords.`);
   return mentions;
 }
 
@@ -144,7 +149,7 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Mention[]> {
   const queryKeywords = keywords.map(kw => `"${kw}"`).join(',');
   const searchUrl = `http://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(queryKeywords)}&tags=(story,comment)&hitsPerPage=25`;
   
-  console.log(`[HackerNewsMentions] Fetching from: ${searchUrl.substring(0, 150)}...`);
+  console.log(`[HackerNewsMentions] Fetching from: ${searchUrl.substring(0, 150)}... for keywords: ${keywords.join(', ')}`);
 
   try {
     const response = await fetch(searchUrl, { signal: AbortSignal.timeout(API_CALL_TIMEOUT_MS) });
@@ -154,11 +159,16 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Mention[]> {
       return [];
     }
     const responseData: HackerNewsAlgoliaResponse = await response.json();
+    console.log(`[HackerNewsMentions] Received ${responseData.hits.length} raw hits from API.`);
 
     for (const hit of responseData.hits) {
       const textContent = hit.comment_text || hit.story_text || hit.title || "";
       const matchedKeyword = keywords.find(kw => textContent.toLowerCase().includes(kw.toLowerCase()));
-      if (!matchedKeyword) continue;
+      if (!matchedKeyword) {
+         console.log(`[HackerNewsMentions] Hit ID ${hit.objectID} (Title: "${(hit.title || hit.story_title)?.substring(0,30)}...") did not match any keyword. Skipping.`);
+        continue;
+      }
+      console.log(`[HackerNewsMentions] Hit ID ${hit.objectID} matched keyword "${matchedKeyword}". Adding to list.`);
 
       const itemType = hit._tags.includes('story') ? 'story' : hit._tags.includes('comment') ? 'comment' : 'item';
       const title = hit.title || hit.story_title || (itemType === 'comment' ? 'Comment on Hacker News' : 'Hacker News Item');
@@ -178,7 +188,7 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Mention[]> {
   } catch (error) {
     console.error(`[HackerNewsMentions] Exception: ${error instanceof Error ? error.message : String(error)}`);
   }
-  console.log(`[HackerNewsMentions] Fetched ${mentions.length} potential mentions.`);
+  console.log(`[HackerNewsMentions] Fetched ${mentions.length} potential mentions matching keywords.`);
   return mentions;
 }
 
@@ -231,7 +241,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log("======================================================================");
 
     const errors: string[] = [];
-    let totalMentionsFetched = 0;
+    let totalMentionsFetchedRaw = 0;
     let newMentionsStoredCount = 0;
 
     const user = await getUserById(input.userId);
@@ -239,14 +249,14 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
       const notFoundMsg = `User with ID ${input.userId} not found.`;
       errors.push(notFoundMsg);
       console.error(`[GatherGlobalMentionsFlow] ${notFoundMsg}`);
-      return { totalMentionsFetched, newMentionsStored: newMentionsStoredCount, errors };
+      return { totalMentionsFetched: totalMentionsFetchedRaw, newMentionsStored: newMentionsStoredCount, errors };
     }
     console.log(`[GatherGlobalMentionsFlow] User ${user.name} (ID: ${user.id}) found.`);
 
     const keywords = user.assignedKeywords;
     if (!keywords || keywords.length === 0) {
       console.log('[GatherGlobalMentionsFlow] User has no assigned keywords. Exiting flow.');
-      return { totalMentionsFetched, newMentionsStored: newMentionsStoredCount, errors };
+      return { totalMentionsFetched: totalMentionsFetchedRaw, newMentionsStored: newMentionsStoredCount, errors };
     }
     console.log(`[GatherGlobalMentionsFlow] Keywords for user ${input.userId}: ${keywords.join(', ')}`);
 
@@ -258,8 +268,8 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     if ('token' in redditAuth) {
       const redditMentions = await fetchRedditMentions(keywords, redditAuth.token, redditAuth.userAgent);
       allPotentialMentions.push(...redditMentions);
-      totalMentionsFetched += redditMentions.length;
-      console.log(`[GatherGlobalMentionsFlow] Reddit fetch complete. Found ${redditMentions.length} mentions. Total now: ${allPotentialMentions.length}`);
+      totalMentionsFetchedRaw += redditMentions.length;
+      console.log(`[GatherGlobalMentionsFlow] Reddit fetch complete. Found ${redditMentions.length} mentions. Total raw now: ${totalMentionsFetchedRaw}`);
     } else {
       errors.push(`Reddit Auth Error: ${redditAuth.error}`);
       console.error(`[GatherGlobalMentionsFlow] Reddit Auth Error: ${redditAuth.error}`);
@@ -269,22 +279,22 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log('[GatherGlobalMentionsFlow] Starting Hacker News fetch...');
     const hnMentions = await fetchHackerNewsMentions(keywords);
     allPotentialMentions.push(...hnMentions);
-    totalMentionsFetched += hnMentions.length;
-    console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions. Total now: ${allPotentialMentions.length}`);
+    totalMentionsFetchedRaw += hnMentions.length;
+    console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions. Total raw now: ${totalMentionsFetchedRaw}`);
     
     // 3. Fetch from Twitter/X (Mock)
     console.log('[GatherGlobalMentionsFlow] Starting Twitter/X (Mock) fetch...');
     const twitterMentions = fetchTwitterMentionsMock(keywords);
     allPotentialMentions.push(...twitterMentions);
-    totalMentionsFetched += twitterMentions.length;
-     console.log(`[GatherGlobalMentionsFlow] Twitter/X (Mock) fetch complete. Found ${twitterMentions.length} mentions. Total now: ${allPotentialMentions.length}`);
+    totalMentionsFetchedRaw += twitterMentions.length;
+    console.log(`[GatherGlobalMentionsFlow] Twitter/X (Mock) fetch complete. Found ${twitterMentions.length} mentions. Total raw now: ${totalMentionsFetchedRaw}`);
 
     // 4. Fetch from Google News (Mock)
     console.log('[GatherGlobalMentionsFlow] Starting Google News (Mock) fetch...');
     const googleNewsMentions = fetchGoogleNewsMentionsMock(keywords);
     allPotentialMentions.push(...googleNewsMentions);
-    totalMentionsFetched += googleNewsMentions.length;
-    console.log(`[GatherGlobalMentionsFlow] Google News (Mock) fetch complete. Found ${googleNewsMentions.length} mentions. Total now: ${allPotentialMentions.length}`);
+    totalMentionsFetchedRaw += googleNewsMentions.length;
+    console.log(`[GatherGlobalMentionsFlow] Google News (Mock) fetch complete. Found ${googleNewsMentions.length} mentions. Total raw now: ${totalMentionsFetchedRaw}`);
 
     console.log(`[GatherGlobalMentionsFlow] Total potential mentions from all sources BEFORE deduplication by ID: ${allPotentialMentions.length}`);
     
@@ -309,14 +319,13 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     const processedMentions: Mention[] = uniquePotentialMentions.filter(m => !!m.sentiment); // Keep pre-filled ones
 
     const mentionsToAnalyzeThisRun = mentionsToProcessForSentiment.slice(0, MAX_SENTIMENT_ANALYSES_PER_RUN);
-    console.log(`[GatherGlobalMentionsFlow] Total mentions needing sentiment analysis: ${mentionsToProcessForSentiment.length}. Will process up to ${MAX_SENTIMENT_ANALYSES_PER_RUN} this run.`);
+    console.log(`[GatherGlobalMentionsFlow] Total mentions needing sentiment analysis: ${mentionsToProcessForSentiment.length}. Will process up to ${MAX_SENTIMENT_ANALYSES_PER_RUN} this run (mentionsToAnalyzeThisRun count: ${mentionsToAnalyzeThisRun.length}).`);
 
 
     if (mentionsToAnalyzeThisRun.length > 0) {
-      console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for ${mentionsToAnalyzeThisRun.length} mentions (max ${MAX_SENTIMENT_ANALYSES_PER_RUN} per run).`);
+      console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for ${mentionsToAnalyzeThisRun.length} mentions.`);
       for (const mention of mentionsToAnalyzeThisRun) {
         try {
-          // Small delay before each sentiment analysis call to respect rate limits if any on Gemini key
           console.log(`[GatherGlobalMentionsFlow] Waiting ${SENTIMENT_ANALYSIS_DELAY_MS}ms before sentiment call for: "${mention.id}"`);
           await delay(SENTIMENT_ANALYSIS_DELAY_MS); 
           
@@ -329,8 +338,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
             console.warn(`[GatherGlobalMentionsFlow] Sentiment analysis error for mention "${mention.id}" (Title: ${mention.title.substring(0,30)}...): ${sentimentResult.error}`);
             mention.sentiment = 'unknown'; // Default on error
           }
-          // Reduce console noise for successful calls
-          // console.log(`[GatherGlobalMentionsFlow] Sentiment for "${mention.id}": ${mention.sentiment}`);
+          console.log(`[GatherGlobalMentionsFlow] Sentiment for "${mention.id}": ${mention.sentiment}. Added to processedMentions.`);
           processedMentions.push(mention);
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : String(e);
@@ -341,11 +349,14 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
         }
       }
       console.log(`[GatherGlobalMentionsFlow] Finished sentiment analysis loop for ${mentionsToAnalyzeThisRun.length} mentions.`);
-       // Add back any mentions that were not processed in this run (due to the cap)
+      
       if (mentionsToProcessForSentiment.length > MAX_SENTIMENT_ANALYSES_PER_RUN) {
-        const unprocessedMentions = mentionsToProcessForSentiment.slice(MAX_SENTIMENT_ANALYSES_PER_RUN);
-        processedMentions.push(...unprocessedMentions); // Add them back to be stored without sentiment (or with old sentiment if any)
-        console.log(`[GatherGlobalMentionsFlow] Added back ${unprocessedMentions.length} mentions that were not analyzed for sentiment in this run due to cap.`);
+        const unprocessedDueToCap = mentionsToProcessForSentiment.slice(MAX_SENTIMENT_ANALYSES_PER_RUN);
+        unprocessedDueToCap.forEach(m => {
+          if (!m.sentiment) m.sentiment = 'unknown'; // Assign default sentiment if none exists
+        });
+        processedMentions.push(...unprocessedDueToCap);
+        console.log(`[GatherGlobalMentionsFlow] Added back ${unprocessedDueToCap.length} mentions that were not analyzed for sentiment in this run due to cap (assigned 'unknown' sentiment if needed). Total processedMentions now: ${processedMentions.length}`);
       }
 
     } else {
@@ -353,33 +364,41 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     }
     
     if (processedMentions.length > 0) {
-      // Deduplicate mentions by ID again before storing (should be redundant if first dedupe was perfect, but safe)
       const finalUniqueMentionsMap = new Map<string, Mention>();
       processedMentions.forEach(m => {
-        if(m.id) finalUniqueMentionsMap.set(m.id, m);
+        if(m.id) {
+            if (!finalUniqueMentionsMap.has(m.id)) {
+                finalUniqueMentionsMap.set(m.id, m);
+            } else {
+                console.warn(`[GatherGlobalMentionsFlow] Duplicate ID '${m.id}' encountered when preparing for final storage. Overwriting with latest processed version.`);
+                finalUniqueMentionsMap.set(m.id, m); // Ensure the latest processed version is used
+            }
+        } else {
+            console.error(`[GatherGlobalMentionsFlow] CRITICAL: Processed mention missing ID before storage. Title: "${m.title.substring(0,30)}...". Skipping this item for safety.`);
+        }
       });
       const uniqueMentionsToStore = Array.from(finalUniqueMentionsMap.values());
 
-      console.log(`[GatherGlobalMentionsFlow] Attempting to store ${uniqueMentionsToStore.length} unique processed mentions for user ${input.userId}.`);
+      console.log(`[GatherGlobalMentionsFlow] Attempting to store ${uniqueMentionsToStore.length} unique processed mentions for user ${input.userId}. IDs: ${uniqueMentionsToStore.map(m=>m.id).join(', ')}`);
       const storeResult = await addGlobalMentionsBatch(input.userId, uniqueMentionsToStore);
-      newMentionsStoredCount = storeResult.successCount; // This count reflects items Firestore attempted to write/update
+      newMentionsStoredCount = storeResult.successCount; 
       if (storeResult.errorCount > 0) {
         errors.push(...storeResult.errors.map(e => `Storage Error: ${e}`));
         console.error(`[GatherGlobalMentionsFlow] Errors during batch storage: ${storeResult.errors.join('; ')}`);
       }
-      console.log(`[GatherGlobalMentionsFlow] Batch storage result: SuccessCount=${storeResult.successCount}, ErrorCount=${storeResult.errorCount}`);
+      console.log(`[GatherGlobalMentionsFlow] Batch storage result: SuccessCount=${storeResult.successCount}, ErrorCount=${storeResult.errorCount}. Details: ${JSON.stringify(storeResult)}`);
     } else {
       console.log('[GatherGlobalMentionsFlow] No mentions to store.');
     }
     
     console.log("======================================================================");
     console.log(`[GatherGlobalMentionsFlow] EXITING FLOW. UserID: ${input.userId}. Timestamp: ${new Date().toISOString()}`);
-    console.log(`  Summary: Total Fetched (pre-filter/dedupe): ${totalMentionsFetched}, New Mentions Stored (batch attempted): ${newMentionsStoredCount}, Errors: ${errors.length}`);
+    console.log(`  Summary: Total Raw Fetched (pre-filter/dedupe): ${totalMentionsFetchedRaw}, Items Attempted in Batch Storage: ${newMentionsStoredCount}, Errors during flow: ${errors.length}`);
     if(errors.length > 0) console.log(`  Encountered errors: ${errors.join('; ')}`);
     console.log("======================================================================");
     return {
-      totalMentionsFetched, // This is raw count from sources
-      newMentionsStored: newMentionsStoredCount, // This is count of items *attempted* in batch write
+      totalMentionsFetched: totalMentionsFetchedRaw, 
+      newMentionsStored: newMentionsStoredCount, 
       errors,
     };
   }
@@ -388,7 +407,10 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
 // Exported wrapper function to be called from client/server components
 export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Promise<GatherGlobalMentionsOutput> {
   try {
-    return await gatherGlobalMentionsFlowRunner(input);
+    console.log(`[gatherGlobalMentions EXPORTED WRAPPER] Called for UserID ${input.userId}. Forwarding to flow runner.`);
+    const result = await gatherGlobalMentionsFlowRunner(input);
+    console.log(`[gatherGlobalMentions EXPORTED WRAPPER] Flow runner completed for UserID ${input.userId}. Result: ${JSON.stringify(result)}`);
+    return result;
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : "An unknown error occurred in the gatherGlobalMentions flow runner.";
     console.error(`[gatherGlobalMentions EXPORTED WRAPPER] Unhandled exception from flow runner for UserID ${input.userId}: ${errorMessage}`, e);
