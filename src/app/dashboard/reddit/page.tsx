@@ -9,7 +9,7 @@ import { DataTableShell } from '@/components/analytics/data-table-shell';
 // import { GenericDataTable } from '@/components/analytics/generic-data-table'; 
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw, CalendarIcon, FilterX, SearchCheck, ArrowUpCircle, MessageSquare } from 'lucide-react'; // Added ArrowUpCircle, MessageSquare
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw, CalendarIcon, FilterX, SearchCheck, ArrowUpCircle, MessageSquare, UserCheck } from 'lucide-react'; // Added ArrowUpCircle, MessageSquare, UserCheck
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
 import { refreshUserRedditData, getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
@@ -330,6 +330,11 @@ export default function RedditPage() {
     toast({ title: "Filters Reset", description: "Showing all stored Reddit items.", duration: 3000 });
   };
 
+  const handleExternalUserClick = () => {
+    console.log("External User button clicked!");
+    toast({ title: "External User Action", description: "This button is a placeholder for now." });
+  };
+
   if (authLoading) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -505,6 +510,10 @@ export default function RedditPage() {
                         <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0} className="w-full sm:w-auto">
                             {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                             Refresh Feed
+                        </Button>
+                        <Button onClick={handleExternalUserClick} variant="outline" className="w-full sm:w-auto">
+                            <UserCheck className="mr-2 h-4 w-4" />
+                            External User
                         </Button>
                     </div>
                 </div>
