@@ -166,7 +166,6 @@ export default function AnalyzeExternalRedditUserPage() {
   const processSingleUsername = async (usernameToAnalyze: string, isRefreshOp: boolean = false, appUserIdForCall: string) => {
     setAnalysisResults(prevResults => {
         const currentEntry = prevResults.find(r => r.username === usernameToAnalyze);
-        // isLoading is true if it's the very first analysis (no data at all, or only placeholder)
         const isFirstTimeAnalysis = !currentEntry?.data || currentEntry.data._placeholder === true;
 
         return prevResults.map(r => {
@@ -228,7 +227,6 @@ export default function AnalyzeExternalRedditUserPage() {
     const existingUserDisplayIndex = analysisResults.findIndex(r => r.username === trimmedUsername);
 
     if (existingUserDisplayIndex === -1) {
-      // User not in current display list. Add placeholder first, then analyze.
       const placeholderResult = await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
       if ('error' in placeholderResult) {
           toast({ variant: "destructive", title: "Registration Error", description: placeholderResult.error });
@@ -246,7 +244,7 @@ export default function AnalyzeExternalRedditUserPage() {
               totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
               fetchedPostsDetails: [], fetchedCommentsDetails: [],
           }
-      }, ...prev.sort((a, b) => a.username.localeCompare(b.username))]); // Keep sorted
+      }, ...prev.sort((a, b) => a.username.localeCompare(b.username))]);
       await processSingleUsername(trimmedUsername, false, currentUser.id);
     } else {
       await processSingleUsername(trimmedUsername, true, currentUser.id);
@@ -422,7 +420,6 @@ export default function AnalyzeExternalRedditUserPage() {
     toast({ title: "Date Filters Reset", description: "Displaying all posts/comments within profiles.", duration: 3000 });
   };
 
-  // currentDisplayResults will always be analysisResults. Filtering happens *inside* the cards.
   const currentDisplayResults = analysisResults;
 
 
@@ -451,7 +448,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const renderDataTable = (items: ExternalRedditUserDataItem[], type: 'Posts' | 'Comments') => {
     if (!items || items.length === 0) {
-      let message = `No recent ${type.toLowerCase()} found in this analysis run.`;
+      let message = `No recent ${type.toLowerCase()} found for this user.`;
       if (startDate || endDate) {
         message = `No ${type.toLowerCase()} match the selected date range for this user.`;
       }
@@ -574,7 +571,7 @@ export default function AnalyzeExternalRedditUserPage() {
                 </Button>
                 <Button onClick={handleOpenUserListDialog} variant="outline" size="sm" disabled={isProcessingCsv || isUpdatingAll || isLoadingUserListDialog || analysisResults.some(r => r.isLoading || r.isRefreshing)}>
                     <ListTree className="mr-2 h-4 w-4" />
-                    Manage Registered Users
+                    User list
                 </Button>
             </div>
             {(isProcessingCsv || isUpdatingAll) && (
@@ -650,7 +647,6 @@ export default function AnalyzeExternalRedditUserPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Date Filter Section */}
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="text-lg font-headline flex items-center">
@@ -658,7 +654,7 @@ export default function AnalyzeExternalRedditUserPage() {
             Filter Posts/Comments by Date
           </CardTitle>
           <CardDescription>
-            Select a date range to filter the posts and comments shown within each profile card below. This does not hide profile cards.
+            Select a date range to filter the posts and comments shown within each profile card below.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -731,7 +727,7 @@ export default function AnalyzeExternalRedditUserPage() {
         </CardContent>
       </Card>
 
-      {isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
+      {isLoadingStoredData && currentDisplayResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <DatabaseZap className="h-10 w-10 text-primary mb-3 animate-pulse" />
             <p>Loading stored profiles from database...</p>
@@ -781,7 +777,6 @@ export default function AnalyzeExternalRedditUserPage() {
               statusIconColor = "text-green-500";
             }
             
-            // Filter posts and comments for this specific card based on startDate and endDate
             const filteredPosts = result.data?.fetchedPostsDetails?.filter(post => {
                 if (!startDate && !endDate) return true;
                 const itemDate = parseISO(post.timestamp);
