@@ -270,7 +270,7 @@ export async function searchYouTubeVideosByKeywords(
   const apiKey = youtubeApiKeyEntry.keyValue;
 
   const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR '); // Search for exact phrases or keywords
-  const maxResults = 15; // Number of videos to fetch
+  const maxResults = 25; // Increased from 15
 
   // Calculate the timestamp for 24 hours ago
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -280,7 +280,7 @@ export async function searchYouTubeVideosByKeywords(
   const fetchedMentions: YouTubeMentionItem[] = [];
 
   try {
-    console.log(`[youtube-video-service] Searching YouTube with query: "${query}", publishedAfter: ${twentyFourHoursAgo}`);
+    console.log(`[youtube-video-service] Searching YouTube with query: "${query}", publishedAfter: ${twentyFourHoursAgo}, maxResults: ${maxResults}`);
     const response = await fetch(searchUrl);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
