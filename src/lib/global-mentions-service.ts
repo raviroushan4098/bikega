@@ -26,6 +26,7 @@ export async function addOrUpdateGlobalMention(userId: string, mention: Mention)
     };
     // Remove undefined sentiment to avoid issues with Firestore merge if field doesn't exist
     if (mentionDataToSave.sentiment === undefined) {
+      console.log(`[GlobalMentionsService (addOrUpdateGlobalMention)] Mention ID ${mention.id} had undefined sentiment, removing field before save.`);
       delete mentionDataToSave.sentiment;
     }
 
@@ -102,6 +103,7 @@ export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]
   const userMentionsColRef = collection(db, 'users', userId, GLOBAL_MENTIONS_SUBCOLLECTION);
   let processedForBatchCount = 0;
   const localErrors: string[] = [];
+  let firstDocPathForLogging: string | null = null;
 
   mentions.forEach((mention, index) => {
     if (!mention.id || mention.id.trim() === "") {
@@ -110,6 +112,9 @@ export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]
       return;
     }
     const mentionDocRef = doc(userMentionsColRef, mention.id);
+    if (!firstDocPathForLogging) {
+        firstDocPathForLogging = mentionDocRef.path;
+    }
     const mentionDataToSave = {
       ...mention,
       timestamp: (mention.timestamp instanceof Date) ? mention.timestamp.toISOString() : mention.timestamp, // Ensure ISO string
@@ -117,8 +122,8 @@ export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]
     };
     // Remove undefined sentiment to avoid issues with Firestore merge if field doesn't exist
      if (mentionDataToSave.sentiment === undefined) {
+      // console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Mention ID ${mention.id} had undefined sentiment, removing field before save.`);
       delete mentionDataToSave.sentiment;
-      console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Mention ID ${mention.id} had undefined sentiment, removing field before save.`);
     }
 
     batch.set(mentionDocRef, mentionDataToSave, { merge: true });
@@ -134,8 +139,7 @@ export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]
       return { successCount: 0, errorCount: 0, errors: [] };
   }
 
-
-  console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Committing batch with ${processedForBatchCount} mentions for user '${userId}'.`);
+  console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] Attempting to commit batch with ${processedForBatchCount} mentions for user '${userId}'. First document path (example): ${firstDocPathForLogging || 'N/A'}`);
   try {
     await batch.commit();
     console.log(`[GlobalMentionsService (addGlobalMentionsBatch)] SUCCESS: Batch committed ${processedForBatchCount} mentions for user '${userId}'.`);
@@ -144,8 +148,10 @@ export async function addGlobalMentionsBatch(userId: string, mentions: Mention[]
     const errorMessage = error instanceof Error ? error.message : 'Unknown batch commit error.';
     console.error(`[GlobalMentionsService (addGlobalMentionsBatch)] FAILURE: Error committing batch for user '${userId}'. Error: ${errorMessage}`, error);
     // Add details about the error object if it's not a standard Error instance
-    if (!(error instanceof Error)) {
-        console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard error object:', JSON.stringify(error, null, 2));
+    if (!(error instanceof Error) && error && typeof error === 'object') {
+        console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard error object details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    } else if (!(error instanceof Error)) {
+         console.error('[GlobalMentionsService (addGlobalMentionsBatch)] Non-standard, non-object error:', error);
     }
     return { successCount: 0, errorCount: processedForBatchCount + localErrors.length, errors: [...localErrors, `Batch commit failed: ${errorMessage}`] };
   }
