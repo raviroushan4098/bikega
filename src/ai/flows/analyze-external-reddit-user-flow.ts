@@ -192,7 +192,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
 
       result.subredditsPostedIn = Array.from(uniqueSubreddits);
       result.lastRefreshedAt = new Date().toISOString(); // Set the refresh timestamp
-      console.log(`[AnalyzeExternalRedditUserFlow] Analysis complete for u/${input.username}. Last refreshed: ${result.lastRefreshedAt}`);
+      
 
       // Save to Firestore if appUserId is provided
       if (input.appUserId && input.username) {
@@ -204,18 +204,21 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
           await setDoc(analysisDocRef, dataToSave, { merge: true });
           console.log(`[AnalyzeExternalRedditUserFlow] Successfully saved analysis for u/${input.username} to Firestore at ${firestorePath}`);
         } catch (firestoreError) {
+          const saveErrorMessage = firestoreError instanceof Error ? firestoreError.message : 'Unknown Firestore save error.';
           console.error(`[AnalyzeExternalRedditUserFlow] Failed to save analysis for u/${input.username} to Firestore:`, firestoreError);
-          // Do not throw here, let the analysis result still be returned to client
+          // Throw an error here so the client knows the save failed and the entire operation is reported as an error.
+          throw new Error(`Failed to save analysis to database for u/${input.username}: ${saveErrorMessage}`);
         }
       } else {
         console.log(`[AnalyzeExternalRedditUserFlow] appUserId not provided or username missing, skipping Firestore save for u/${input.username}.`);
       }
+      console.log(`[AnalyzeExternalRedditUserFlow] Analysis complete for u/${input.username}. Last refreshed: ${result.lastRefreshedAt}`);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during analysis.';
       console.error(`[AnalyzeExternalRedditUserFlow] CRITICAL EXCEPTION during analysis for u/${input.username}: ${errorMessage}`, error);
-      // Ensure lastRefreshedAt is set even in error cases if some partial data might be returned or for consistency
-      result.lastRefreshedAt = new Date().toISOString();
+      // Ensure lastRefreshedAt is set for the result object that might be partially built before throwing
+      result.lastRefreshedAt = new Date().toISOString(); 
       throw new Error(`Analysis failed for u/${input.username}: ${errorMessage}`);
     }
     return result;
@@ -251,3 +254,4 @@ export async function analyzeExternalRedditUser(input: ExternalRedditUserAnalysi
     };
   }
 }
+
