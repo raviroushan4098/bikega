@@ -11,7 +11,7 @@ import type { ColumnConfig, Mention } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
-import { RefreshCw, ExternalLink, Globe, MessageSquareText, Rss, Twitter as TwitterIcon, Info } from 'lucide-react'; // Added Info icon
+import { RefreshCw, ExternalLink, Globe, MessageSquareText, Rss, Twitter as TwitterIcon, Info, Link as LinkIcon } from 'lucide-react'; // Added Info, LinkIcon
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added Alert components
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Added Tooltip
@@ -21,11 +21,13 @@ const PlatformIcon: React.FC<{ platform: Mention['platform'] }> = ({ platform })
     case 'Reddit':
       return <MessageSquareText className="h-4 w-4 text-orange-500" />;
     case 'Hacker News':
-      return <Rss className="h-4 w-4 text-red-600" />; // Using Rss as a stand-in for HN logo
+      return <Rss className="h-4 w-4 text-red-600" />;
     case 'Twitter/X':
       return <TwitterIcon className="h-4 w-4 text-blue-500" />;
     case 'Google News':
       return <Globe className="h-4 w-4 text-green-500" />;
+    case 'Web Mention':
+      return <LinkIcon className="h-4 w-4 text-purple-500" />;
     default:
       return <Globe className="h-4 w-4 text-muted-foreground" />;
   }
@@ -33,20 +35,20 @@ const PlatformIcon: React.FC<{ platform: Mention['platform'] }> = ({ platform })
 
 
 const columns: ColumnConfig<Mention>[] = [
-  { 
-    key: 'platform', 
-    header: 'Platform', 
+  {
+    key: 'platform',
+    header: 'Platform',
     render: (item) => (
       <div className="flex items-center gap-2">
         <PlatformIcon platform={item.platform} />
         <span className="font-medium">{item.platform}</span>
       </div>
     ),
-    className: "w-[180px]" 
+    className: "w-[180px]"
   },
-  { 
-    key: 'title', 
-    header: 'Title / Source', 
+  {
+    key: 'title',
+    header: 'Title / Source',
     render: (item) => (
       <div>
         <a href={item.url} target="_blank" rel="noopener noreferrer" className="font-semibold hover:underline line-clamp-2">
@@ -55,35 +57,35 @@ const columns: ColumnConfig<Mention>[] = [
         <p className="text-xs text-muted-foreground mt-0.5">{item.source}</p>
       </div>
     ),
-    sortable: true, 
-    className: "min-w-[250px]" 
+    sortable: true,
+    className: "min-w-[250px]"
   },
-  { 
-    key: 'excerpt', 
-    header: 'Excerpt', 
+  {
+    key: 'excerpt',
+    header: 'Excerpt',
     render: (item) => <p className="text-sm text-muted-foreground line-clamp-2">{item.excerpt}</p>,
     className: "min-w-[300px] max-w-md"
   },
-  { 
-    key: 'timestamp', 
-    header: 'Date', 
-    sortable: true, 
+  {
+    key: 'timestamp',
+    header: 'Date',
+    sortable: true,
     render: (item) => formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
     className: "w-[180px]"
   },
-  { 
-    key: 'sentiment', 
-    header: 'Sentiment', 
+  {
+    key: 'sentiment',
+    header: 'Sentiment',
     render: (item) => {
       if (!item.sentiment || item.sentiment === 'unknown') {
         return <Badge variant="outline">N/A</Badge>;
       }
-      
+
       let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
       switch (item.sentiment) {
-        case 'positive': badgeVariant = "default"; break; // Green (default primary for positive)
-        case 'negative': badgeVariant = "destructive"; break; // Red
-        case 'neutral': badgeVariant = "secondary"; break; // Gray
+        case 'positive': badgeVariant = "default"; break;
+        case 'negative': badgeVariant = "destructive"; break;
+        case 'neutral': badgeVariant = "secondary"; break;
       }
       return (
         <Badge variant={badgeVariant}>
@@ -164,7 +166,7 @@ export default function MentionsAnalyticsPage() {
     toast({ title: "Refreshing Global Mentions...", description: "Fetching latest mentions. This may take a few moments." });
     try {
       const result: GatherGlobalMentionsOutput = await gatherGlobalMentions({ userId: user.id });
-      
+
       let description = `Fetched ${result.totalMentionsFetched} potential items from APIs. ${result.newMentionsStored} items created/updated in database.`;
       if(result.errors && result.errors.length > 0) {
         description += ` Encountered ${result.errors.length} errors/issues during processing. Check console for details.`;
@@ -179,20 +181,20 @@ export default function MentionsAnalyticsPage() {
       setIsRefreshing(false);
     }
   };
-  
+
   const noKeywordsAssigned = !authLoading && user && (!user.assignedKeywords || user.assignedKeywords.length === 0);
 
   return (
     <DataTableShell
       title="Global Mentions Tracker"
-      description="Monitor mentions of your keywords across news, blogs, forums, and other websites."
+      description="Monitor mentions of your keywords across news, blogs, forums, webpages, and other websites."
     >
       <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <Alert variant="default" className="w-full sm:w-auto sm:max-w-md bg-primary/10 border-primary/30">
             <Info className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary font-semibold">Beta Feature</AlertTitle>
             <AlertDescription className="text-primary/80 text-xs">
-            This tracker searches Reddit, Hacker News, and includes mock data for Twitter/X & Google News. More sources coming soon! Refresh may take time.
+            This tracker searches Reddit, Hacker News, and includes mock data for Twitter/X, Google News, and Web Mentions. More sources coming soon! Refresh may take time.
             </AlertDescription>
         </Alert>
         <Button onClick={handleRefreshMentions} disabled={isRefreshing || isLoadingMentions || noKeywordsAssigned} className="w-full sm:w-auto">

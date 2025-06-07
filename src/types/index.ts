@@ -40,7 +40,7 @@ export interface RedditPost {
   url: string; // For posts: post URL. For comments: comment permalink.
   flair?: string | null; // Flair can be a string or null (if not present or explicitly set to null)
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
-  type: 'Post' | 'Comment'; 
+  type: 'Post' | 'Comment';
   matchedKeyword?: string; // Keyword that this post/comment matched
   processedAt?: string; // ISO string timestamp of when this item was last processed/saved
 }
@@ -60,8 +60,8 @@ export interface Tweet {
 export interface Mention {
   id: string; // Should be unique across platforms, e.g., platform_originalId
   userId: string; // ID of the user this mention belongs to
-  platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Other';
-  source: string; // e.g., "Reddit r/webdev", "Hacker News", "TechCrunch"
+  platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Web Mention' | 'Other';
+  source: string; // e.g., "Reddit r/webdev", "Hacker News", "TechCrunch", "My Awesome Blog"
   title: string;
   excerpt: string;
   url: string;

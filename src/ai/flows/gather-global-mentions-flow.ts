@@ -12,8 +12,8 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import type { Mention, User } from '@/types';
 import { analyzeAdvancedSentiment } from '@/ai/flows/advanced-sentiment-flow';
-import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service'; 
-import { getRedditAccessToken } from '@/lib/reddit-api-service'; 
+import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service';
+import { getRedditAccessToken } from '@/lib/reddit-api-service';
 import { getUserById } from '@/lib/user-service';
 import {
   GatherGlobalMentionsInputSchema,
@@ -121,7 +121,7 @@ async function fetchRedditMentions(keywords: string[], token: string, userAgent:
       }
       console.log(`[RedditMentions] Post ID ${post.id} matched keyword "${matchedKeyword}". Adding to list.`);
 
-      mentions.push({ 
+      mentions.push({
         id: `reddit_${post.name}`,
         platform: 'Reddit',
         source: post.subreddit_name_prefixed || 'Reddit',
@@ -169,7 +169,7 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Partial<Ment
       const itemType = hit._tags.includes('story') ? 'story' : hit._tags.includes('comment') ? 'comment' : 'item';
       const title = hit.title || hit.story_title || (itemType === 'comment' ? 'Comment on Hacker News' : 'Hacker News Item');
 
-      mentions.push({ 
+      mentions.push({
         id: `hackernews_${hit.objectID}`,
         platform: 'Hacker News',
         source: 'Hacker News',
@@ -189,7 +189,7 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Partial<Ment
 
 interface MockTweetExample {
   author: string;
-  timestamp: string; 
+  timestamp: string;
   text: string;
   keyword: string;
   url: string;
@@ -201,18 +201,18 @@ const lpuMockTweets: MockTweetExample[] = [
     timestamp: "2024-06-07T17:09:00Z",
     text: "@Ranjan_799 @malpani Even govt is not ready to help here by taking more students in IITs/NIts without diluting quality & are concerned with brand dilution. Institutes like VIT, LPU, KL are taking 5 to 10k per campus per annum with less area, but IITs with 300 to 500 acres offering max 1500 seats",
     keyword: "LPU",
-    url: "https://twitter.com/MRM_Reddy/status/mockLPU1" 
+    url: "https://twitter.com/MRM_Reddy/status/mockLPU1"
   },
   {
     author: "LPU Fashion Design (@lpufashion)",
-    timestamp: "2024-06-07T13:34:00Z", 
+    timestamp: "2024-06-07T13:34:00Z",
     text: "The GC Lab at Lovely Professional University (LPU) is an integral part of the School of Fashion Design, providing students with advanced resources and hands-on experience in fashion design. #LPU #Fashion #Design #GC #Labs",
     keyword: "LPU",
-    url: "https://x.com/lpufashion/status/mockLPU2" 
+    url: "https://x.com/lpufashion/status/mockLPU2"
   },
   {
     author: "Ashmit Prajapati (@AshmitPraj64742)",
-    timestamp: "2024-06-07T13:31:00Z", 
+    timestamp: "2024-06-07T13:31:00Z",
     text: "@lpuuniversity 🎉🎉👍",
     keyword: "LPU",
     url: "https://twitter.com/AshmitPraj64742/status/mockLPU3"
@@ -221,7 +221,7 @@ const lpuMockTweets: MockTweetExample[] = [
 
 function fetchTwitterMentionsMock(keywords: string[]): Partial<Mention>[] {
   if (!keywords.length) return [];
-  console.log(`[TwitterMentionsMock] Simulating fetch for keywords: ${keywords.join(', ')} (Updated Mock)`);
+  console.log(`[TwitterMentionsMock] Simulating fetch for keywords: ${keywords.join(', ')}`);
   const outputMentions: Partial<Mention>[] = [];
   let mockIdCounter = Date.now();
 
@@ -229,23 +229,21 @@ function fetchTwitterMentionsMock(keywords: string[]): Partial<Mention>[] {
     const lowerKw = kw.toLowerCase();
     if (lowerKw === 'lpu') {
       lpuMockTweets.forEach((tweet) => {
-        // Ensure LPU tweets only get added if "LPU" is the keyword being processed
         if (tweet.keyword.toLowerCase() === lowerKw) {
           outputMentions.push({
-            id: `twitter_mock_lpu_${mockIdCounter++}`,
+            id: `twitter_mock_lpu_${tweet.url.split('/').pop()}`,
             platform: 'Twitter/X',
             source: `Tweet by ${tweet.author}`,
             title: tweet.text.substring(0, 60) + (tweet.text.length > 60 ? '...' : ''),
             excerpt: tweet.text,
             url: tweet.url,
             timestamp: new Date(tweet.timestamp).toISOString(),
-            matchedKeyword: tweet.keyword, // This should be "LPU"
-            sentiment: 'neutral', 
+            matchedKeyword: tweet.keyword,
+            sentiment: 'neutral',
           });
         }
       });
     } else {
-      // Generic mock for other keywords
       outputMentions.push({
         id: `twitter_mock_other_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
         platform: 'Twitter/X',
@@ -254,31 +252,56 @@ function fetchTwitterMentionsMock(keywords: string[]): Partial<Mention>[] {
         excerpt: `This is a simulated tweet discussing various aspects of ${kw}, designed to look like real content. It mentions ${kw} multiple times to ensure matching. #MockData`,
         url: `https://twitter.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`,
         timestamp: new Date(Date.now() - Math.random() * 86400000 * 3).toISOString(), // within last 3 days
-        matchedKeyword: kw, // This should be the current keyword 'kw'
+        matchedKeyword: kw,
         sentiment: Math.random() > 0.6 ? 'positive' : Math.random() < 0.3 ? 'negative' : 'neutral',
       });
     }
   });
-  // Cap total mock tweets to avoid overwhelming the display
-  console.log(`[TwitterMentionsMock] Generated ${outputMentions.length} mock tweets before slice.`);
-  return outputMentions.slice(0, 5);
+  console.log(`[TwitterMentionsMock] Generated ${outputMentions.length} mock tweets (pre-slice).`);
+  return outputMentions.slice(0, 5); // Cap total mock tweets
 }
 
 
 function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
   if (!keywords.length) return [];
-  console.log(`[GoogleNewsMentionsMock] Simulating fetch for keywords: ${keywords.join(', ')} (Not Implemented)`);
-  return keywords.slice(0,1).map((kw, index) => ({ 
-    id: `googlenews_mock_${Date.now() + index}`,
+  console.log(`[GoogleNewsMentionsMock] Simulating fetch for keywords: ${keywords.join(', ')}`);
+  return keywords.slice(0,2).map((kw, index) => ({
+    id: `googlenews_mock_${Date.now() + index}_${kw.replace(/\s+/g, '')}`,
     platform: 'Google News',
-    source: 'Google News Mock',
+    source: 'Google News Mock Source',
     title: `Mock Google News article about ${kw}`,
-    excerpt: `This is a simulated Google News article mentioning ${kw}. Real implementation would use a news API or scraping.`,
-    url: `https://news.google.com/search?q=${encodeURIComponent(kw)}`,
-    timestamp: new Date().toISOString(),
+    excerpt: `This is a simulated Google News article mentioning ${kw}. It highlights recent developments and discussions regarding ${kw}.`,
+    url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${Date.now() + index}`,
+    timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(), // within last 7 days
     matchedKeyword: kw,
     sentiment: 'neutral'
   }));
+}
+
+function fetchWebMentionsMock(keywords: string[]): Partial<Mention>[] {
+  if (!keywords.length) return [];
+  console.log(`[WebMentionsMock] Simulating fetch for keywords: ${keywords.join(', ')}`);
+  const webMentions: Partial<Mention>[] = [];
+  let mockIdCounter = Date.now();
+
+  keywords.slice(0, 3).forEach(kw => { // Generate 1-2 mock web mentions per keyword (up to 3 keywords)
+    for (let i = 0; i < (Math.random() > 0.5 ? 2 : 1); i++) {
+      const domain = ['awesomeblog.com', 'industryinsights.net', 'communityforum.org'][Math.floor(Math.random() * 3)];
+      webMentions.push({
+        id: `webmention_mock_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
+        platform: 'Web Mention',
+        source: `Article on ${domain}`,
+        title: `In-depth Analysis of ${kw} Trends in 2024`,
+        excerpt: `A comprehensive blog post discussing the impact of ${kw} on various sectors. This article explores future possibilities and current challenges related to ${kw}.`,
+        url: `https://${domain}/article/${kw.replace(/\s+/g, '-')}-trends-2024-${mockIdCounter}`,
+        timestamp: new Date(Date.now() - Math.random() * 86400000 * 14).toISOString(), // within last 14 days
+        matchedKeyword: kw,
+        sentiment: Math.random() > 0.5 ? 'positive' : 'neutral',
+      });
+    }
+  });
+  console.log(`[WebMentionsMock] Generated ${webMentions.length} mock web mentions.`);
+  return webMentions.slice(0, 4); // Cap total mock web mentions
 }
 
 
@@ -298,14 +321,14 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
         console.error(`${invalidUserIdMsg} Received: '${input.userId}'`);
         return { totalMentionsFetched: 0, newMentionsStored: 0, errors: [invalidUserIdMsg.replace('[GatherGlobalMentionsFlow] CRITICAL: ', '')] };
     }
-    const userId = input.userId; 
+    const userId = input.userId;
     console.log(`[GatherGlobalMentionsFlow] ENTERING FLOW. Input UserID: ${userId}. Timestamp: ${new Date().toISOString()}`);
     console.log("======================================================================");
 
     const errors: string[] = [];
-    
+
     const user = await getUserById(userId);
-    if (!user || !user.id) { 
+    if (!user || !user.id) {
       const notFoundMsg = `User with ID ${userId} not found or user object is invalid.`;
       errors.push(notFoundMsg);
       console.error(`[GatherGlobalMentionsFlow] ${notFoundMsg} User object from getUserById: ${JSON.stringify(user)}`);
@@ -335,10 +358,11 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     // 1. Fetch from Reddit
     console.log('[GatherGlobalMentionsFlow] Starting Reddit fetch...');
     const redditAuth = await getRedditAccessToken();
+    let redditMentions: Partial<Mention>[] = [];
     if ('token' in redditAuth) {
-      const redditMentions = await fetchRedditMentions(keywords, redditAuth.token, redditAuth.userAgent);
+      redditMentions = await fetchRedditMentions(keywords, redditAuth.token, redditAuth.userAgent);
       allPotentialMentionsPartial.push(...redditMentions);
-      console.log(`[GatherGlobalMentionsFlow] Reddit fetch complete. Found ${redditMentions.length} mentions. IDs: ${redditMentions.map(m=>m.id).join(', ')}`);
+      console.log(`[GatherGlobalMentionsFlow] Reddit fetch complete. Found ${redditMentions.length} mentions.`);
     } else {
       errors.push(`Reddit Auth Error: ${redditAuth.error}`);
       console.error(`[GatherGlobalMentionsFlow] Reddit Auth Error: ${redditAuth.error}`);
@@ -348,45 +372,53 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log('[GatherGlobalMentionsFlow] Starting Hacker News fetch...');
     const hnMentions = await fetchHackerNewsMentions(keywords);
     allPotentialMentionsPartial.push(...hnMentions);
-    console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions. IDs: ${hnMentions.map(m=>m.id).join(', ')}`);
+    console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions.`);
 
     // 3. Fetch from Twitter/X (Mock)
     console.log('[GatherGlobalMentionsFlow] Starting Twitter/X (Mock) fetch...');
     const twitterMentions = fetchTwitterMentionsMock(keywords);
     allPotentialMentionsPartial.push(...twitterMentions);
-    console.log(`[GatherGlobalMentionsFlow] Twitter/X (Mock) fetch complete. Found ${twitterMentions.length} mentions. IDs: ${twitterMentions.map(m=>m.id).join(', ')}`);
+    console.log(`[GatherGlobalMentionsFlow] Twitter/X (Mock) fetch complete. Found ${twitterMentions.length} mentions.`);
 
     // 4. Fetch from Google News (Mock)
     console.log('[GatherGlobalMentionsFlow] Starting Google News (Mock) fetch...');
     const googleNewsMentions = fetchGoogleNewsMentionsMock(keywords);
     allPotentialMentionsPartial.push(...googleNewsMentions);
-    console.log(`[GatherGlobalMentionsFlow] Google News (Mock) fetch complete. Found ${googleNewsMentions.length} mentions. IDs: ${googleNewsMentions.map(m=>m.id).join(', ')}`);
+    console.log(`[GatherGlobalMentionsFlow] Google News (Mock) fetch complete. Found ${googleNewsMentions.length} mentions.`);
 
+    // 5. Fetch from Web Mentions (Mock)
+    console.log('[GatherGlobalMentionsFlow] Starting Web Mentions (Mock) fetch...');
+    const webMentions = fetchWebMentionsMock(keywords);
+    allPotentialMentionsPartial.push(...webMentions);
+    console.log(`[GatherGlobalMentionsFlow] Web Mentions (Mock) fetch complete. Found ${webMentions.length} mentions.`);
+
+    console.log(`[GatherGlobalMentionsFlow] Counts per platform: Reddit=${redditMentions.length}, HN=${hnMentions.length}, TwitterMock=${twitterMentions.length}, GNewsMock=${googleNewsMentions.length}, WebMock=${webMentions.length}`);
     console.log(`[GatherGlobalMentionsFlow] Total potential mentions from all API sources BEFORE deduplication by ID: ${allPotentialMentionsPartial.length}`);
+
 
     const uniqueApiMentionsMap = new Map<string, Partial<Mention>>();
     allPotentialMentionsPartial.forEach(m => {
         if (m.id && typeof m.id === 'string' && m.id.trim() !== "") {
             if (!uniqueApiMentionsMap.has(m.id)) {
-                uniqueApiMentionsMap.set(m.id, m);
+                uniqueApiMentionsMap.set(m.id, { ...m, userId }); // Add userId here
             }
         } else {
             console.warn(`[GatherGlobalMentionsFlow] Found a mention with invalid/missing ID. Title: "${m.title?.substring(0,30)}...", Platform: ${m.platform}. Skipping.`);
         }
     });
     const uniqueApiMentionsFromSources = Array.from(uniqueApiMentionsMap.values());
-    console.log(`[GatherGlobalMentionsFlow] Total unique mentions from API sources this run (after ID deduplication): ${uniqueApiMentionsFromSources.length}. IDs: ${uniqueApiMentionsFromSources.map(m=>m.id).join(', ')}`);
+    console.log(`[GatherGlobalMentionsFlow] Total unique mentions from API sources this run (after ID deduplication): ${uniqueApiMentionsFromSources.length}. Platform:IDs sample -> ${uniqueApiMentionsFromSources.slice(0,10).map(m => `${m.platform?.substring(0,1)}:${m.id?.substring(0,15)}`).join(', ')}`);
 
     // Phase 1: Initial storage of all unique API mentions
     const mentionsForInitialStorage: Mention[] = [];
     for (const partialApiMention of uniqueApiMentionsFromSources) {
-        if (!partialApiMention.id) continue; 
+        if (!partialApiMention.id) continue;
 
         const existingStoredMention = storedMentionsMap.get(partialApiMention.id);
-        const currentSentiment = existingStoredMention?.sentiment || 'unknown'; 
+        const currentSentiment = existingStoredMention?.sentiment || 'unknown';
 
         mentionsForInitialStorage.push({
-            userId: userId, // Ensure userId is always set for the top-level collection model
+            userId: userId,
             id: partialApiMention.id,
             platform: partialApiMention.platform || 'Other',
             source: partialApiMention.source || 'Unknown',
@@ -395,11 +427,11 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
             url: partialApiMention.url || '#',
             timestamp: partialApiMention.timestamp || new Date().toISOString(),
             matchedKeyword: partialApiMention.matchedKeyword || 'unknown',
-            sentiment: currentSentiment, 
-            fetchedAt: new Date().toISOString(), // Add fetchedAt for new/updated items
+            sentiment: currentSentiment,
+            fetchedAt: new Date().toISOString(),
         } as Mention);
     }
-    
+
     let initialStoreSuccessCount = 0;
     if (mentionsForInitialStorage.length > 0) {
         console.log(`[GatherGlobalMentionsFlow] Phase 1: Attempting INITIAL BATCH STORE of ${mentionsForInitialStorage.length} mentions for user ${userId}. Platform:IDs sample -> ${mentionsForInitialStorage.slice(0,10).map(m => `${m.platform.substring(0,1)}:${m.id?.substring(0,15)}`).join(', ')}`);
@@ -416,14 +448,13 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     // Phase 2: Select mentions for sentiment analysis and update
     const mentionsToConsiderForSentiment = uniqueApiMentionsFromSources.map(partialApiMention => {
         const existingStoredMention = storedMentionsMap.get(partialApiMention.id!);
-        // Content change check: compare title and excerpt
-        const contentChanged = existingStoredMention ? 
-            ( (partialApiMention.title || 'No Title') !== (existingStoredMention.title || 'No Title') || 
-              (partialApiMention.excerpt || '') !== (existingStoredMention.excerpt || '') 
-            ) : true; // If not existing, content effectively changed from null
-        
+        const contentChanged = existingStoredMention ?
+            ( (partialApiMention.title || 'No Title') !== (existingStoredMention.title || 'No Title') ||
+              (partialApiMention.excerpt || '') !== (existingStoredMention.excerpt || '')
+            ) : true;
+
         return {
-            ...partialApiMention, 
+            ...partialApiMention,
             needsSentimentAnalysis: !existingStoredMention || contentChanged || existingStoredMention.sentiment === 'unknown' || existingStoredMention.sentiment === undefined,
             currentSentiment: existingStoredMention?.sentiment || 'unknown'
         };
@@ -433,21 +464,22 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log(`[GatherGlobalMentionsFlow] Phase 2: Found ${mentionsNeedingSentimentAnalysis.length} mentions initially needing sentiment analysis (new, content changed, or sentiment unknown).`);
 
     const mentionsToAnalyzeThisRun = mentionsNeedingSentimentAnalysis.slice(0, MAX_SENTIMENT_ANALYSES_PER_RUN);
-    console.log(`[GatherGlobalMentionsFlow] Will attempt sentiment analysis for up to ${MAX_SENTIMENT_ANALYSES_PER_RUN} mentions. Number to analyze this run: ${mentionsToAnalyzeThisRun.length}. IDs: ${mentionsToAnalyzeThisRun.map(m=>m.id).join(', ')}`);
+    console.log(`[GatherGlobalMentionsFlow] Will attempt sentiment analysis for up to ${MAX_SENTIMENT_ANALYSES_PER_RUN} mentions. Number to analyze this run: ${mentionsToAnalyzeThisRun.length}. Platform:IDs sample -> ${mentionsToAnalyzeThisRun.slice(0,10).map(m => `${m.platform?.substring(0,1)}:${m.id?.substring(0,15)}`).join(', ')}`);
+
 
     const mentionsWithUpdatedSentiment: Mention[] = [];
 
     if (mentionsToAnalyzeThisRun.length > 0) {
         console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for ${mentionsToAnalyzeThisRun.length} mentions.`);
-        for (const partialMentionToAnalyze of mentionsToAnalyzeThisRun) { 
+        for (const partialMentionToAnalyze of mentionsToAnalyzeThisRun) {
             try {
-                console.log(`[GatherGlobalMentionsFlow] Waiting ${SENTIMENT_ANALYSIS_DELAY_MS}ms before sentiment call for: "${partialMentionToAnalyze.id}"`);
+                console.log(`[GatherGlobalMentionsFlow] Waiting ${SENTIMENT_ANALYSIS_DELAY_MS}ms before sentiment call for: "${partialMentionToAnalyze.id}" (Platform: ${partialMentionToAnalyze.platform})`);
                 await delay(SENTIMENT_ANALYSIS_DELAY_MS);
 
                 const textToAnalyze = `${partialMentionToAnalyze.title || ''} ${partialMentionToAnalyze.excerpt || ''}`;
-                console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for mention ID: "${partialMentionToAnalyze.id}", Title: "${partialMentionToAnalyze.title?.substring(0,30)}...", Excerpt (first 30): "${partialMentionToAnalyze.excerpt?.substring(0,30)}..."`);
+                console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for mention ID: "${partialMentionToAnalyze.id}", Platform: ${partialMentionToAnalyze.platform}, Title: "${partialMentionToAnalyze.title?.substring(0,30)}...", Excerpt (first 30): "${partialMentionToAnalyze.excerpt?.substring(0,30)}..."`);
                 const sentimentResult = await analyzeAdvancedSentiment({ text: textToAnalyze });
-                
+
                 let finalSentiment: Mention['sentiment'] = 'unknown';
                 if (sentimentResult.error) {
                     errors.push(`Sentiment analysis error for mention "${partialMentionToAnalyze.id}": ${sentimentResult.error}`);
@@ -457,25 +489,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
                     finalSentiment = sentimentResult.sentiment;
                 }
                 console.log(`[GatherGlobalMentionsFlow] Sentiment for "${partialMentionToAnalyze.id}": ${finalSentiment}.`);
-                
-                mentionsWithUpdatedSentiment.push({
-                    userId: userId, // Ensure userId is always set
-                    id: partialMentionToAnalyze.id!,
-                    platform: partialMentionToAnalyze.platform || 'Other',
-                    source: partialMentionToAnalyze.source || 'Unknown',
-                    title: partialMentionToAnalyze.title || 'No Title',
-                    excerpt: partialMentionToAnalyze.excerpt || '',
-                    url: partialMentionToAnalyze.url || '#',
-                    timestamp: partialMentionToAnalyze.timestamp || new Date().toISOString(),
-                    matchedKeyword: partialMentionToAnalyze.matchedKeyword || 'unknown',
-                    sentiment: finalSentiment, 
-                    fetchedAt: new Date().toISOString(), // Update fetchedAt timestamp on sentiment update
-                } as Mention);
 
-            } catch (e) {
-                const errorMsg = e instanceof Error ? e.message : String(e);
-                errors.push(`Exception during sentiment analysis for mention "${partialMentionToAnalyze.id}": ${errorMsg}`);
-                console.error(`[GatherGlobalMentionsFlow] CRITICAL EXCEPTION during sentiment analysis for mention "${partialMentionToAnalyze.id}" (Title: ${partialMentionToAnalyze.title?.substring(0,30)}...):`, e);
                 mentionsWithUpdatedSentiment.push({
                     userId: userId,
                     id: partialMentionToAnalyze.id!,
@@ -486,7 +500,25 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
                     url: partialMentionToAnalyze.url || '#',
                     timestamp: partialMentionToAnalyze.timestamp || new Date().toISOString(),
                     matchedKeyword: partialMentionToAnalyze.matchedKeyword || 'unknown',
-                    sentiment: 'unknown', 
+                    sentiment: finalSentiment,
+                    fetchedAt: new Date().toISOString(),
+                } as Mention);
+
+            } catch (e) {
+                const errorMsg = e instanceof Error ? e.message : String(e);
+                errors.push(`Exception during sentiment analysis for mention "${partialMentionToAnalyze.id}": ${errorMsg}`);
+                console.error(`[GatherGlobalMentionsFlow] CRITICAL EXCEPTION during sentiment analysis for mention "${partialMentionToAnalyze.id}" (Title: ${partialMentionToAnalyze.title?.substring(0,30)}...):`, e);
+                mentionsWithUpdatedSentiment.push({ // Still add it so it gets updated in DB, even if with 'unknown'
+                    userId: userId,
+                    id: partialMentionToAnalyze.id!,
+                    platform: partialMentionToAnalyze.platform || 'Other',
+                    source: partialMentionToAnalyze.source || 'Unknown',
+                    title: partialMentionToAnalyze.title || 'No Title',
+                    excerpt: partialMentionToAnalyze.excerpt || '',
+                    url: partialMentionToAnalyze.url || '#',
+                    timestamp: partialMentionToAnalyze.timestamp || new Date().toISOString(),
+                    matchedKeyword: partialMentionToAnalyze.matchedKeyword || 'unknown',
+                    sentiment: 'unknown',
                     fetchedAt: new Date().toISOString(),
                 } as Mention);
             }
@@ -499,9 +531,8 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     // Phase 3: Final batch update for mentions that had sentiment analysis performed
     let sentimentUpdateSuccessCount = 0;
     if (mentionsWithUpdatedSentiment.length > 0) {
-        const mentionIdsForUpdate = mentionsWithUpdatedSentiment.map(m => m.id).join(', ');
         console.log(`[GatherGlobalMentionsFlow] Phase 3: Attempting to UPDATE ${mentionsWithUpdatedSentiment.length} mentions with new sentiments in Firestore. Platform:IDs sample -> ${mentionsWithUpdatedSentiment.slice(0,10).map(m => `${m.platform.substring(0,1)}:${m.id?.substring(0,15)}`).join(', ')}`);
-        
+
         const updateStoreResult = await addGlobalMentionsBatch(userId, mentionsWithUpdatedSentiment);
         sentimentUpdateSuccessCount = updateStoreResult.successCount;
         if (updateStoreResult.errorCount > 0) {
@@ -511,17 +542,17 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     } else {
       console.log(`[GatherGlobalMentionsFlow] No mentions had their sentiment updated for final storage for user ${userId}.`);
     }
-    
+
     console.log("======================================================================");
     console.log(`[GatherGlobalMentionsFlow] EXITING FLOW. UserID: ${user.id} (${user.name}). Timestamp: ${new Date().toISOString()}`);
-    
+
     const totalItemsWrittenOrUpdated = Math.max(initialStoreSuccessCount, sentimentUpdateSuccessCount);
 
     console.log(`  Summary: Unique API Mentions Fetched This Run: ${uniqueApiMentionsFromSources.length}, Items Initially Stored: ${initialStoreSuccessCount}, Items with Sentiment Updated in DB: ${sentimentUpdateSuccessCount}, Total items created/updated in DB (approx): ${totalItemsWrittenOrUpdated}, Errors during flow: ${errors.length}`);
     if(errors.length > 0) console.log(`  Encountered errors: ${errors.map(e => `"${e}"`).join('; ')}`);
     console.log("======================================================================");
     return {
-      totalMentionsFetched: uniqueApiMentionsFromSources.length, 
+      totalMentionsFetched: uniqueApiMentionsFromSources.length,
       newMentionsStored: totalItemsWrittenOrUpdated,
       errors,
     };
@@ -550,8 +581,3 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
     };
   }
 }
-
-
-    
-
-      
