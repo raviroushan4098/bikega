@@ -88,23 +88,17 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const processSingleUsername = async (usernameToAnalyze: string, isRefreshOp: boolean = false, appUserIdForCall: string) => {
     if (!isRefreshOp && !isUpdatingAll && !analysisResults.find(r => r.username === usernameToAnalyze && r.data)) {
-        toast({ title: `${isRefreshOp ? 'Refreshing' : 'Analyzing'} User`, description: `Processing u/${usernameToAnalyze}... This may take a moment.` });
+        // Toast for brand new analysis only if not part of "Update All" or CSV bulk processing
+        if (!isProcessingCsv) {
+             toast({ title: `Analyzing User`, description: `Processing u/${usernameToAnalyze}... This may take a moment.` });
+        }
     } else if (isRefreshOp && !isUpdatingAll) {
         console.log(`Refreshing u/${usernameToAnalyze}`); 
     }
     
-    // Ensure the entry exists and mark as loading/refreshing
-    setAnalysisResults(prev => {
-        const existingIndex = prev.findIndex(r => r.username === usernameToAnalyze);
-        if (existingIndex !== -1) {
-            return prev.map((r, idx) => 
-                idx === existingIndex ? { ...r, isLoading: true, isRefreshing: isRefreshOp, error: undefined } : r
-            );
-        }
-        // This case should ideally be handled by handleAnalyzeSingleUser or handleFileUpload first
-        // by adding a loading placeholder.
-        return [{ username: usernameToAnalyze, isLoading: true, isRefreshing: isRefreshOp, error: undefined }, ...prev];
-    });
+    setAnalysisResults(prev => prev.map(r => 
+        r.username === usernameToAnalyze ? { ...r, isLoading: true, isRefreshing: isRefreshOp, error: undefined } : r
+    ));
 
     try {
         const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
@@ -114,7 +108,7 @@ export default function AnalyzeExternalRedditUserPage() {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
         console.error(`Error analyzing/refreshing user ${usernameToAnalyze}:`, error);
-        if (!isUpdatingAll) { // Only show individual toast if not part of "Update All"
+        if (!isUpdatingAll) { 
             toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 5000 });
         }
         setAnalysisResults(prev => prev.map(r =>
@@ -134,15 +128,12 @@ export default function AnalyzeExternalRedditUserPage() {
         return;
     }
 
+    // If user is not in results, add them in loading state. Otherwise, mark existing for refresh.
     setAnalysisResults(prevResults => {
-        const existingIndex = prevResults.findIndex(r => r.username === trimmedUsername);
-        if (existingIndex !== -1) {
-            // User exists, mark for refresh/re-analysis
-            return prevResults.map((r, idx) => 
-                idx === existingIndex ? { ...r, isLoading: true, isRefreshing: true, data: r.data, error: undefined } : r
-            );
+        const existingUser = prevResults.find(r => r.username === trimmedUsername);
+        if (existingUser) {
+            return prevResults.map(r => r.username === trimmedUsername ? { ...r, isLoading: true, isRefreshing: true, data: r.data, error: undefined } : r);
         } else {
-            // New user, add to the top with loading state
             return [{ username: trimmedUsername, isLoading: true, isRefreshing: false, error: undefined }, ...prevResults];
         }
     });
@@ -160,8 +151,6 @@ export default function AnalyzeExternalRedditUserPage() {
         return;
       }
       setFileName(file.name);
-      setAnalysisResults([]); 
-      setIsLoadingStoredData(false); 
 
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -171,27 +160,52 @@ export default function AnalyzeExternalRedditUserPage() {
             return;
         }
         
-        const lines = text.split('\n');
+        let lines = text.split('\n');
         if (lines.length > 0) {
-          lines.shift(); 
+          lines.shift(); // Skip header row
         }
-        const usernames = lines
+
+        const csvUsernamesRaw = lines
           .flatMap(line => line.split(',')) 
           .map(usernamePart => usernamePart.trim().replace(/^u\//i, '')) 
           .filter(username => username !== ''); 
+        
+        const uniqueCsvUsernames = Array.from(new Set(csvUsernamesRaw));
 
-        if (usernames.length === 0) {
-          toast({ variant: "destructive", title: "No Usernames", description: "No usernames found in the CSV file after skipping the header." });
+        if (uniqueCsvUsernames.length === 0) {
+          toast({ variant: "destructive", title: "No Usernames", description: "No valid usernames found in the CSV file after skipping the header." });
+          event.target.value = ''; 
+          setFileName(null);
           return;
         }
         
-        toast({ title: "CSV Processing", description: `Found ${usernames.length} usernames. Starting analysis...` });
         setIsProcessingCsv(true);
 
-        const initialCsvResults: AnalysisResultDisplay[] = usernames.map(username => ({ username, isLoading: true, isRefreshing: false }));
-        setAnalysisResults(initialCsvResults);
+        let newUsersAddedFromCsvCount = 0;
+        const usernamesToProcessThisBatch: string[] = [];
 
-        for (const username of usernames) {
+        setAnalysisResults(prevResults => {
+            const existingUsernamesInState = new Set(prevResults.map(r => r.username));
+            const newEntries: AnalysisResultDisplay[] = [];
+
+            uniqueCsvUsernames.forEach(csvUsername => {
+                if (!existingUsernamesInState.has(csvUsername)) {
+                    newEntries.push({ username: csvUsername, isLoading: true, isRefreshing: false, error: undefined });
+                    usernamesToProcessThisBatch.push(csvUsername);
+                    newUsersAddedFromCsvCount++;
+                }
+            });
+            // Prepend new entries to keep them at the top
+            return [...newEntries, ...prevResults];
+        });
+        
+        if (newUsersAddedFromCsvCount > 0) {
+            toast({ title: "CSV Processing", description: `Added ${newUsersAddedFromCsvCount} new usernames from CSV. Starting analysis...` });
+        } else {
+            toast({ title: "CSV Info", description: "All usernames from the CSV are already displayed or were duplicates within the file." });
+        }
+
+        for (const username of usernamesToProcessThisBatch) {
             if (currentUser?.id) {
                 await processSingleUsername(username, false, currentUser.id);
             }
@@ -222,12 +236,13 @@ export default function AnalyzeExternalRedditUserPage() {
         return;
     }
     setIsUpdatingAll(true);
-    toast({ title: "Updating All Analyses", description: `Starting refresh for ${analysisResults.length} profiles. This may take some time.`, duration: 5000 });
+    toast({ title: "Updating All Analyses", description: `Starting refresh for ${analysisResults.filter(r => r.data).length} profiles. This may take some time.`, duration: 5000 });
     
-    for (const result of analysisResults) {
-        if (result.data) { // Only refresh if there's existing data
-            await processSingleUsername(result.username, true, currentUser.id);
-        }
+    // Create a snapshot of usernames to refresh to avoid issues if analysisResults changes mid-loop
+    const usernamesToRefresh = analysisResults.filter(r => r.data).map(r => r.username);
+
+    for (const username of usernamesToRefresh) {
+        await processSingleUsername(username, true, currentUser.id);
     }
 
     setIsUpdatingAll(false);
@@ -407,7 +422,7 @@ export default function AnalyzeExternalRedditUserPage() {
                     <Download className="mr-2 h-4 w-4" />
                     Download Template CSV
                 </Button>
-                 <Button onClick={handleUpdateAll} disabled={isLoadingStoredData || isUpdatingAll || isProcessingCsv || analysisResults.length === 0 || analysisResults.every(r => !r.data)}>
+                 <Button onClick={handleUpdateAll} disabled={isLoadingStoredData || isUpdatingAll || isProcessingCsv || analysisResults.length === 0 || analysisResults.every(r => !r.data && !r.isLoading)}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingAll ? 'animate-spin' : ''}`} />
                     {isUpdatingAll ? 'Updating All...' : 'Update All Profiles'}
                 </Button>
@@ -426,7 +441,6 @@ export default function AnalyzeExternalRedditUserPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog for Saved Usernames */}
       <Dialog open={isUserListDialogOpen} onOpenChange={setIsUserListDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -578,3 +592,4 @@ export default function AnalyzeExternalRedditUserPage() {
   );
 }
 
+    
