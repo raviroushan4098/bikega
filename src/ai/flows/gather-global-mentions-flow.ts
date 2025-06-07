@@ -9,22 +9,22 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit'; 
+import { z } from 'genkit';
 import type { Mention, User } from '@/types';
 import { analyzeAdvancedSentiment } from '@/ai/flows/advanced-sentiment-flow';
 import { addGlobalMentionsBatch } from '@/lib/global-mentions-service';
 import { getRedditAccessToken } from '@/lib/reddit-api-service'; // For Reddit auth
 import { getUserById } from '@/lib/user-service';
-import { 
-  GatherGlobalMentionsInputSchema, 
-  type GatherGlobalMentionsInput, 
+import {
+  GatherGlobalMentionsInputSchema,
+  type GatherGlobalMentionsInput,
   GatherGlobalMentionsOutputSchema,
   type GatherGlobalMentionsOutput
 } from '@/types/global-mentions-schemas';
 
 
 const API_CALL_TIMEOUT_MS = 15000; // Timeout for external API calls like Algolia
-const SENTIMENT_ANALYSIS_DELAY_MS = 500; // Delay between sentiment analysis calls
+const SENTIMENT_ANALYSIS_DELAY_MS = 500; // Delay between sentiment analysis calls (0.5 seconds)
 const MAX_SENTIMENT_ANALYSES_PER_RUN = 5; // Cap for sentiment analyses
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -147,7 +147,7 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Mention[]> {
   // OR logic for keywords. Search in title and text/comment. Tags for story or comment.
   const queryKeywords = keywords.map(kw => `"${kw}"`).join(',');
   const searchUrl = `http://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(queryKeywords)}&tags=(story,comment)&hitsPerPage=25`;
-  
+
   console.log(`[HackerNewsMentions] Fetching from: ${searchUrl.substring(0, 150)}... for keywords: ${keywords.join(', ')}`);
 
   try {
@@ -171,7 +171,7 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Mention[]> {
 
       const itemType = hit._tags.includes('story') ? 'story' : hit._tags.includes('comment') ? 'comment' : 'item';
       const title = hit.title || hit.story_title || (itemType === 'comment' ? 'Comment on Hacker News' : 'Hacker News Item');
-      
+
       mentions.push({
         id: `hackernews_${hit.objectID}`,
         platform: 'Hacker News',
@@ -238,7 +238,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log("======================================================================");
     console.log(`[GatherGlobalMentionsFlow] ENTERING FLOW. Input UserID: ${input.userId}. Timestamp: ${new Date().toISOString()}`);
     console.log("======================================================================");
-    
+
     const errors: string[] = [];
     let totalMentionsFetchedRaw = 0;
     let newMentionsStoredCount = 0;
@@ -287,7 +287,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     allPotentialMentions.push(...hnMentions);
     totalMentionsFetchedRaw += hnMentions.length;
     console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions. Total raw now: ${totalMentionsFetchedRaw}`);
-    
+
     // 3. Fetch from Twitter/X (Mock)
     console.log('[GatherGlobalMentionsFlow] Starting Twitter/X (Mock) fetch...');
     const twitterMentions = fetchTwitterMentionsMock(keywords);
@@ -303,10 +303,10 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log(`[GatherGlobalMentionsFlow] Google News (Mock) fetch complete. Found ${googleNewsMentions.length} mentions. Total raw now: ${totalMentionsFetchedRaw}`);
 
     console.log(`[GatherGlobalMentionsFlow] Total potential mentions from all sources BEFORE deduplication by ID: ${allPotentialMentions.length}`);
-    
+
     const uniquePotentialMentionsMap = new Map<string, Mention>();
     allPotentialMentions.forEach(m => {
-      if (m.id && typeof m.id === 'string' && m.id.trim() !== "") { 
+      if (m.id && typeof m.id === 'string' && m.id.trim() !== "") {
         if (!uniquePotentialMentionsMap.has(m.id)) {
           uniquePotentialMentionsMap.set(m.id, m);
         } else {
@@ -320,8 +320,8 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     console.log(`[GatherGlobalMentionsFlow] Total unique potential mentions AFTER deduplication by ID: ${uniquePotentialMentions.length}`);
 
 
-    const mentionsToProcessForSentiment = uniquePotentialMentions.filter(m => !m.sentiment); 
-    const processedMentions: Mention[] = uniquePotentialMentions.filter(m => !!m.sentiment); 
+    const mentionsToProcessForSentiment = uniquePotentialMentions.filter(m => !m.sentiment);
+    const processedMentions: Mention[] = uniquePotentialMentions.filter(m => !!m.sentiment);
 
     const mentionsToAnalyzeThisRun = mentionsToProcessForSentiment.slice(0, MAX_SENTIMENT_ANALYSES_PER_RUN);
     console.log(`[GatherGlobalMentionsFlow] Total mentions needing sentiment analysis: ${mentionsToProcessForSentiment.length}. Will process up to ${MAX_SENTIMENT_ANALYSES_PER_RUN} this run (mentionsToAnalyzeThisRun count: ${mentionsToAnalyzeThisRun.length}).`);
@@ -330,10 +330,10 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     if (mentionsToAnalyzeThisRun.length > 0) {
       console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for ${mentionsToAnalyzeThisRun.length} mentions.`);
       for (const mention of mentionsToAnalyzeThisRun) {
-        try {
+        try { // START try-catch for individual sentiment analysis
           console.log(`[GatherGlobalMentionsFlow] Waiting ${SENTIMENT_ANALYSIS_DELAY_MS}ms before sentiment call for: "${mention.id}"`);
-          await delay(SENTIMENT_ANALYSIS_DELAY_MS); 
-          
+          await delay(SENTIMENT_ANALYSIS_DELAY_MS);
+
           const textToAnalyze = `${mention.title || ''} ${mention.excerpt || ''}`;
           console.log(`[GatherGlobalMentionsFlow] Analyzing sentiment for mention ID: "${mention.id}", Title: "${mention.title?.substring(0,30)}...", Excerpt (first 30): "${mention.excerpt?.substring(0,30)}..."`);
           const sentimentResult = await analyzeAdvancedSentiment({ text: textToAnalyze });
@@ -341,24 +341,23 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
           if (sentimentResult.error) {
             errors.push(`Sentiment analysis error for mention "${mention.id}": ${sentimentResult.error}`);
             console.warn(`[GatherGlobalMentionsFlow] Sentiment analysis error for mention "${mention.id}" (Title: ${mention.title?.substring(0,30)}...): ${sentimentResult.error}`);
-            mention.sentiment = 'unknown'; 
+            mention.sentiment = 'unknown';
           }
           console.log(`[GatherGlobalMentionsFlow] Sentiment for "${mention.id}": ${mention.sentiment}. Added to processedMentions.`);
-          processedMentions.push(mention);
-        } catch (e) {
+        } catch (e) { // CATCH for individual sentiment analysis
           const errorMsg = e instanceof Error ? e.message : String(e);
           errors.push(`Exception during sentiment analysis for mention "${mention.id}": ${errorMsg}`);
-          console.error(`[GatherGlobalMentionsFlow] Exception during sentiment analysis for mention "${mention.id}" (Title: ${mention.title?.substring(0,30)}...):`, e);
-          mention.sentiment = 'unknown';
-          processedMentions.push(mention); 
+          console.error(`[GatherGlobalMentionsFlow] CRITICAL EXCEPTION during sentiment analysis for mention "${mention.id}" (Title: ${mention.title?.substring(0,30)}...):`, e);
+          mention.sentiment = 'unknown'; // Ensure sentiment is set to unknown on error
         }
-      }
+        processedMentions.push(mention); // Add mention to processedMentions regardless of sentiment analysis outcome
+      } // END for loop
       console.log(`[GatherGlobalMentionsFlow] Finished sentiment analysis loop for ${mentionsToAnalyzeThisRun.length} mentions.`);
-      
+
       if (mentionsToProcessForSentiment.length > MAX_SENTIMENT_ANALYSES_PER_RUN) {
         const unprocessedDueToCap = mentionsToProcessForSentiment.slice(MAX_SENTIMENT_ANALYSES_PER_RUN);
         unprocessedDueToCap.forEach(m => {
-          if (!m.sentiment) m.sentiment = 'unknown'; 
+          if (!m.sentiment) m.sentiment = 'unknown';
         });
         processedMentions.push(...unprocessedDueToCap);
         console.log(`[GatherGlobalMentionsFlow] Added back ${unprocessedDueToCap.length} mentions that were not analyzed for sentiment in this run due to cap (assigned 'unknown' sentiment if needed). Total processedMentions now: ${processedMentions.length}`);
@@ -367,7 +366,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     } else {
         console.log('[GatherGlobalMentionsFlow] No new mentions to analyze for sentiment in this batch (either all had sentiment or none needed it).');
     }
-    
+
     if (processedMentions.length > 0) {
       const finalUniqueMentionsMap = new Map<string, Mention>();
       processedMentions.forEach(m => {
@@ -376,7 +375,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
                 finalUniqueMentionsMap.set(m.id, m);
             } else {
                 console.warn(`[GatherGlobalMentionsFlow] Duplicate ID '${m.id}' encountered when preparing for final storage. Overwriting with latest processed version.`);
-                finalUniqueMentionsMap.set(m.id, m); 
+                finalUniqueMentionsMap.set(m.id, m);
             }
         } else {
             console.error(`[GatherGlobalMentionsFlow] CRITICAL: Processed mention missing or invalid ID before storage. Title: "${m.title?.substring(0,30)}...". Skipping this item for safety.`);
@@ -385,9 +384,9 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
       const uniqueMentionsToStore = Array.from(finalUniqueMentionsMap.values());
       const mentionIdsToStore = uniqueMentionsToStore.map(m => m.id).join(', ');
       console.log(`[GatherGlobalMentionsFlow] Attempting to store ${uniqueMentionsToStore.length} unique processed mentions for user ${user.id} (${user.name}). IDs: ${mentionIdsToStore.substring(0, 200)}${mentionIdsToStore.length > 200 ? '...' : ''}`);
-      
+
       const storeResult = await addGlobalMentionsBatch(user.id, uniqueMentionsToStore);
-      newMentionsStoredCount = storeResult.successCount; 
+      newMentionsStoredCount = storeResult.successCount;
       if (storeResult.errorCount > 0) {
         errors.push(...storeResult.errors.map(e => `Storage Error: ${e}`));
       }
@@ -395,15 +394,15 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     } else {
       console.log(`[GatherGlobalMentionsFlow] No mentions to store for user ${user.id} (${user.name}).`);
     }
-    
+
     console.log("======================================================================");
     console.log(`[GatherGlobalMentionsFlow] EXITING FLOW. UserID: ${user.id} (${user.name}). Timestamp: ${new Date().toISOString()}`);
     console.log(`  Summary: Total Raw Fetched (pre-filter/dedupe): ${totalMentionsFetchedRaw}, Items Attempted in Batch Storage: ${newMentionsStoredCount}, Errors during flow: ${errors.length}`);
     if(errors.length > 0) console.log(`  Encountered errors: ${errors.join('; ')}`);
     console.log("======================================================================");
     return {
-      totalMentionsFetched: totalMentionsFetchedRaw, 
-      newMentionsStored: newMentionsStoredCount, 
+      totalMentionsFetched: totalMentionsFetchedRaw,
+      newMentionsStored: newMentionsStoredCount,
       errors,
     };
   }
