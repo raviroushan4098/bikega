@@ -8,3 +8,5 @@
 // import './flows/advanced-sentiment-flow';
 
 import './flows/gather-global-mentions-flow'; // Added for Genkit tooling awareness
+import './flows/analyze-external-reddit-user-flow'; // Added for Genkit tooling awareness
+

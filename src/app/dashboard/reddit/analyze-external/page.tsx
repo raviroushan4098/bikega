@@ -40,7 +40,7 @@ export default function AnalyzeExternalRedditUserPage() {
       return;
     }
     setAnalysisResults([]); // Clear previous multi-user results
-    await processUsernames([singleUsername.trim()]);
+    await processUsernames([singleUsername.trim().replace(/^u\//i, '')]);
     setSingleUsername(''); // Clear input after processing
   };
 
@@ -63,9 +63,9 @@ export default function AnalyzeExternalRedditUserPage() {
             toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
             return;
         }
-        const usernames = text.split('\n')
-          .map(line => line.trim().replace(/^u\//i, '')) // Remove u/ prefix if present, trim whitespace
-          .filter(username => username !== ''); // Remove empty lines
+        const usernames = text.split(/[\n,]+/) // Split by newline or comma
+          .map(line => line.trim().replace(/^u\//i, '')) 
+          .filter(username => username !== ''); 
 
         if (usernames.length === 0) {
           toast({ variant: "destructive", title: "No Usernames", description: "No usernames found in the CSV file." });
@@ -76,13 +76,13 @@ export default function AnalyzeExternalRedditUserPage() {
         setIsProcessingCsv(true);
         await processUsernames(usernames);
         setIsProcessingCsv(false);
-        event.target.value = ''; // Clear the file input after processing
+        event.target.value = ''; 
         setFileName(null);
       };
       reader.onerror = () => {
         toast({ variant: "destructive", title: "File Read Error", description: "Could not read the file."});
         setFileName(null);
-        event.target.value = ''; // Clear the file input
+        event.target.value = ''; 
       }
       reader.readAsText(file);
     } else {
@@ -99,11 +99,11 @@ export default function AnalyzeExternalRedditUserPage() {
 
     for (let i = 0; i < usernames.length; i++) {
       const username = usernames[i];
-      // Update state to show current user is loading
+      
       setAnalysisResults(prev => prev.map(r => r.username === username ? { ...r, isLoading: true } : r));
       
       try {
-        toast({ title: `Analyzing User ${i + 1}/${usernames.length}`, description: `Fetching data for u/${username}...` });
+        toast({ title: `Analyzing User ${i + 1}/${usernames.length}`, description: `Fetching data for u/${username}... This may take a moment.` });
         const result = await analyzeExternalRedditUser({ username });
         setAnalysisResults(prev => prev.map(r =>
           r.username === username ? { username, data: result, isLoading: false } : r
@@ -111,7 +111,7 @@ export default function AnalyzeExternalRedditUserPage() {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
         console.error(`Error analyzing user ${username}:`, error);
-        toast({ variant: "destructive", title: `Analysis Failed for u/${username}`, description: errorMessage });
+        toast({ variant: "destructive", title: `Analysis Failed for u/${username}`, description: errorMessage, duration: 5000 });
         setAnalysisResults(prev => prev.map(r =>
           r.username === username ? { username, error: errorMessage, isLoading: false } : r
         ));
@@ -138,35 +138,37 @@ export default function AnalyzeExternalRedditUserPage() {
         {icon}
         <span>{label}:</span>
       </div>
-      <span className="text-sm font-medium text-card-foreground">{value ?? 'N/A'}</span>
+      <span className="text-sm font-medium text-card-foreground break-all">{value ?? 'N/A'}</span>
     </div>
   );
 
   const renderDataTable = (items: ExternalRedditUserDataItem[], type: 'Posts' | 'Comments') => {
-    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2">No {type.toLowerCase()} found in this analysis.</p>;
+    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2">No {type.toLowerCase()} found in this analysis run.</p>;
     return (
       <div className="overflow-x-auto rounded-md border mt-2">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[60%]">Title / Content</TableHead>
-              <TableHead>Subreddit</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="text-right">Score</TableHead>
-              {type === 'Posts' && <TableHead className="text-right">Replies</TableHead>}
-              <TableHead className="text-center">Link</TableHead>
+              <TableHead className="w-[55%] whitespace-nowrap">Title / Content</TableHead>
+              <TableHead className="whitespace-nowrap">Subreddit</TableHead>
+              <TableHead className="whitespace-nowrap">Date</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Score</TableHead>
+              {type === 'Posts' && <TableHead className="text-right whitespace-nowrap">Replies</TableHead>}
+              <TableHead className="text-center whitespace-nowrap">Link</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map(item => (
               <TableRow key={item.id}>
-                <TableCell className="font-medium line-clamp-2 hover:line-clamp-none">
-                  {item.titleOrContent}
+                <TableCell className="font-medium">
+                  <div className="line-clamp-2 hover:line-clamp-none transition-all max-w-sm sm:max-w-md md:max-w-lg xl:max-w-xl">
+                     {item.titleOrContent}
+                  </div>
                 </TableCell>
-                <TableCell><Badge variant="secondary">{item.subreddit}</Badge></TableCell>
-                <TableCell>{format(parseISO(item.timestamp), 'MMM dd, yyyy')}</TableCell>
-                <TableCell className="text-right">{item.score.toLocaleString()}</TableCell>
-                {type === 'Posts' && <TableCell className="text-right">{item.numComments?.toLocaleString() ?? 'N/A'}</TableCell>}
+                <TableCell><Badge variant="secondary" className="whitespace-nowrap">{item.subreddit}</Badge></TableCell>
+                <TableCell className="whitespace-nowrap">{format(parseISO(item.timestamp), 'MMM dd, yyyy')}</TableCell>
+                <TableCell className="text-right whitespace-nowrap">{item.score.toLocaleString()}</TableCell>
+                {type === 'Posts' && <TableCell className="text-right whitespace-nowrap">{item.numComments?.toLocaleString() ?? 'N/A'}</TableCell>}
                 <TableCell className="text-center">
                   <Button variant="ghost" size="icon" asChild className="h-7 w-7">
                     <a href={item.url} target="_blank" rel="noopener noreferrer" title={`Open on Reddit`}>
@@ -192,8 +194,8 @@ export default function AnalyzeExternalRedditUserPage() {
             External Reddit User Analyzer
           </CardTitle>
           <CardDescription>
-            Analyze Reddit user profiles by entering a username or uploading a CSV file (one username per line, no header). 
-            The analysis fetches recent activity and profile information.
+            Analyze Reddit user profiles by entering a username or uploading a CSV file (one username per line/comma-separated, no header). 
+            The analysis fetches recent activity and profile information (typically latest 25 posts/comments per user).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -217,7 +219,7 @@ export default function AnalyzeExternalRedditUserPage() {
               disabled={isProcessingCsv || !singleUsername.trim()}
               className="w-full sm:w-auto"
             >
-              <UserSearch className="mr-2" /> Analyze User
+              <UserSearch className="mr-2 h-4 w-4" /> Analyze User
             </Button>
           </div>
 
@@ -229,13 +231,13 @@ export default function AnalyzeExternalRedditUserPage() {
           
           <div className="space-y-1.5">
             <label htmlFor="csv-upload" className="text-sm font-medium text-muted-foreground">
-                Upload a CSV file with usernames (one per line)
+                Upload a CSV file with usernames (one per line, or comma-separated)
             </label>
             <div className="flex items-center gap-3">
                 <Input
                     id="csv-upload"
                     type="file"
-                    accept=".csv"
+                    accept=".csv,text/csv"
                     onChange={handleFileUpload}
                     disabled={isProcessingCsv}
                     className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
@@ -260,13 +262,19 @@ export default function AnalyzeExternalRedditUserPage() {
         <div className="space-y-8 mt-8">
           {analysisResults.map((result, index) => (
             <Card key={`${result.username}-${index}`} className="shadow-md border border-border/70">
-              <CardHeader className="bg-muted/30 rounded-t-lg p-4">
+              <CardHeader className="bg-muted/20 rounded-t-lg p-4">
                 <CardTitle className="text-lg font-semibold flex items-center justify-between">
                   <span>Analysis for: <span className="text-primary font-bold">u/{result.username}</span></span>
                   {result.isLoading && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 md:p-6">
+                {result.isLoading && (
+                    <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="ml-3 text-muted-foreground">Fetching data for u/{result.username}...</p>
+                    </div>
+                )}
                 {result.error && (
                   <div className="text-red-600 bg-red-50 p-3 rounded-md border border-red-200">
                     <p className="font-medium">Error:</p>
@@ -320,7 +328,7 @@ export default function AnalyzeExternalRedditUserPage() {
                 )}
               </CardContent>
               {result.data && (
-                <CardFooter className="p-4 bg-muted/30 rounded-b-lg text-xs text-muted-foreground justify-end">
+                <CardFooter className="p-4 bg-muted/20 rounded-b-lg text-xs text-muted-foreground justify-end">
                     <Link href={`https://www.reddit.com/user/${result.username}`} target="_blank" rel="noopener noreferrer" className="hover:text-primary hover:underline">
                         View u/{result.username} on Reddit &rarr;
                     </Link>
