@@ -1,13 +1,12 @@
 
 "use client";
 
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Menu, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { usePathname } from "next/navigation";
-import { AppLogo } from "./app-logo";
-import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { AppLogo } from "./app-logo"; // Keep AppLogo if needed for mobile title
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Menu as MenuIcon } from "lucide-react"; // For a potential mobile trigger if hover nav is desktop only
+
 
 const getPageTitle = (pathname: string): string => {
   if (pathname === "/dashboard") return "Overview";
@@ -24,33 +23,29 @@ const getPageTitle = (pathname: string): string => {
 export default function DashboardHeader() {
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
-  const { isMobile } = useSidebar();
+
+  // Note: The hover navigation is primarily designed for desktop.
+  // Mobile navigation might need a different strategy if this hover menu isn't suitable.
+  // For now, the header is simplified.
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-md md:px-6">
-      {isMobile && <SidebarTrigger />}
+      {/* 
+        Mobile specific trigger for a drawer/sheet could be added here if hover nav isn't for mobile.
+        Example:
+        <Button variant="outline" size="icon" className="md:hidden">
+           <MenuIcon className="h-5 w-5" />
+           <span className="sr-only">Toggle menu</span>
+        </Button> 
+      */}
       
-      <div className="hidden md:block">
-         <h1 className="text-xl font-semibold font-headline">{pageTitle}</h1>
+      <div className="flex-1 md:flex-none"> {/* Allow title to take space on mobile, fix on md+ */}
+         <h1 className="text-lg md:text-xl font-semibold font-headline">{pageTitle}</h1>
       </div>
-      {isMobile && (
-        <div className="flex-1 text-center">
-           <AppLogo size="small"/>
-        </div>
-      )}
-
+      
+      {/* User avatar and other header items could go here if needed */}
       <div className="ml-auto flex items-center gap-4">
-        {/* Search can be re-added if needed
-        <form className="relative hidden md:block">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search analytics..."
-            className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px] bg-background"
-          />
-        </form>
-        */}
-        {/* User avatar and dropdown is in sidebar footer */}
+        {/* Placeholder for potential future items like notifications or user menu if not in hover nav */}
       </div>
     </header>
   );

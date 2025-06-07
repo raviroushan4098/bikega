@@ -4,10 +4,9 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import DashboardSidebar from '@/components/layout/dashboard-sidebar';
 import DashboardHeader from '@/components/layout/dashboard-header';
+import HoverNavMenu from '@/components/layout/hover-nav-menu'; // New component
 import { Loader2 } from 'lucide-react';
-import { SidebarProvider } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 
 export default function DashboardLayout({
@@ -40,20 +39,17 @@ export default function DashboardLayout({
   }
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className={cn(
-        "flex min-h-screen",
-        "bg-background" 
-      )}>
-        <DashboardSidebar />
-        <div className="flex flex-1 flex-col">
-          <DashboardHeader />
-          <main className="flex-1 overflow-y-auto p-4 pt-6 md:p-8 overflow-x-hidden">
-            {children}
-          </main>
-        </div>
+    <div className={cn(
+      "flex min-h-screen",
+      "bg-background" 
+    )}>
+      <HoverNavMenu /> {/* New Navigation */}
+      <div className="flex flex-1 flex-col">
+        <DashboardHeader />
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 pt-6 md:p-8">
+          {children}
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }
-
