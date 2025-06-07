@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import RedditAnalyticsSummary from '@/components/dashboard/RedditAnalyticsSummary'; // Added import
+import RedditAnalyticsSummary from '@/components/dashboard/RedditAnalyticsSummary';
 
 const FETCH_PERIOD_DAYS = 30;
 
@@ -214,7 +214,6 @@ export default function RedditPage() {
   const fetchStoredUserRedditData = useCallback(async () => {
     if (!currentUser || currentUser.role !== 'user' || authLoading) {
       setAllRedditPosts([]);
-      setFilteredRedditPosts([]);
       setIsLoadingFeed(false);
       return;
     }
@@ -222,11 +221,9 @@ export default function RedditPage() {
     try {
       const storedItems = await getStoredRedditFeedForUser(currentUser.id);
       setAllRedditPosts(storedItems);
-      // setFilteredRedditPosts(storedItems); // Filter will be applied by handleShowFilteredData or useEffect
     } catch (e) {
        toast({ variant: "destructive", title: "Fetch Error", description: "Could not load stored Reddit items." });
        setAllRedditPosts([]);
-       // setFilteredRedditPosts([]);
     } finally {
       setIsLoadingFeed(false);
     }
@@ -239,6 +236,13 @@ export default function RedditPage() {
         setIsLoadingFeed(false); 
     }
   }, [currentUser, authLoading, fetchStoredUserRedditData]);
+  
+  useEffect(() => {
+    // When allRedditPosts are loaded or refreshed, update filteredRedditPosts to show all data initially.
+    // Filtering will only happen on "Show" button click.
+    setFilteredRedditPosts(allRedditPosts);
+  }, [allRedditPosts]);
+
 
   const handleShowFilteredData = useCallback(() => {
     let filtered = [...allRedditPosts];
@@ -255,15 +259,10 @@ export default function RedditPage() {
         toast({ title: "No Results", description: "No Reddit items match the selected date range.", duration: 4000 });
     } else if (filtered.length > 0 && (startDate || endDate)) {
         toast({ title: "Filter Applied", description: `Showing ${filtered.length} items.`, duration: 3000 });
+    } else if (!startDate && !endDate && allRedditPosts.length > 0) {
+       // This case might not be needed if reset directly sets filteredRedditPosts
     }
   }, [allRedditPosts, startDate, endDate, toast]);
-
-  useEffect(() => {
-    // This effect will run once allRedditPosts is loaded, and also when startDate/endDate change
-    // to apply the initial filter or re-apply if dates change after load.
-    handleShowFilteredData();
-  }, [allRedditPosts, startDate, endDate, handleShowFilteredData]);
-
 
   const handleRefreshFeed = async () => {
     if (!currentUser || currentUser.role !== 'user' || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
@@ -277,7 +276,8 @@ export default function RedditPage() {
       const result = await refreshUserRedditData(currentUser.id, currentUser.assignedKeywords);
       if (result.success) {
         toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} items fetched/updated from Reddit.` });
-        await fetchStoredUserRedditData(); // This will update allRedditPosts and trigger re-filter via useEffect
+        // fetchStoredUserRedditData will update allRedditPosts, and useEffect will update filteredRedditPosts
+        await fetchStoredUserRedditData(); 
       } else {
         toast({ variant: "destructive", title: "Refresh Failed", description: result.error || "Could not refresh Reddit data." });
       }
@@ -316,7 +316,7 @@ export default function RedditPage() {
   const handleResetFilters = () => {
     setStartDate(undefined);
     setEndDate(undefined);
-    // setFilteredRedditPosts(allRedditPosts); // No need, useEffect will handle this
+    setFilteredRedditPosts(allRedditPosts); // Directly set to show all posts
     toast({ title: "Filters Reset", description: "Showing all stored Reddit items.", duration: 3000 });
   };
 
@@ -417,7 +417,7 @@ export default function RedditPage() {
     }
 
     return (
-      <div className="space-y-6"> {/* Added wrapper div with spacing */}
+      <div className="space-y-6">
         <RedditAnalyticsSummary posts={filteredRedditPosts} />
         <DataTableShell
           title="Your Reddit Keyword Feed"
@@ -547,6 +547,4 @@ export default function RedditPage() {
     </div>
   );
 }
-    
-
     
