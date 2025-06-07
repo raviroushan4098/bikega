@@ -196,10 +196,12 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
 
       // Save to Firestore if appUserId is provided
       if (input.appUserId && input.username) {
+        // Ensure the _placeholder field is removed or set to false upon successful analysis
+        const dataToSave = { ...result, _placeholder: false }; 
         const firestorePath = `ExternalRedditUser/${input.appUserId}/analyzedRedditProfiles/${input.username}`;
         const analysisDocRef = doc(db, firestorePath);
         try {
-          await setDoc(analysisDocRef, result, { merge: true });
+          await setDoc(analysisDocRef, dataToSave, { merge: true });
           console.log(`[AnalyzeExternalRedditUserFlow] Successfully saved analysis for u/${input.username} to Firestore at ${firestorePath}`);
         } catch (firestoreError) {
           console.error(`[AnalyzeExternalRedditUserFlow] Failed to save analysis for u/${input.username} to Firestore:`, firestoreError);
@@ -224,9 +226,15 @@ export async function analyzeExternalRedditUser(input: ExternalRedditUserAnalysi
   try {
     console.log(`[analyzeExternalRedditUser EXPORTED WRAPPER] Called for username u/${input.username}, appUser ${input.appUserId}. Forwarding to flow runner.`);
     if (!input.username || typeof input.username !== 'string' || input.username.trim() === "") {
-        const errorMsg = `[analyzeExternalRedditUser EXPORTED WRAPPER] Invalid or missing username: '${input.username}'. Aborting flow call.`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
+        const errorMsg = `Invalid or missing username: '${input.username}'.`;
+        console.error(`[analyzeExternalRedditUser EXPORTED WRAPPER] ${errorMsg} Aborting flow call.`);
+        return {
+            username: input.username || "unknown",
+            error: errorMsg,
+            accountCreated: null, totalPostKarma: 0, totalCommentKarma: 0, subredditsPostedIn: [],
+            totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
+            fetchedPostsDetails: [], fetchedCommentsDetails: [], lastRefreshedAt: null, _placeholder: true
+        };
     }
     const result = await analyzeExternalRedditUserFlow(input);
     console.log(`[analyzeExternalRedditUser EXPORTED WRAPPER] Flow runner completed for u/${input.username}.`);
@@ -234,7 +242,12 @@ export async function analyzeExternalRedditUser(input: ExternalRedditUserAnalysi
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : "An unknown error occurred in the analyzeExternalRedditUser flow runner.";
     console.error(`[analyzeExternalRedditUser EXPORTED WRAPPER] Unhandled exception from flow runner for u/${input.username}: ${errorMessage}`, e);
-    throw new Error(`Critical flow error for u/${input.username}: ${errorMessage}. Check server logs.`);
+    return {
+        username: input.username,
+        error: `Critical flow error for u/${input.username}: ${errorMessage}. Check server logs.`,
+        accountCreated: null, totalPostKarma: 0, totalCommentKarma: 0, subredditsPostedIn: [],
+        totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
+        fetchedPostsDetails: [], fetchedCommentsDetails: [], lastRefreshedAt: null, _placeholder: true
+    };
   }
 }
-

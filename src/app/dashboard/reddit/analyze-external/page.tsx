@@ -42,8 +42,8 @@ import { cn } from '@/lib/utils';
 
 interface AnalysisResultDisplay {
   username: string;
-  data?: ExternalRedditUserAnalysis;
-  error?: string;
+  data?: ExternalRedditUserAnalysis; // data.error will hold error from flow
+  error?: string; // For client-side errors before calling flow, or if flow result itself indicates client-side issue
   isLoading: boolean;
   isRefreshing?: boolean;
 }
@@ -109,9 +109,10 @@ export default function AnalyzeExternalRedditUserPage() {
               const storedData = await getStoredRedditAnalyses(currentUser.id);
               const displayableResults: AnalysisResultDisplay[] = storedData.map(data => ({
                   username: data.username,
-                  data: data,
+                  data: data, // This now includes potential .error field from the flow
                   isLoading: false,
                   isRefreshing: false,
+                  error: data.error, // Populate error from stored data if present
               }));
               setAnalysisResults(displayableResults);
           } catch (error) {
@@ -145,7 +146,8 @@ export default function AnalyzeExternalRedditUserPage() {
                     ...r,
                     isLoading: isFirstTimeAnalysis && !isRefreshOp, 
                     isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
-                    error: undefined,
+                    error: undefined, // Clear previous client-side error
+                    data: r.data ? { ...r.data, error: undefined } : undefined, // Clear previous flow error from data
                 };
             }
             return r;
@@ -154,15 +156,26 @@ export default function AnalyzeExternalRedditUserPage() {
 
     try {
         const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
-        setAnalysisResults(prev => prev.map(r =>
-            r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: resultFromFlow, isLoading: false, isRefreshing: false, error: undefined } : r
-        ));
-        if (!isUpdatingAll && isRefreshOp) {
-            toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
+        
+        if (resultFromFlow.error) {
+            console.error(`Error analyzing/refreshing user ${usernameToAnalyze} (from flow):`, resultFromFlow.error);
+            if (!isUpdatingAll) { 
+                toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 5000 });
+            }
+            setAnalysisResults(prev => prev.map(r =>
+                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data } : r 
+            ));
+        } else {
+            setAnalysisResults(prev => prev.map(r =>
+                r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: resultFromFlow, isLoading: false, isRefreshing: false, error: undefined } : r
+            ));
+            if (!isUpdatingAll && isRefreshOp) {
+                toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
+            }
         }
-    } catch (error) {
+    } catch (error) { // Catch client-side errors or truly unhandled server action failures
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
-        console.error(`Error analyzing/refreshing user ${usernameToAnalyze}:`, error);
+        console.error(`[Client] Error calling analyzeExternalRedditUser for ${usernameToAnalyze}:`, error);
         if (!isUpdatingAll) { 
             toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 5000 });
         }
@@ -187,24 +200,22 @@ export default function AnalyzeExternalRedditUserPage() {
 
     if (existingUserDisplayIndex === -1) {
       // New user, add placeholder first then analyze
-      await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
+      const placeholderResult = await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
+      if ('error' in placeholderResult) {
+          toast({ variant: "destructive", title: "Registration Error", description: placeholderResult.error });
+          return;
+      }
+      
       setAnalysisResults(prev => [{ 
           username: trimmedUsername, 
           isLoading: true, 
           isRefreshing: false, 
           error: undefined, 
-          data: { // Basic placeholder structure for immediate UI update before full fetch
-              username: trimmedUsername,
-              _placeholder: true,
-              lastRefreshedAt: null,
-              accountCreated: null,
-              totalPostKarma: 0,
-              totalCommentKarma: 0,
-              subredditsPostedIn: [],
-              totalPostsFetchedThisRun: 0,
-              totalCommentsFetchedThisRun: 0,
-              fetchedPostsDetails: [],
-              fetchedCommentsDetails: [],
+          data: { 
+              username: trimmedUsername, _placeholder: true, lastRefreshedAt: null,
+              accountCreated: null, totalPostKarma: 0, totalCommentKarma: 0, subredditsPostedIn: [],
+              totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
+              fetchedPostsDetails: [], fetchedCommentsDetails: [],
           }
       }, ...prev]);
       await processSingleUsername(trimmedUsername, false, currentUser.id);
@@ -234,12 +245,14 @@ export default function AnalyzeExternalRedditUserPage() {
       if (!text) {
           toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
           setIsProcessingCsv(false);
+          setFileName(null);
+          event.target.value = '';
           return;
       }
       
       let lines = text.split(/\\r\\n|\\n|\\r/); 
-      if (lines.length > 0 && lines[0].toLowerCase().includes('user')) { // Simple header check
-        lines.shift(); // Skip header row
+      if (lines.length > 0 && lines[0].toLowerCase().includes('user')) { 
+        lines.shift(); 
       }
 
       const csvUsernamesRaw = lines
@@ -277,7 +290,7 @@ export default function AnalyzeExternalRedditUserPage() {
         duration: 7000 
       });
       
-      await fetchAndSetStoredAnalyses(); // Refresh the displayed list to show new placeholders
+      await fetchAndSetStoredAnalyses(); 
 
       setIsProcessingCsv(false);
       event.target.value = ''; 
@@ -316,7 +329,7 @@ export default function AnalyzeExternalRedditUserPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const csvContent = "USER_NAME\n"; // Header row as example
+    const csvContent = "USER_NAME\n"; 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     if (link.download !== undefined) { 
@@ -603,7 +616,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
       {!isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground bg-card rounded-lg shadow-lg p-8">
-            <UserXIcon className="h-16 w-16 text-primary mb-4" /> {/* Or DatabaseZap */}
+            <UserXIcon className="h-16 w-16 text-primary mb-4" /> 
             <p className="text-xl font-semibold mb-2">No Profiles to Display</p>
             <p className="text-sm">Add a Reddit username above or upload a CSV file to begin analyzing profiles.</p>
             <p className="text-xs mt-3">Your analyzed profiles will appear here.</p>
@@ -614,15 +627,17 @@ export default function AnalyzeExternalRedditUserPage() {
         <div className="space-y-8 mt-8">
           {analysisResults.map((result, index) => {
             const isActualLoading = result.isLoading && !result.isRefreshing && (!result.data || result.data._placeholder);
-            const isPending = result.data?._placeholder && !result.isLoading && !result.isRefreshing && !result.error;
-            const hasError = !!result.error;
-            const hasData = result.data && !result.data._placeholder && result.data.lastRefreshedAt;
+            const isPending = result.data?._placeholder && !result.isLoading && !result.isRefreshing && !result.error && !result.data.error;
+            const hasFlowError = !!result.data?.error; // Error from the Genkit flow
+            const hasClientError = !!result.error; // Error from client-side processing or direct call
+            const displayError = result.data?.error || result.error;
 
-            let cardBorderClass = "border-border/70"; // Default border
+
+            let cardBorderClass = "border-border/70"; 
             if (result.isLoading || result.isRefreshing) cardBorderClass = "border-t-4 border-t-blue-500";
-            else if (hasError) cardBorderClass = "border-t-4 border-t-red-500";
+            else if (hasFlowError || hasClientError) cardBorderClass = "border-t-4 border-t-red-500";
             else if (isPending) cardBorderClass = "border-t-4 border-t-amber-500";
-            else if (hasData) cardBorderClass = "border-t-4 border-t-green-500";
+            else if (result.data && !result.data._placeholder && result.data.lastRefreshedAt) cardBorderClass = "border-t-4 border-t-green-500";
 
             return (
             <Card key={`${result.username}-${index}`} className={cn("shadow-md transition-all duration-300 hover:shadow-xl", cardBorderClass)}>
@@ -639,10 +654,10 @@ export default function AnalyzeExternalRedditUserPage() {
                         disabled={result.isLoading || result.isRefreshing || isProcessingCsv || isUpdatingAll}
                     >
                         <RefreshCw className={`mr-2 h-4 w-4 ${(result.isLoading || result.isRefreshing) ? 'animate-spin' : ''}`} />
-                        {(result.data?._placeholder || !result.data?.lastRefreshedAt) ? 'Analyze' : 'Refresh'}
+                        {(result.data?._placeholder || (!result.data?.lastRefreshedAt && !displayError)) ? 'Analyze' : 'Refresh'}
                     </Button>
                 </div>
-                 {result.data?.lastRefreshedAt && (
+                 {result.data?.lastRefreshedAt && !displayError && (
                     <div className="text-xs text-muted-foreground mt-1 flex items-center">
                         <Clock className="mr-1.5 h-3 w-3" />
                         Last updated: {formatDistanceToNow(parseISO(result.data.lastRefreshedAt), { addSuffix: true })}
@@ -652,12 +667,12 @@ export default function AnalyzeExternalRedditUserPage() {
               <CardContent className="p-4 md:p-6">
                 {isActualLoading ? (
                     <RedditAnalysisCardSkeleton />
-                ) : hasError ? (
+                ) : (displayError) ? (
                   <div className="text-red-600 bg-red-50 p-4 rounded-md border border-red-200 flex items-start gap-3">
                     <AlertTriangle className="h-6 w-6 text-red-700 flex-shrink-0 mt-0.5" />
                     <div>
                         <p className="font-semibold text-red-700">Analysis Error</p>
-                        <p className="text-sm">{result.error}</p>
+                        <p className="text-sm">{displayError}</p>
                     </div>
                   </div>
                 ) : isPending ? (
@@ -711,7 +726,7 @@ export default function AnalyzeExternalRedditUserPage() {
                   </div>
                 )}
               </CardContent>
-              {(result.data && (result.data.lastRefreshedAt || result.data._placeholder)) && (
+              {(result.data && (result.data.lastRefreshedAt || result.data._placeholder || displayError)) && (
                 <CardFooter className="p-4 bg-muted/20 rounded-b-lg text-xs text-muted-foreground justify-end">
                     <Link href={`https://www.reddit.com/user/${result.username}`} target="_blank" rel="noopener noreferrer" className="hover:text-primary hover:underline">
                         View u/{result.username} on Reddit &rarr;
@@ -726,4 +741,3 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
-

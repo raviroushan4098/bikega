@@ -104,15 +104,6 @@ export interface NewUserDetails {
   assignedKeywords?: string; // Comma-separated string
 }
 
-// Search parameters for Reddit API
-export interface RedditSearchParams {
-  q: string; // query string
-  limit?: number; // number of items to return
-  sort?: 'relevance' | 'hot' | 'top' | 'new' | 'comments'; // sort order
-  t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'; // time period for 'top' or 'relevance'
-  after?: string; // fullname of an item to
-}
-
 // Types for External Reddit User Analysis
 export interface ExternalRedditUserAnalysisInput {
   username: string;
@@ -141,4 +132,5 @@ export interface ExternalRedditUserAnalysis {
   fetchedCommentsDetails: ExternalRedditUserDataItem[];
   lastRefreshedAt?: string | null; // ISO string, can be null if pending
   _placeholder?: boolean; // True if this is just a placeholder, not a full analysis
+  error?: string; // Optional error message if analysis failed
 }
