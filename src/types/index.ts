@@ -112,3 +112,32 @@ export interface RedditSearchParams {
   t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'; // time period for 'top' or 'relevance'
   after?: string; // fullname of an item to
 }
+
+// Types for External Reddit User Analysis
+export interface ExternalRedditUserAnalysisInput {
+  username: string;
+  appUserId?: string; // ID of the app user initiating the analysis, for saving results
+}
+
+export interface ExternalRedditUserDataItem {
+  id: string;
+  titleOrContent: string;
+  subreddit: string;
+  timestamp: string; // ISO string
+  score: number;
+  numComments?: number; // Only for posts
+  url: string;
+}
+
+export interface ExternalRedditUserAnalysis {
+  username: string;
+  accountCreated: string | null; // ISO string or null
+  totalPostKarma: number;
+  totalCommentKarma: number;
+  subredditsPostedIn: string[];
+  totalPostsFetchedThisRun: number;
+  totalCommentsFetchedThisRun: number;
+  fetchedPostsDetails: ExternalRedditUserDataItem[];
+  fetchedCommentsDetails: ExternalRedditUserDataItem[];
+  lastRefreshedAt?: string; // ISO string
+}

@@ -1,7 +1,8 @@
 
 'use server';
 /**
- * @fileOverview A Genkit flow to analyze an external Reddit user's profile and recent activity.
+ * @fileOverview A Genkit flow to analyze an external Reddit user's profile and recent activity,
+ * and save the analysis to Firestore under the app user's profile.
  *
  * - analyzeExternalRedditUser - Main flow function.
  * - ExternalRedditUserAnalysisInput - Input type for the flow.
@@ -13,6 +14,8 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { getRedditAccessToken } from '@/lib/reddit-api-service';
 import type { ExternalRedditUserAnalysis, ExternalRedditUserDataItem, ExternalRedditUserAnalysisInput } from '@/types';
+import { db } from '@/lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 const API_CALL_TIMEOUT_MS = 15000; // Timeout for external Reddit API calls
 const MAX_ITEMS_PER_FETCH = 25; // Max posts or comments to fetch per user
@@ -70,11 +73,14 @@ interface RedditApiResponse {
 const analyzeExternalRedditUserFlow = ai.defineFlow(
   {
     name: 'analyzeExternalRedditUserFlow',
-    inputSchema: z.object({ username: z.string() }),
+    inputSchema: z.object({
+      username: z.string(),
+      appUserId: z.string().optional(), // appUserId is optional
+    }),
     outputSchema: z.custom<ExternalRedditUserAnalysis>(), // Using custom to match the complex type
   },
   async (input): Promise<ExternalRedditUserAnalysis> => {
-    console.log(`[AnalyzeExternalRedditUserFlow] Initiating analysis for u/${input.username}`);
+    console.log(`[AnalyzeExternalRedditUserFlow] Initiating analysis for u/${input.username}. App User ID: ${input.appUserId || 'N/A'}`);
     const authDetails = await getRedditAccessToken();
     if ('error' in authDetails) {
       console.error(`[AnalyzeExternalRedditUserFlow] Reddit Auth Failed for u/${input.username}: ${authDetails.error}`);
@@ -93,6 +99,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
       totalCommentsFetchedThisRun: 0,
       fetchedPostsDetails: [],
       fetchedCommentsDetails: [],
+      // lastRefreshedAt will be set before saving and returning
     };
 
     const uniqueSubreddits = new Set<string>();
@@ -172,7 +179,6 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
               subreddit: comment.subreddit_name_prefixed || `r/${comment.subreddit}` || 'N/A',
               timestamp: new Date(comment.created_utc * 1000).toISOString(),
               score: comment.score || 0,
-              // numComments for a comment isn't directly applicable in the same way as a post
               url: comment.permalink ? `https://www.reddit.com${comment.permalink}` : (comment.link_url || '#'),
             });
              if(comment.subreddit) uniqueSubreddits.add(comment.subreddit_name_prefixed || `r/${comment.subreddit}`);
@@ -185,11 +191,29 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
       }
 
       result.subredditsPostedIn = Array.from(uniqueSubreddits);
-      console.log(`[AnalyzeExternalRedditUserFlow] Analysis complete for u/${input.username}. Total Posts: ${result.fetchedPostsDetails.length}, Total Comments: ${result.fetchedCommentsDetails.length}, Active Subreddits (from recent): ${result.subredditsPostedIn.join(', ')}`);
+      result.lastRefreshedAt = new Date().toISOString(); // Set the refresh timestamp
+      console.log(`[AnalyzeExternalRedditUserFlow] Analysis complete for u/${input.username}. Last refreshed: ${result.lastRefreshedAt}`);
+
+      // Save to Firestore if appUserId is provided
+      if (input.appUserId && input.username) {
+        const firestorePath = `users/${input.appUserId}/analyzedRedditProfiles/${input.username}`;
+        const analysisDocRef = doc(db, firestorePath);
+        try {
+          await setDoc(analysisDocRef, result, { merge: true });
+          console.log(`[AnalyzeExternalRedditUserFlow] Successfully saved analysis for u/${input.username} to Firestore at ${firestorePath}`);
+        } catch (firestoreError) {
+          console.error(`[AnalyzeExternalRedditUserFlow] Failed to save analysis for u/${input.username} to Firestore:`, firestoreError);
+          // Do not throw here, let the analysis result still be returned to client
+        }
+      } else {
+        console.log(`[AnalyzeExternalRedditUserFlow] appUserId not provided or username missing, skipping Firestore save for u/${input.username}.`);
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during analysis.';
       console.error(`[AnalyzeExternalRedditUserFlow] CRITICAL EXCEPTION during analysis for u/${input.username}: ${errorMessage}`, error);
+      // Ensure lastRefreshedAt is set even in error cases if some partial data might be returned or for consistency
+      result.lastRefreshedAt = new Date().toISOString();
       throw new Error(`Analysis failed for u/${input.username}: ${errorMessage}`);
     }
     return result;
@@ -198,7 +222,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
 
 export async function analyzeExternalRedditUser(input: ExternalRedditUserAnalysisInput): Promise<ExternalRedditUserAnalysis> {
   try {
-    console.log(`[analyzeExternalRedditUser EXPORTED WRAPPER] Called for username u/${input.username}. Forwarding to flow runner.`);
+    console.log(`[analyzeExternalRedditUser EXPORTED WRAPPER] Called for username u/${input.username}, appUser ${input.appUserId}. Forwarding to flow runner.`);
     if (!input.username || typeof input.username !== 'string' || input.username.trim() === "") {
         const errorMsg = `[analyzeExternalRedditUser EXPORTED WRAPPER] Invalid or missing username: '${input.username}'. Aborting flow call.`;
         console.error(errorMsg);

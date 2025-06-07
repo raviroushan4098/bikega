@@ -6,12 +6,12 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
@@ -22,6 +22,7 @@ interface AnalysisResultDisplay {
   data?: ExternalRedditUserAnalysis;
   error?: string;
   isLoading: boolean;
+  isRefreshing?: boolean;
 }
 
 export default function AnalyzeExternalRedditUserPage() {
@@ -34,14 +35,47 @@ export default function AnalyzeExternalRedditUserPage() {
   const [isProcessingCsv, setIsProcessingCsv] = useState<boolean>(false);
   const [fileName, setFileName] = useState<string | null>(null);
 
+  const processSingleUsername = async (usernameToAnalyze: string, isRefresh: boolean = false) => {
+    if (!currentUser?.id) {
+        toast({ variant: "destructive", title: "Authentication Error", description: "Current user not found." });
+        return;
+    }
+
+    const existingResultIndex = analysisResults.findIndex(r => r.username === usernameToAnalyze);
+    
+    if (isRefresh && existingResultIndex !== -1) {
+      setAnalysisResults(prev => prev.map((r, idx) => idx === existingResultIndex ? { ...r, isLoading: true, isRefreshing: true } : r));
+    } else if (existingResultIndex === -1) {
+      setAnalysisResults(prev => [...prev, { username: usernameToAnalyze, isLoading: true }]);
+    } else {
+       setAnalysisResults(prev => prev.map((r, idx) => idx === existingResultIndex ? { ...r, isLoading: true } : r));
+    }
+
+    try {
+      toast({ title: `${isRefresh ? 'Refreshing' : 'Analyzing'} User`, description: `Fetching data for u/${usernameToAnalyze}... This may take a moment.` });
+      const result = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: currentUser.id });
+      setAnalysisResults(prev => prev.map(r =>
+        r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: result, isLoading: false, isRefreshing: false } : r
+      ));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
+      console.error(`Error analyzing user ${usernameToAnalyze}:`, error);
+      toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 5000 });
+      setAnalysisResults(prev => prev.map(r =>
+        r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false } : r
+      ));
+    }
+  };
+  
   const handleAnalyzeSingleUser = async () => {
-    if (!singleUsername.trim()) {
+    const trimmedUsername = singleUsername.trim().replace(/^u\//i, '');
+    if (!trimmedUsername) {
       toast({ variant: "destructive", title: "Input Error", description: "Please enter a Reddit username." });
       return;
     }
-    setAnalysisResults([]); // Clear previous multi-user results
-    await processUsernames([singleUsername.trim().replace(/^u\//i, '')]);
-    setSingleUsername(''); // Clear input after processing
+    setAnalysisResults([]); 
+    await processSingleUsername(trimmedUsername);
+    setSingleUsername(''); 
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,11 +84,11 @@ export default function AnalyzeExternalRedditUserPage() {
       if (file.type !== 'text/csv') {
         toast({ variant: "destructive", title: "Invalid File", description: "Please upload a .csv file." });
         setFileName(null);
-        event.target.value = ''; // Clear the file input
+        event.target.value = ''; 
         return;
       }
       setFileName(file.name);
-      setAnalysisResults([]); // Clear previous results
+      setAnalysisResults([]); 
 
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -63,7 +97,7 @@ export default function AnalyzeExternalRedditUserPage() {
             toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
             return;
         }
-        const usernames = text.split(/[\n,]+/) // Split by newline or comma
+        const usernames = text.split(/[\n,]+/) 
           .map(line => line.trim().replace(/^u\//i, '')) 
           .filter(username => username !== ''); 
 
@@ -74,7 +108,12 @@ export default function AnalyzeExternalRedditUserPage() {
         
         toast({ title: "CSV Processing", description: `Found ${usernames.length} usernames. Starting analysis...` });
         setIsProcessingCsv(true);
-        await processUsernames(usernames);
+        const initialResults: AnalysisResultDisplay[] = usernames.map(username => ({ username, isLoading: true }));
+        setAnalysisResults(initialResults);
+
+        for (let i = 0; i < usernames.length; i++) {
+          await processSingleUsername(usernames[i]);
+        }
         setIsProcessingCsv(false);
         event.target.value = ''; 
         setFileName(null);
@@ -90,40 +129,16 @@ export default function AnalyzeExternalRedditUserPage() {
     }
   };
 
-  const processUsernames = async (usernames: string[]) => {
-    const initialResults: AnalysisResultDisplay[] = usernames.map(username => ({
-      username,
-      isLoading: true,
-    }));
-    setAnalysisResults(initialResults);
-
-    for (let i = 0; i < usernames.length; i++) {
-      const username = usernames[i];
-      
-      setAnalysisResults(prev => prev.map(r => r.username === username ? { ...r, isLoading: true } : r));
-      
-      try {
-        toast({ title: `Analyzing User ${i + 1}/${usernames.length}`, description: `Fetching data for u/${username}... This may take a moment.` });
-        const result = await analyzeExternalRedditUser({ username });
-        setAnalysisResults(prev => prev.map(r =>
-          r.username === username ? { username, data: result, isLoading: false } : r
-        ));
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
-        console.error(`Error analyzing user ${username}:`, error);
-        toast({ variant: "destructive", title: `Analysis Failed for u/${username}`, description: errorMessage, duration: 5000 });
-        setAnalysisResults(prev => prev.map(r =>
-          r.username === username ? { username, error: errorMessage, isLoading: false } : r
-        ));
-      }
-    }
+  const handleRefreshAnalysis = async (username: string) => {
+    await processSingleUsername(username, true);
   };
+
 
   const handleDownloadTemplate = () => {
     const csvContent = "USER_NAME\n";
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    if (link.download !== undefined) { // Feature detection
+    if (link.download !== undefined) { 
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
       link.setAttribute("download", "reddit_username_template.csv");
@@ -211,7 +226,7 @@ export default function AnalyzeExternalRedditUserPage() {
           </CardTitle>
           <CardDescription>
             Analyze Reddit user profiles by entering a username or uploading a CSV file (one username per line/comma-separated, no header). 
-            The analysis fetches recent activity and profile information (typically latest 25 posts/comments per user).
+            The analysis fetches recent activity and profile information. Results are saved per app user.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -226,13 +241,13 @@ export default function AnalyzeExternalRedditUserPage() {
                     placeholder="e.g., spez"
                     value={singleUsername}
                     onChange={(e) => setSingleUsername(e.target.value)}
-                    disabled={isProcessingCsv}
+                    disabled={isProcessingCsv || analysisResults.some(r => r.isLoading)}
                     className="bg-background shadow-sm"
                 />
             </div>
             <Button 
               onClick={handleAnalyzeSingleUser} 
-              disabled={isProcessingCsv || !singleUsername.trim()}
+              disabled={isProcessingCsv || !singleUsername.trim() || analysisResults.some(r => r.isLoading)}
               className="w-full sm:w-auto"
             >
               <UserSearch className="mr-2 h-4 w-4" /> Analyze User
@@ -256,7 +271,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         type="file"
                         accept=".csv,text/csv"
                         onChange={handleFileUpload}
-                        disabled={isProcessingCsv}
+                        disabled={isProcessingCsv || analysisResults.some(r => r.isLoading)}
                         className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
                     />
                     {fileName && !isProcessingCsv && (
@@ -266,7 +281,7 @@ export default function AnalyzeExternalRedditUserPage() {
                     )}
                 </div>
             </div>
-             <Button onClick={handleDownloadTemplate} variant="outline" size="sm">
+             <Button onClick={handleDownloadTemplate} variant="outline" size="sm" disabled={isProcessingCsv || analysisResults.some(r => r.isLoading)}>
                 <Download className="mr-2 h-4 w-4" />
                 Download Template CSV
             </Button>
@@ -285,13 +300,29 @@ export default function AnalyzeExternalRedditUserPage() {
           {analysisResults.map((result, index) => (
             <Card key={`${result.username}-${index}`} className="shadow-md border border-border/70">
               <CardHeader className="bg-muted/20 rounded-t-lg p-4">
-                <CardTitle className="text-lg font-semibold flex items-center justify-between">
-                  <span>Analysis for: <span className="text-primary font-bold">u/{result.username}</span></span>
-                  {result.isLoading && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg font-semibold flex items-center">
+                    <span>Analysis for: <span className="text-primary font-bold">u/{result.username}</span></span>
+                    {(result.isLoading || result.isRefreshing) && <Loader2 className="ml-3 h-5 w-5 animate-spin text-primary" />}
+                    </CardTitle>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleRefreshAnalysis(result.username)}
+                        disabled={result.isLoading || result.isRefreshing || isProcessingCsv}
+                    >
+                        <RefreshCw className={`mr-2 h-4 w-4 ${result.isRefreshing ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </Button>
+                </div>
+                {result.data?.lastRefreshedAt && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Last updated: {formatDistanceToNow(parseISO(result.data.lastRefreshedAt), { addSuffix: true })}
+                    </p>
+                )}
               </CardHeader>
               <CardContent className="p-4 md:p-6">
-                {result.isLoading && (
+                {(result.isLoading && !result.isRefreshing) && ( // Show general loading only if not a refresh
                     <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         <p className="ml-3 text-muted-foreground">Fetching data for u/{result.username}...</p>
@@ -363,4 +394,3 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
-
