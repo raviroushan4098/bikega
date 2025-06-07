@@ -14,7 +14,7 @@ import type { ApiKey } from '@/types';
 
 const FIRESTORE_GEMINI_API_KEY_NAME = "GIMINI_API_KEY"; // Corrected: GIMINI
 const FIRESTORE_GEMINI_API_URL_NAME = "GIMINI_API_URL"; // Corrected: GIMINI
-const API_CALL_TIMEOUT_MS = 15000; // 15 seconds timeout for the API call
+const API_CALL_TIMEOUT_MS = 8000; // 8 seconds timeout for the API call (reduced from 15000ms)
 
 // Manually define exported types
 export type AdvancedSentimentInput = {
