@@ -24,7 +24,7 @@ import {
 
 
 const API_CALL_TIMEOUT_MS = 15000; // Timeout for external API calls like Algolia
-const SENTIMENT_ANALYSIS_DELAY_MS = 10000; // Delay between sentiment analysis calls
+const SENTIMENT_ANALYSIS_DELAY_MS = 1000; // Delay between sentiment analysis calls (reduced from 10000ms)
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -336,3 +336,4 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
 export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Promise<GatherGlobalMentionsOutput> {
   return gatherGlobalMentionsFlowRunner(input);
 }
+
