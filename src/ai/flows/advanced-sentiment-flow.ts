@@ -44,7 +44,9 @@ interface GeminiResponseCandidate {
 interface GeminiApiResponse {
   candidates?: GeminiResponseCandidate[];
   promptFeedback?: {
-    safetyRatings?: Array<{ category: string; probability: string }>;
+    safetyRatings?: Array<{
+      blocked: unknown; category: string; probability: string 
+}>;
   };
   error?: {
     code: number;
