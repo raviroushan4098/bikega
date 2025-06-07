@@ -5,10 +5,11 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { DataTableShell } from '@/components/analytics/data-table-shell';
-import { GenericDataTable } from '@/components/analytics/generic-data-table';
+// GenericDataTable is now only for admin view if we keep it. For user view, we use cards.
+// import { GenericDataTable } from '@/components/analytics/generic-data-table'; 
 import type { ColumnConfig, RedditPost, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw, CalendarIcon, FilterX, SearchCheck } from 'lucide-react';
+import { Loader2, Rss, Users as UsersIcon, Save, ExternalLink, RefreshCw, CalendarIcon, FilterX, SearchCheck, ArrowUpCircle, MessageSquare } from 'lucide-react'; // Added ArrowUpCircle, MessageSquare
 import { useToast } from "@/hooks/use-toast";
 import { getUsers, updateUserKeywords } from '@/lib/user-service';
 import { refreshUserRedditData, getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
@@ -31,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import RedditAnalyticsSummary from '@/components/dashboard/RedditAnalyticsSummary';
+import RedditItemCard from '@/components/dashboard/RedditItemCard'; // Import the new card component
 
 const FETCH_PERIOD_DAYS = 30;
 
@@ -39,8 +41,11 @@ const editKeywordsSchema = z.object({
 });
 type EditKeywordsFormValues = z.infer<typeof editKeywordsSchema>;
 
-const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
-  { 
+// This columns config is now primarily for an admin view if we decide to show them a table,
+// or can be removed if admin also gets a card view or different interface.
+// For now, keeping it, but it's NOT used in the user's card view.
+const redditPostColumnsAdminView: ColumnConfig<RedditPost>[] = [
+   { 
     key: 'sno', 
     header: 'S.No', 
     className: "w-[60px] text-center",
@@ -72,7 +77,7 @@ const redditPostColumnsUserView: ColumnConfig<RedditPost>[] = [
     render: (item) => item.matchedKeyword ? <Badge variant="outline">{item.matchedKeyword}</Badge> : <span className="text-xs text-muted-foreground">N/A</span>,
     className: "w-[120px]",
   },
-  { 
+   { 
     key: 'title', 
     header: 'Title / Content', 
     sortable: true, 
@@ -238,8 +243,6 @@ export default function RedditPage() {
   }, [currentUser, authLoading, fetchStoredUserRedditData]);
   
   useEffect(() => {
-    // When allRedditPosts are loaded or refreshed, update filteredRedditPosts to show all data initially.
-    // Filtering will only happen on "Show" button click.
     setFilteredRedditPosts(allRedditPosts);
   }, [allRedditPosts]);
 
@@ -259,8 +262,6 @@ export default function RedditPage() {
         toast({ title: "No Results", description: "No Reddit items match the selected date range.", duration: 4000 });
     } else if (filtered.length > 0 && (startDate || endDate)) {
         toast({ title: "Filter Applied", description: `Showing ${filtered.length} items.`, duration: 3000 });
-    } else if (!startDate && !endDate && allRedditPosts.length > 0) {
-       // This case might not be needed if reset directly sets filteredRedditPosts
     }
   }, [allRedditPosts, startDate, endDate, toast]);
 
@@ -276,7 +277,6 @@ export default function RedditPage() {
       const result = await refreshUserRedditData(currentUser.id, currentUser.assignedKeywords);
       if (result.success) {
         toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} items fetched/updated from Reddit.` });
-        // fetchStoredUserRedditData will update allRedditPosts, and useEffect will update filteredRedditPosts
         await fetchStoredUserRedditData(); 
       } else {
         toast({ variant: "destructive", title: "Refresh Failed", description: result.error || "Could not refresh Reddit data." });
@@ -316,7 +316,7 @@ export default function RedditPage() {
   const handleResetFilters = () => {
     setStartDate(undefined);
     setEndDate(undefined);
-    setFilteredRedditPosts(allRedditPosts); // Directly set to show all posts
+    setFilteredRedditPosts(allRedditPosts); 
     toast({ title: "Filters Reset", description: "Showing all stored Reddit items.", duration: 3000 });
   };
 
@@ -407,96 +407,102 @@ export default function RedditPage() {
   }
 
   if (currentUser.role === 'user') {
-    let userPageDescription = `Your Reddit feed based on your keywords, loaded from stored data. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
+    let userPageDescription = `Your Reddit feed based on your keywords. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
     if (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) {
       userPageDescription = "You have no assigned keywords for your Reddit feed. Please contact an administrator.";
     } else if (isLoadingFeed) {
       userPageDescription = `Loading your stored Reddit feed for keywords: "${currentUser.assignedKeywords.join(', ')}"...`;
     } else {
-      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${filteredRedditPosts.length} of ${allRedditPosts.length} items shown. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`;
+      userPageDescription = `Showing Reddit posts and comments for your keywords: "${currentUser.assignedKeywords.join(', ')}". ${filteredRedditPosts.length} of ${allRedditPosts.length} items shown.`;
     }
 
     return (
       <div className="space-y-6">
         <RedditAnalyticsSummary posts={filteredRedditPosts} />
-        <DataTableShell
-          title="Your Reddit Keyword Feed"
-          description={userPageDescription}
-        >
-          <div className="mb-6 p-4 border rounded-md bg-card space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-end md:justify-between gap-4">
-              <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto md:flex-grow">
-                  <div className="space-y-1.5 flex-1 min-w-[180px]">
-                      <Label htmlFor="start-date">From Date</Label>
-                      <Popover>
-                          <PopoverTrigger asChild>
-                          <Button
-                              id="start-date"
-                              variant={"outline"}
-                              className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !startDate && "text-muted-foreground"
-                              )}
-                          >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
-                          </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                          <Calendar
-                              mode="single"
-                              selected={startDate}
-                              onSelect={setStartDate}
-                              initialFocus
-                              disabled={(date) => (endDate ? date > endDate : false) || date > new Date()}
-                          />
-                          </PopoverContent>
-                      </Popover>
-                  </div>
-                  <div className="space-y-1.5 flex-1 min-w-[180px]">
-                      <Label htmlFor="end-date">To Date</Label>
-                      <Popover>
-                          <PopoverTrigger asChild>
-                          <Button
-                              id="end-date"
-                              variant={"outline"}
-                              className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !endDate && "text-muted-foreground"
-                              )}
-                          >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
-                          </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                          <Calendar
-                              mode="single"
-                              selected={endDate}
-                              onSelect={setEndDate}
-                              initialFocus
-                              disabled={(date) => (startDate ? date < startDate : false) || date > new Date()}
-                          />
-                          </PopoverContent>
-                      </Popover>
-                  </div>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 pt-2 md:pt-0 md:items-end shrink-0">
-                  <Button onClick={handleShowFilteredData} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
-                      <SearchCheck className="mr-2 h-4 w-4" />
-                      Show
-                  </Button>
-                  <Button onClick={handleResetFilters} variant="destructive" className="w-full sm:w-auto">
-                      <FilterX className="mr-2 h-4 w-4" />
-                      Reset
-                  </Button>
-                  <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0} className="w-full sm:w-auto">
-                      {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                      Refresh Feed
-                  </Button>
-              </div>
-          </div>
+        
+        <Card className="shadow-lg">
+            <CardHeader>
+                <CardTitle className="text-xl font-headline">Filter Your Feed</CardTitle>
+                <CardDescription>Select a date range and click "Show" to filter the items below.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="mb-6 p-4 border rounded-md bg-background/50 space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-end md:justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto md:flex-grow">
+                        <div className="space-y-1.5 flex-1 min-w-[180px]">
+                            <Label htmlFor="start-date">From Date</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                <Button
+                                    id="start-date"
+                                    variant={"outline"}
+                                    className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !startDate && "text-muted-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                    mode="single"
+                                    selected={startDate}
+                                    onSelect={setStartDate}
+                                    initialFocus
+                                    disabled={(date) => (endDate ? date > endDate : false) || date > new Date()}
+                                />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="space-y-1.5 flex-1 min-w-[180px]">
+                            <Label htmlFor="end-date">To Date</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                <Button
+                                    id="end-date"
+                                    variant={"outline"}
+                                    className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !endDate && "text-muted-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                    mode="single"
+                                    selected={endDate}
+                                    onSelect={setEndDate}
+                                    initialFocus
+                                    disabled={(date) => (startDate ? date < startDate : false) || date > new Date()}
+                                />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2 md:pt-0 md:items-end shrink-0">
+                        <Button onClick={handleShowFilteredData} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
+                            <SearchCheck className="mr-2 h-4 w-4" />
+                            Show
+                        </Button>
+                        <Button onClick={handleResetFilters} variant="destructive" className="w-full sm:w-auto">
+                            <FilterX className="mr-2 h-4 w-4" />
+                            Reset
+                        </Button>
+                        <Button onClick={handleRefreshFeed} disabled={isRefreshingFeed || isLoadingFeed || !currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0} className="w-full sm:w-auto">
+                            {isRefreshingFeed ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                            Refresh Feed
+                        </Button>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
 
 
+        <div className="mt-6"> {/* Container for the cards or no-data message */}
           {isLoadingFeed && (
             <div className="flex justify-center items-center py-10">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -505,7 +511,7 @@ export default function RedditPage() {
           )}
 
           {!isLoadingFeed && (!currentUser.assignedKeywords || currentUser.assignedKeywords.length === 0) && (
-            <div className="text-center py-10">
+            <div className="text-center py-10 bg-card rounded-lg shadow p-6">
               <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-lg font-semibold">No Keywords Assigned</p>
               <p className="text-muted-foreground">
@@ -517,7 +523,7 @@ export default function RedditPage() {
           )}
           
           {!isLoadingFeed && currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && filteredRedditPosts.length === 0 && (
-            <div className="text-center py-10">
+            <div className="text-center py-10 bg-card rounded-lg shadow p-6">
               <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-lg font-semibold">No Reddit Posts or Comments Found</p>
               <p className="text-muted-foreground">
@@ -530,13 +536,13 @@ export default function RedditPage() {
           )}
 
           {!isLoadingFeed && filteredRedditPosts.length > 0 && (
-            <GenericDataTable<RedditPost>
-              data={filteredRedditPosts}
-              columns={redditPostColumnsUserView} 
-              caption={`Displaying ${filteredRedditPosts.length} of ${allRedditPosts.length} stored Reddit items. Refreshes fetch data from the last ${FETCH_PERIOD_DAYS} days.`}
-            />
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                {filteredRedditPosts.map((item) => (
+                    <RedditItemCard key={item.id} post={item} />
+                ))}
+            </div>
           )}
-        </DataTableShell>
+        </div>
       </div>
     );
   }
