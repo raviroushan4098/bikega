@@ -41,7 +41,7 @@ export default function DashboardHeader() {
       */}
       
       <div className="flex-1 md:flex-none"> {/* Allow title to take space on mobile, fix on md+ */}
-         <h1 className="text-lg md:text-xl font-semibold font-headline mt-1">{pageTitle}</h1>
+         <h1 className="text-lg md:text-xl font-semibold font-headline -mt-2">{pageTitle}</h1>
       </div>
       
       {/* User avatar and other header items could go here if needed */}
