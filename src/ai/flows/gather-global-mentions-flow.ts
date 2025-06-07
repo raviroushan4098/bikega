@@ -100,40 +100,38 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Partial<Ment
   return mentions;
 }
 
-// Updated LPU mock news items to be more realistic
 const lpuMockNewsItems = [
   {
     title: "Edu-Leaders Conclave at LPU Brought Together CBSE School Principals from Across India",
     excerpt: "Edu-Leaders Conclave at LPU focused on innovative educational strategies and future trends, bringing together principals from various CBSE schools.",
     source: "Yes Punjab News",
-    timestamp: new Date(Date.now() - 51 * 60 * 1000).toISOString(), // 51 minutes ago
+    timestamp: new Date(Date.now() - 51 * 60 * 1000).toISOString(), // Approx 51 minutes ago
   },
   {
     title: "LPU Journalism Placements Reach INR 12 LPA: SJMC HoD",
     excerpt: "The School of Journalism and Mass Communication (SJMC) at LPU announced high placements, with the highest package reaching INR 12 LPA.",
     source: "Shiksha (By Mayank Uniyal)",
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // Approx 2 days ago
   },
   {
     title: "Internet of Things (IoT): What It Is, How It Works, and Career Paths",
     excerpt: "An article by Satvinder Pal Singh from LPU explores the fundamentals of IoT, its applications, and potential career opportunities in the field.",
-    source: "LPU (By Satvinder Pal Singh)", // User listed this under Google News search results, treating as such.
-    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+    source: "LPU (By Satvinder Pal Singh)",
+    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // Approx 5 days ago
   },
   {
     title: "Governor of Punjab to Grace LPU’s ‘Operation Sindoor Vijay Yatra’ and Chair Vice Chancellor’s Conference at LPU",
     excerpt: "The Hon'ble Governor of Punjab is scheduled to attend LPU's 'Operation Sindoor Vijay Yatra' event and will also chair a conference of Vice Chancellors.",
     source: "Cityairnews",
-    timestamp: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(), // 19 hours ago
+    timestamp: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(), // Approx 19 hours ago
   },
   {
     title: "Hon'ble Governor of Punjab to Grace LPU's 'Operation Sindoor Vijay Yatra' and Chair Vice Chancellor's Conference at LPU",
     excerpt: "The upcoming 'Operation Sindoor Vijay Yatra' at LPU will be graced by the Hon'ble Governor of Punjab, who will also lead a Vice Chancellor's conference.",
     source: ":: India News Calling ::",
-    timestamp: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(), // 23 hours ago
+    timestamp: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(), // Approx 23 hours ago
   }
 ];
-
 
 function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
   if (!keywords.length) return [];
@@ -141,11 +139,9 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
   const outputMentions: Partial<Mention>[] = [];
   let mockIdCounter = Date.now();
 
-  // Check if "lpu" is one of the keywords (case-insensitive)
   const hasLPUKeyword = keywords.some(kw => kw.toLowerCase() === 'lpu');
 
   if (hasLPUKeyword) {
-    // Use specific LPU mock news for "LPU" keyword
     lpuMockNewsItems.forEach((newsItem, newsIndex) => {
       outputMentions.push({
         id: `googlenews_mock_lpu_${mockIdCounter++}_${newsIndex}`,
@@ -153,25 +149,24 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
         source: newsItem.source,
         title: newsItem.title,
         excerpt: newsItem.excerpt,
-        url: `https://news.google.com/search?q=LPU`, // Direct search URL for LPU
+        url: `https://news.google.com/search?q=${encodeURIComponent(newsItem.title)}`, // Search for the specific title
         timestamp: newsItem.timestamp,
-        matchedKeyword: "LPU", // Explicitly match LPU
-        sentiment: 'neutral' 
+        matchedKeyword: "LPU",
+        sentiment: 'neutral'
       });
     });
   }
   
-  // Add generic mock news for other keywords (excluding LPU if already handled)
   const otherKeywords = keywords.filter(kw => kw.toLowerCase() !== 'lpu');
-  otherKeywords.slice(0, 2).forEach((kw) => { // Max 2 other generic news items
+  otherKeywords.slice(0, 2).forEach((kw) => {
     outputMentions.push({
       id: `googlenews_mock_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
       platform: 'Google News',
       source: 'Google News Mock Source',
       title: `Simulated Top Story regarding ${kw}`,
       excerpt: `This is a simulated Google News article detailing recent developments and discussions related to ${kw}. Key figures and future implications are explored.`,
-      url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`, // Mocked search URL
-      timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(), // within last 7 days
+      url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`,
+      timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(),
       matchedKeyword: kw,
       sentiment: 'neutral'
     });
@@ -188,7 +183,7 @@ function fetchWebMentionsMock(keywords: string[]): Partial<Mention>[] {
   const webMentions: Partial<Mention>[] = [];
   let mockIdCounter = Date.now();
 
-  keywords.slice(0, 3).forEach(kw => { 
+  keywords.slice(0, 3).forEach(kw => {
     for (let i = 0; i < (Math.random() > 0.5 ? 2 : 1); i++) {
       const domain = ['awesomeblog.com', 'industryinsights.net', 'communityforum.org'][Math.floor(Math.random() * 3)];
       webMentions.push({
@@ -461,3 +456,4 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
     };
   }
 }
+
