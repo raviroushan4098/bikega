@@ -571,7 +571,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6 overflow-x-hidden">
+    <div className="w-full space-y-6 overflow-x-hidden">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <StatCard
           title="Total Usernames"
@@ -993,5 +993,8 @@ export default function AnalyzeExternalRedditUserPage() {
   );
 }
     
+
+    
+
 
     
