@@ -11,7 +11,7 @@ interface YouTubeApiVideoItem {
   id: string | { videoId: string }; // id can be string (for videos.list) or object (for search.list)
   snippet: {
     title: string;
-    description: string; 
+    description: string;
     thumbnails: {
       default?: { url: string };
       medium?: { url: string };
@@ -271,12 +271,16 @@ export async function searchYouTubeVideosByKeywords(
 
   const query = keywords.map(kw => `"${kw.trim()}"`).join(' OR '); // Search for exact phrases or keywords
   const maxResults = 15; // Number of videos to fetch
-  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&order=date&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
+
+  // Calculate the timestamp for 24 hours ago
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&order=date&publishedAfter=${encodeURIComponent(twentyFourHoursAgo)}&key=${apiKey}&fields=items(id/videoId,snippet(publishedAt,title,description,thumbnails/default/url,channelTitle))`;
 
   const fetchedMentions: YouTubeMentionItem[] = [];
 
   try {
-    console.log(`[youtube-video-service] Searching YouTube with query: "${query}"`);
+    console.log(`[youtube-video-service] Searching YouTube with query: "${query}", publishedAfter: ${twentyFourHoursAgo}`);
     const response = await fetch(searchUrl);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -319,7 +323,7 @@ export async function searchYouTubeVideosByKeywords(
         }
       }
     }
-    console.log(`[youtube-video-service] Found ${fetchedMentions.length} relevant YouTube mentions for keywords: "${keywords.join(', ')}"`);
+    console.log(`[youtube-video-service] Found ${fetchedMentions.length} relevant YouTube mentions published in the last 24 hours for keywords: "${keywords.join(', ')}"`);
     return { mentions: fetchedMentions };
 
   } catch (error) {
