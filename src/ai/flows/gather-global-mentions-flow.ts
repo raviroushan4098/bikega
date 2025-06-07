@@ -13,9 +13,6 @@ import { z } from 'genkit';
 import type { Mention, User } from '@/types';
 import { analyzeAdvancedSentiment } from '@/ai/flows/advanced-sentiment-flow';
 import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service';
-// Reddit and Twitter/X specific services are no longer used here
-// import { getRedditAccessToken } from '@/lib/reddit-api-service'; 
-// import { getTwitterMentionsForUser } from '@/lib/twitter-api-service';
 import { getUserById } from '@/lib/user-service';
 import {
   GatherGlobalMentionsInputSchema,
@@ -103,30 +100,37 @@ async function fetchHackerNewsMentions(keywords: string[]): Promise<Partial<Ment
   return mentions;
 }
 
+// Updated LPU mock news items to be more realistic
 const lpuMockNewsItems = [
   {
-    title: "LPU Announces New AI Research Center to Foster Innovation",
-    excerpt: "Lovely Professional University (LPU) today unveiled plans for a state-of-the-art Artificial Intelligence research facility, aiming to become a hub for tech development in the region.",
-    source: "Times of India (Simulated)",
-    url: "https://news.google.com/search?q=LPU+AI+Research+Center",
+    title: "Edu-Leaders Conclave at LPU Brought Together CBSE School Principals from Across India",
+    excerpt: "Edu-Leaders Conclave at LPU focused on innovative educational strategies and future trends, bringing together principals from various CBSE schools.",
+    source: "Yes Punjab News",
+    timestamp: new Date(Date.now() - 51 * 60 * 1000).toISOString(), // 51 minutes ago
   },
   {
-    title: "LPU Student Startup Wins National Entrepreneurship Award",
-    excerpt: "A team of engineering students from LPU has bagged the prestigious 'Young Innovators' award for their groundbreaking project in sustainable technology solutions.",
-    source: "The Tribune (Simulated)",
-    url: "https://news.google.com/search?q=LPU+Student+Startup+Award",
+    title: "LPU Journalism Placements Reach INR 12 LPA: SJMC HoD",
+    excerpt: "The School of Journalism and Mass Communication (SJMC) at LPU announced high placements, with the highest package reaching INR 12 LPA.",
+    source: "Shiksha (By Mayank Uniyal)",
+    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
   },
   {
-    title: "LPU Placements 2024: Record Number of Offers from Top Tech Companies",
-    excerpt: "LPU reports a significant increase in job placements for its graduating batch, with major recruiters like Google, Microsoft, and Amazon making multiple offers.",
-    source: "India Today Education (Simulated)",
-    url: "https://news.google.com/search?q=LPU+Placements+2024",
+    title: "Internet of Things (IoT): What It Is, How It Works, and Career Paths",
+    excerpt: "An article by Satvinder Pal Singh from LPU explores the fundamentals of IoT, its applications, and potential career opportunities in the field.",
+    source: "LPU (By Satvinder Pal Singh)", // User listed this under Google News search results, treating as such.
+    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
   },
   {
-    title: "LPU to Host International Conference on Renewable Energy",
-    excerpt: "Experts and researchers from around the globe will gather at LPU next month to discuss advancements in renewable energy and sustainable practices.",
-    source: "Business Standard (Simulated)",
-    url: "https://news.google.com/search?q=LPU+Renewable+Energy+Conference",
+    title: "Governor of Punjab to Grace LPU’s ‘Operation Sindoor Vijay Yatra’ and Chair Vice Chancellor’s Conference at LPU",
+    excerpt: "The Hon'ble Governor of Punjab is scheduled to attend LPU's 'Operation Sindoor Vijay Yatra' event and will also chair a conference of Vice Chancellors.",
+    source: "Cityairnews",
+    timestamp: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(), // 19 hours ago
+  },
+  {
+    title: "Hon'ble Governor of Punjab to Grace LPU's 'Operation Sindoor Vijay Yatra' and Chair Vice Chancellor's Conference at LPU",
+    excerpt: "The upcoming 'Operation Sindoor Vijay Yatra' at LPU will be graced by the Hon'ble Governor of Punjab, who will also lead a Vice Chancellor's conference.",
+    source: ":: India News Calling ::",
+    timestamp: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(), // 23 hours ago
   }
 ];
 
@@ -137,37 +141,42 @@ function fetchGoogleNewsMentionsMock(keywords: string[]): Partial<Mention>[] {
   const outputMentions: Partial<Mention>[] = [];
   let mockIdCounter = Date.now();
 
-  keywords.slice(0, 2).forEach((kw, index) => {
-    if (kw.toLowerCase() === 'lpu') {
-      // Use specific LPU mock news for "LPU" keyword
-      lpuMockNewsItems.slice(0, 2).forEach((newsItem, newsIndex) => { // Take 2 LPU news items
-        outputMentions.push({
-          id: `googlenews_mock_lpu_${mockIdCounter++}_${newsIndex}`,
-          platform: 'Google News',
-          source: newsItem.source,
-          title: newsItem.title,
-          excerpt: newsItem.excerpt,
-          url: `https://news.google.com/search?q=${encodeURIComponent("LPU")}`, // Direct search URL for LPU
-          timestamp: new Date(Date.now() - Math.random() * 86400000 * (newsIndex + 1)).toISOString(), // Staggered dates
-          matchedKeyword: kw,
-          sentiment: 'neutral' 
-        });
-      });
-    } else {
-      // Generic mock news for other keywords
+  // Check if "lpu" is one of the keywords (case-insensitive)
+  const hasLPUKeyword = keywords.some(kw => kw.toLowerCase() === 'lpu');
+
+  if (hasLPUKeyword) {
+    // Use specific LPU mock news for "LPU" keyword
+    lpuMockNewsItems.forEach((newsItem, newsIndex) => {
       outputMentions.push({
-        id: `googlenews_mock_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
+        id: `googlenews_mock_lpu_${mockIdCounter++}_${newsIndex}`,
         platform: 'Google News',
-        source: 'Google News Mock Source',
-        title: `Simulated Top Story regarding ${kw}`,
-        excerpt: `This is a simulated Google News article detailing recent developments and discussions related to ${kw}. Key figures and future implications are explored.`,
-        url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`, // Mocked search URL
-        timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(), // within last 7 days
-        matchedKeyword: kw,
-        sentiment: 'neutral'
+        source: newsItem.source,
+        title: newsItem.title,
+        excerpt: newsItem.excerpt,
+        url: `https://news.google.com/search?q=LPU`, // Direct search URL for LPU
+        timestamp: newsItem.timestamp,
+        matchedKeyword: "LPU", // Explicitly match LPU
+        sentiment: 'neutral' 
       });
-    }
+    });
+  }
+  
+  // Add generic mock news for other keywords (excluding LPU if already handled)
+  const otherKeywords = keywords.filter(kw => kw.toLowerCase() !== 'lpu');
+  otherKeywords.slice(0, 2).forEach((kw) => { // Max 2 other generic news items
+    outputMentions.push({
+      id: `googlenews_mock_${mockIdCounter++}_${kw.replace(/\s+/g, '')}`,
+      platform: 'Google News',
+      source: 'Google News Mock Source',
+      title: `Simulated Top Story regarding ${kw}`,
+      excerpt: `This is a simulated Google News article detailing recent developments and discussions related to ${kw}. Key figures and future implications are explored.`,
+      url: `https://news.google.com/search?q=${encodeURIComponent(kw)}&mock_id=${mockIdCounter}`, // Mocked search URL
+      timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(), // within last 7 days
+      matchedKeyword: kw,
+      sentiment: 'neutral'
+    });
   });
+
   console.log(`[GoogleNewsMentionsMock] Generated ${outputMentions.length} mock Google News mentions.`);
   return outputMentions;
 }
@@ -452,4 +461,3 @@ export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Pr
     };
   }
 }
-
