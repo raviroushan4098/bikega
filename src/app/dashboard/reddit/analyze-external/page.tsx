@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquare, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap, ListChecks } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder, deleteStoredRedditAnalysis } from '@/lib/reddit-api-service';
+import type { ColumnConfig } from '@/types';
 import {
   Dialog,
   DialogContent,
@@ -74,24 +75,14 @@ const RedditAnalysisCardSkeleton: React.FC = () => (
           ))}
         </CardContent>
       </Card>
-      <Accordion type="multiple" className="w-full" defaultValue={['posts-skeleton', 'comments-skeleton']}>
-        <AccordionItem value="posts-skeleton">
+      <Accordion type="multiple" className="w-full" defaultValue={['items-skeleton']}>
+        <AccordionItem value="items-skeleton">
           <AccordionTrigger className="text-base font-medium hover:no-underline">
-            <Skeleton className="h-6 w-1/4" />
+            <Skeleton className="h-6 w-1/3" />
           </AccordionTrigger>
           <AccordionContent>
             <div className="space-y-2 mt-2">
               {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-        <AccordionItem value="comments-skeleton">
-          <AccordionTrigger className="text-base font-medium hover:no-underline">
-            <Skeleton className="h-6 w-1/4" />
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-2 mt-2">
-              {[...Array(1)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -419,9 +410,8 @@ export default function AnalyzeExternalRedditUserPage() {
     setEndDate(undefined);
     toast({ title: "Date Filters Reset", description: "Displaying all posts/comments within profiles.", duration: 3000 });
   };
-
+  
   const currentDisplayResults = analysisResults;
-
 
   if (authLoading) {
     return (
@@ -446,11 +436,74 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 
-  const renderDataTable = (items: ExternalRedditUserDataItem[], type: 'Posts' | 'Comments') => {
+  const combinedTableColumns: ColumnConfig<ExternalRedditUserDataItem>[] = [
+    {
+      key: 'type',
+      header: 'Type',
+      render: (item) => (
+        <Badge variant={item.type === 'Post' ? 'secondary' : 'outline'} className="whitespace-nowrap">
+          {item.type}
+        </Badge>
+      ),
+      className: "w-[100px]"
+    },
+    {
+      key: 'titleOrContent',
+      header: 'Title / Content',
+      render: (item) => (
+        <div className="line-clamp-2 hover:line-clamp-none transition-all max-w-sm sm:max-w-md md:max-w-lg xl:max-w-xl">
+           {item.titleOrContent}
+        </div>
+      ),
+      className: "w-[calc(55%-100px)]" 
+    },
+    {
+      key: 'subreddit',
+      header: 'Subreddit',
+      render: (item) => <Badge variant="secondary" className="whitespace-nowrap">{item.subreddit}</Badge>,
+      className: "whitespace-nowrap"
+    },
+    {
+      key: 'timestamp',
+      header: 'Date',
+      render: (item) => format(parseISO(item.timestamp), 'MMM dd, yyyy'),
+      className: "whitespace-nowrap"
+    },
+    {
+      key: 'score',
+      header: 'Score',
+      render: (item) => <span className="text-right block">{item.score.toLocaleString()}</span>,
+      className: "text-right whitespace-nowrap"
+    },
+    {
+      key: 'numComments',
+      header: 'Replies',
+      render: (item) => (
+        <span className="text-right block">
+          {item.type === 'Post' ? (item.numComments?.toLocaleString() ?? '0') : 'N/A'}
+        </span>
+      ),
+      className: "text-right whitespace-nowrap"
+    },
+    {
+      key: 'url',
+      header: 'Link',
+      render: (item) => (
+        <Button variant="ghost" size="icon" asChild className="h-7 w-7">
+          <a href={item.url} target="_blank" rel="noopener noreferrer" title={`Open on Reddit`}>
+            <ChevronsUpDown className="h-4 w-4 text-primary" />
+          </a>
+        </Button>
+      ),
+      className: "text-center whitespace-nowrap"
+    },
+  ];
+
+  const renderDataTable = (items: ExternalRedditUserDataItem[], columns: ColumnConfig<ExternalRedditUserDataItem>[]) => {
     if (!items || items.length === 0) {
-      let message = `No recent ${type.toLowerCase()} found for this user.`;
+      let message = `No posts or comments found.`;
       if (startDate || endDate) {
-        message = `No ${type.toLowerCase()} match the selected date range for this user.`;
+        message = `No posts or comments match the selected date range.`;
       }
       return <p className="text-sm text-muted-foreground py-3 px-1">{message}</p>;
     }
@@ -459,33 +512,21 @@ export default function AnalyzeExternalRedditUserPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[55%] whitespace-nowrap">Title / Content</TableHead>
-              <TableHead className="whitespace-nowrap">Subreddit</TableHead>
-              <TableHead className="whitespace-nowrap">Date</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Score</TableHead>
-              {type === 'Posts' && <TableHead className="text-right whitespace-nowrap">Replies</TableHead>}
-              <TableHead className="text-center whitespace-nowrap">Link</TableHead>
+              {columns.map(col => (
+                <TableHead key={String(col.key)} className={cn("whitespace-nowrap", col.className)}>
+                  {col.header}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map(item => (
               <TableRow key={item.id}>
-                <TableCell className="font-medium">
-                  <div className="line-clamp-2 hover:line-clamp-none transition-all max-w-sm sm:max-w-md md:max-w-lg xl:max-w-xl">
-                     {item.titleOrContent}
-                  </div>
-                </TableCell>
-                <TableCell><Badge variant="secondary" className="whitespace-nowrap">{item.subreddit}</Badge></TableCell>
-                <TableCell className="whitespace-nowrap">{format(parseISO(item.timestamp), 'MMM dd, yyyy')}</TableCell>
-                <TableCell className="text-right whitespace-nowrap">{item.score.toLocaleString()}</TableCell>
-                {type === 'Posts' && <TableCell className="text-right whitespace-nowrap">{item.numComments?.toLocaleString() ?? 'N/A'}</TableCell>}
-                <TableCell className="text-center">
-                  <Button variant="ghost" size="icon" asChild className="h-7 w-7">
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" title={`Open on Reddit`}>
-                      <ChevronsUpDown className="h-4 w-4 text-primary" />
-                    </a>
-                  </Button>
-                </TableCell>
+                {columns.map(col => (
+                   <TableCell key={String(col.key)} className={cn(col.className, col.key === 'titleOrContent' ? 'font-medium' : '', 'text-sm')}>
+                    {col.render ? col.render(item) : String(item[col.key as keyof ExternalRedditUserDataItem] ?? '')}
+                  </TableCell>
+                ))}
               </TableRow>
             ))}
           </TableBody>
@@ -777,23 +818,19 @@ export default function AnalyzeExternalRedditUserPage() {
               statusIconColor = "text-green-500";
             }
             
-            const filteredPosts = result.data?.fetchedPostsDetails?.filter(post => {
+            const combinedItemsUnfiltered = [
+              ...(result.data?.fetchedPostsDetails || []),
+              ...(result.data?.fetchedCommentsDetails || []),
+            ].sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+        
+            const filteredCombinedItems = combinedItemsUnfiltered.filter(item => {
                 if (!startDate && !endDate) return true;
-                const itemDate = parseISO(post.timestamp);
+                const itemDate = parseISO(item.timestamp);
                 let inRange = true;
                 if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
                 if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
                 return inRange;
-            }) || [];
-
-            const filteredComments = result.data?.fetchedCommentsDetails?.filter(comment => {
-                if (!startDate && !endDate) return true;
-                const itemDate = parseISO(comment.timestamp);
-                let inRange = true;
-                if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
-                if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
-                return inRange;
-            }) || [];
+            });
 
 
             return (
@@ -857,27 +894,16 @@ export default function AnalyzeExternalRedditUserPage() {
                       </CardContent>
                     </Card>
                     
-                    <Accordion type="multiple" className="w-full" defaultValue={['posts', 'comments']}>
-                        <AccordionItem value="posts">
+                    <Accordion type="single" collapsible className="w-full" defaultValue="combined-content">
+                        <AccordionItem value="combined-content">
                             <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
                                 <div className="flex items-center gap-2">
-                                    <MessageSquareText className="h-5 w-5" />
-                                    Fetched Posts ({filteredPosts.length})
+                                    <ListChecks className="h-5 w-5" /> {/* Changed icon */}
+                                    Fetched Posts and Comments ({filteredCombinedItems.length})
                                 </div>
                             </AccordionTrigger>
                             <AccordionContent>
-                                {renderDataTable(filteredPosts, 'Posts')}
-                            </AccordionContent>
-                        </AccordionItem>
-                        <AccordionItem value="comments">
-                            <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
-                                <div className="flex items-center gap-2">
-                                    <MessageSquareText className="h-5 w-5" />
-                                    Fetched Comments ({filteredComments.length})
-                                </div>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                                {renderDataTable(filteredComments, 'Comments')}
+                                {renderDataTable(filteredCombinedItems, combinedTableColumns)}
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>

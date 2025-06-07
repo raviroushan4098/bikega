@@ -149,6 +149,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
               score: post.score || 0,
               numComments: post.num_comments || 0,
               url: post.permalink ? `https://www.reddit.com${post.permalink}` : (post.url || '#'),
+              type: 'Post',
             });
             if(post.subreddit) uniqueSubreddits.add(post.subreddit_name_prefixed || `r/${post.subreddit}`);
           }
@@ -180,6 +181,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
               timestamp: new Date(comment.created_utc * 1000).toISOString(),
               score: comment.score || 0,
               url: comment.permalink ? `https://www.reddit.com${comment.permalink}` : (comment.link_url || '#'),
+              type: 'Comment',
             });
              if(comment.subreddit) uniqueSubreddits.add(comment.subreddit_name_prefixed || `r/${comment.subreddit}`);
           }
@@ -197,7 +199,7 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
       // Save to Firestore if appUserId is provided
       if (input.appUserId && input.username) {
         // Ensure the _placeholder field is removed or set to false upon successful analysis
-        const dataToSave = { ...result, _placeholder: false }; 
+        const dataToSave: ExternalRedditUserAnalysis = { ...result, _placeholder: false }; 
         const firestorePath = `ExternalRedditUser/${input.appUserId}/analyzedRedditProfiles/${input.username}`;
         const analysisDocRef = doc(db, firestorePath);
         try {

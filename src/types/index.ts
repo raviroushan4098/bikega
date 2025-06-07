@@ -118,6 +118,7 @@ export interface ExternalRedditUserDataItem {
   score: number;
   numComments?: number; // Only for posts
   url: string;
+  type: 'Post' | 'Comment'; // Added field
 }
 
 export interface ExternalRedditUserAnalysis {
@@ -134,3 +135,4 @@ export interface ExternalRedditUserAnalysis {
   _placeholder?: boolean; // True if this is just a placeholder, not a full analysis
   error?: string; // Optional error message if analysis failed
 }
+
