@@ -5,9 +5,10 @@ import React from 'react';
 import type { YouTubeMentionItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for the outer shell
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, Rss, SearchX } from 'lucide-react';
+import { Loader2, AlertTriangle, Rss, SearchX, SmilePlus, Frown, MinusCircle, AlertCircle, ExternalLink, ThumbsUp, MessageSquare, Eye } from 'lucide-react'; // Added icons for sentiment and stats
 import { cn } from '@/lib/utils';
 import SingleYouTubeMentionItemCard from './SingleYouTubeMentionItemCard'; // Import the new card component
+import { Badge } from '@/components/ui/badge'; // Added missing import
 
 interface YouTubeMentionsCardProps {
   mentions: YouTubeMentionItem[];
@@ -17,6 +18,51 @@ interface YouTubeMentionsCardProps {
   title: string;
   keywordsUsed?: string[];
 }
+
+const SentimentBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
+  let Icon = MinusCircle;
+  let text = "Neutral";
+  let textColorClass = "text-gray-500";
+  let bgColorClass = "bg-gray-100 dark:bg-gray-700";
+  let borderColorClass = "border-gray-300 dark:border-gray-600";
+
+
+  switch (sentiment) {
+    case 'positive':
+      Icon = SmilePlus;
+      text = "Positive";
+      textColorClass = "text-green-700 dark:text-green-400";
+      bgColorClass = "bg-green-100 dark:bg-green-700/30";
+      borderColorClass = "border-green-300 dark:border-green-600";
+      break;
+    case 'negative':
+      Icon = Frown;
+      text = "Negative";
+      textColorClass = "text-red-700 dark:text-red-400";
+      bgColorClass = "bg-red-100 dark:bg-red-700/30";
+      borderColorClass = "border-red-300 dark:border-red-600";
+      break;
+    case 'unknown':
+      Icon = AlertCircle;
+      text = "Unknown";
+       textColorClass = "text-yellow-700 dark:text-yellow-400";
+      bgColorClass = "bg-yellow-100 dark:bg-yellow-700/30";
+      borderColorClass = "border-yellow-300 dark:border-yellow-600";
+      break;
+    case 'neutral':
+    default:
+      // Defaults are already set
+      break;
+  }
+
+  return (
+    <Badge variant="outline" className={cn("text-xs px-1.5 py-0.5 flex items-center gap-1", textColorClass, bgColorClass, borderColorClass)}>
+      <Icon className={cn("h-3 w-3")} />
+      {text}
+    </Badge>
+  );
+};
+
 
 const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
   mentions,
