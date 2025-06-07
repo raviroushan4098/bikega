@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -116,6 +116,22 @@ export default function AnalyzeExternalRedditUserPage() {
           r.username === username ? { username, error: errorMessage, isLoading: false } : r
         ));
       }
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const csvContent = "USER_NAME\n";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    if (link.download !== undefined) { // Feature detection
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", "reddit_username_template.csv");
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
   };
 
@@ -229,25 +245,31 @@ export default function AnalyzeExternalRedditUserPage() {
             <Separator className="flex-grow" />
           </div>
           
-          <div className="space-y-1.5">
-            <label htmlFor="csv-upload" className="text-sm font-medium text-muted-foreground">
-                Upload a CSV file with usernames (one per line, or comma-separated)
-            </label>
-            <div className="flex items-center gap-3">
-                <Input
-                    id="csv-upload"
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handleFileUpload}
-                    disabled={isProcessingCsv}
-                    className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                />
-                {fileName && !isProcessingCsv && (
-                    <Badge variant="outline" className="text-xs whitespace-nowrap">
-                        <FileText className="mr-1.5 h-3 w-3"/>{fileName}
-                    </Badge>
-                )}
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+                <label htmlFor="csv-upload" className="text-sm font-medium text-muted-foreground">
+                    Upload a CSV file with usernames (one per line, or comma-separated)
+                </label>
+                <div className="flex items-center gap-3">
+                    <Input
+                        id="csv-upload"
+                        type="file"
+                        accept=".csv,text/csv"
+                        onChange={handleFileUpload}
+                        disabled={isProcessingCsv}
+                        className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    />
+                    {fileName && !isProcessingCsv && (
+                        <Badge variant="outline" className="text-xs whitespace-nowrap">
+                            <FileText className="mr-1.5 h-3 w-3"/>{fileName}
+                        </Badge>
+                    )}
+                </div>
             </div>
+             <Button onClick={handleDownloadTemplate} variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                Download Template CSV
+            </Button>
             {isProcessingCsv && (
                 <div className="mt-2 flex items-center text-sm text-primary">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
