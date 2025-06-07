@@ -2,13 +2,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { User } from '@/types'; // Removed RedditPost as it's not directly used for type here
+import type { User, YouTubeMentionItem } from '@/types';
 import UserAssignedKeywords from './UserAssignedKeywords';
 import UserAnalyticsOverview from './UserAnalyticsOverview';
 import UserRecentYouTubeActivity from './UserRecentYouTubeActivity';
 import UserTrendingMentions from './UserTrendingMentions';
-import { getStoredRedditFeedForUser } from '@/lib/reddit-api-service'; // Correct import
+import { getStoredRedditFeedForUser } from '@/lib/reddit-api-service';
 import { getFilteredData, mockTweets, mockMentions } from '@/lib/mock-data';
+import { searchYouTubeVideosByKeywords } from '@/lib/youtube-video-service'; // New import
 import { useToast } from '@/hooks/use-toast';
 
 interface UserDashboardPageContentProps {
@@ -25,13 +26,17 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
   
   const [isLoadingRedditCount, setIsLoadingRedditCount] = useState<boolean>(false);
 
+  // State for YouTube Mentions
+  const [youtubeMentions, setYoutubeMentions] = useState<YouTubeMentionItem[]>([]);
+  const [isLoadingYoutubeMentions, setIsLoadingYoutubeMentions] = useState<boolean>(false);
+  const [youtubeMentionsError, setYoutubeMentionsError] = useState<string | null>(null);
+
+
   const calculateCounts = useCallback(() => {
     if (!user) return;
-
     setYoutubeTrackedCount(user.assignedYoutubeUrls?.length ?? 0);
     setTwitterMentionsCount(getFilteredData(mockTweets, user).length);
     setGlobalMentionsCount(getFilteredData(mockMentions, user).length);
-
   }, [user]);
 
   useEffect(() => {
@@ -40,11 +45,10 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
 
   useEffect(() => {
     const fetchRedditDataCount = async () => {
-      if (user && user.id) { // Ensure user and user.id are available
+      if (user && user.id) {
         setIsLoadingRedditCount(true);
         setRedditMatchedCount(null); 
         try {
-          // Use getStoredRedditFeedForUser to get the items and then count them
           const storedItems = await getStoredRedditFeedForUser(user.id);
           setRedditMatchedCount(storedItems.length);
         } catch (e) {
@@ -58,14 +62,47 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
         setIsLoadingRedditCount(false);
       }
     };
-
     fetchRedditDataCount();
   }, [user, toast]);
+
+  useEffect(() => {
+    const fetchUserYouTubeMentions = async () => {
+      if (user && user.assignedKeywords && user.assignedKeywords.length > 0) {
+        setIsLoadingYoutubeMentions(true);
+        setYoutubeMentionsError(null);
+        try {
+          const result = await searchYouTubeVideosByKeywords(user.assignedKeywords);
+          if (result.error) {
+            setYoutubeMentionsError(result.error);
+            setYoutubeMentions([]);
+          } else {
+            setYoutubeMentions(result.mentions);
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Failed to fetch YouTube mentions for dashboard.";
+          setYoutubeMentionsError(msg);
+          setYoutubeMentions([]);
+        } finally {
+          setIsLoadingYoutubeMentions(false);
+        }
+      } else {
+        setYoutubeMentions([]);
+        setIsLoadingYoutubeMentions(false);
+        setYoutubeMentionsError(null);
+      }
+    };
+
+    if (user?.role === 'user') {
+      fetchUserYouTubeMentions();
+    }
+  }, [user]);
+
 
   const isLoadingOverview = isLoadingRedditCount || 
                             youtubeTrackedCount === null || 
                             twitterMentionsCount === null || 
-                            globalMentionsCount === null;
+                            globalMentionsCount === null ||
+                            isLoadingYoutubeMentions;
 
 
   return (
@@ -80,7 +117,12 @@ const UserDashboardPageContent: React.FC<UserDashboardPageContentProps> = ({ use
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <UserRecentYouTubeActivity />
+        <UserRecentYouTubeActivity 
+          mentions={youtubeMentions}
+          isLoading={isLoadingYoutubeMentions}
+          error={youtubeMentionsError}
+          keywordsUsed={user?.assignedKeywords}
+        />
         <UserTrendingMentions keywords={user?.assignedKeywords} />
       </div>
     </>
