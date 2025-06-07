@@ -6,3 +6,5 @@
 // uses a dynamically fetched API key, so it won't use the global Genkit `ai` object configuration.
 // For direct invocation, this import isn't strictly necessary unless you want Genkit's tooling awareness.
 // import './flows/advanced-sentiment-flow';
+
+import './flows/gather-global-mentions-flow'; // Added for Genkit tooling awareness

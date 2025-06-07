@@ -58,13 +58,16 @@ export interface Tweet {
 }
 
 export interface Mention {
-  id: string;
-  source: string; // e.g., "News Outlet X", "Blog Y"
+  id: string; // Should be unique across platforms, e.g., platform_originalId
+  platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Other';
+  source: string; // e.g., "Reddit r/webdev", "Hacker News", "TechCrunch"
   title: string;
   excerpt: string;
   url: string;
-  timestamp: string; // ISO date string
-  sentiment?: 'positive' | 'neutral' | 'negative';
+  timestamp: string; // ISO date string (publication time)
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; // Matching AdvancedSentimentOutput
+  matchedKeyword: string; // The keyword that triggered this mention
+  fetchedAt?: string; // ISO date string (when our system fetched it)
 }
 
 // For table column definitions
@@ -108,4 +111,3 @@ export interface RedditSearchParams {
   t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'; // time period for 'top' or 'relevance'
   after?: string; // fullname of an item to
 }
-
