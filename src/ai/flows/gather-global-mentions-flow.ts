@@ -334,6 +334,16 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
 
 // Exported wrapper function to be called from client/server components
 export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Promise<GatherGlobalMentionsOutput> {
-  return gatherGlobalMentionsFlowRunner(input);
+  try {
+    return await gatherGlobalMentionsFlowRunner(input);
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : "An unknown error occurred in the gatherGlobalMentions flow runner.";
+    console.error(`[gatherGlobalMentions EXPORTED WRAPPER] Unhandled exception from flow runner: ${errorMessage}`, e);
+    return {
+      totalMentionsFetched: 0,
+      newMentionsStored: 0,
+      errors: [`Critical flow error: ${errorMessage}`],
+    };
+  }
 }
 
