@@ -408,7 +408,7 @@ export async function addYouTubeMentionsBatch(userId: string, mentions: YouTubeM
     
     const mentionDataToSave = {
       ...mention, 
-      userId: userId, 
+      userId: userId, // Ensure the primary userId for the subcollection path is explicitly set on the item.
       fetchedAt: serverTimestamp(), 
     };
     
@@ -448,7 +448,7 @@ export async function searchYouTubeVideosByKeywords(
 
   if (!youtubeApiKeyEntry || !youtubeApiKeyEntry.keyValue) {
     const errorMsg = `'${YOUTUBE_API_KEY_SERVICE_NAME}' not found. Cannot search YouTube.`;
-    console.warn(`[youtube-video-service] ${errorMsg}`);
+    console.warn(`[youtube-video-service (search)] ${errorMsg}`);
     return { mentions: [], error: errorMsg };
   }
   const apiKey = youtubeApiKeyEntry.keyValue;
@@ -514,7 +514,8 @@ export async function searchYouTubeVideosByKeywords(
 
   for (let i = 0; i < relevantVideoIds.length; i += CHUNK_SIZE_STATS) {
     const chunkVideoIds = relevantVideoIds.slice(i, i + CHUNK_SIZE_STATS);
-    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${chunkVideoIds.join(',')}&key=${apiKey}`;
+    const statsFields = "items(id,snippet(title,description,channelTitle,publishedAt,thumbnails/default/url),statistics(viewCount,likeCount,commentCount))";
+    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${chunkVideoIds.join(',')}&key=${apiKey}&fields=${encodeURIComponent(statsFields)}`;
     
     try {
       const statsResponse = await fetch(statsUrl);
@@ -629,8 +630,10 @@ export async function getStoredYouTubeMentions(userId: string): Promise<YouTubeM
   
   try {
     const mentionsCollectionRef = collection(db, FIRESTORE_YOUTUBE_MENTIONS_COLLECTION, userId, FIRESTORE_MENTIONS_SUBCOLLECTION);
-    // Order by publishedAt descending to get newest first, then by fetchedAt as a secondary sort if needed
-    const q = query(mentionsCollectionRef, orderBy('publishedAt', 'desc'), orderBy('fetchedAt', 'desc'));
+    // DEBUG: Simplify query to only order by publishedAt.
+    // Original: const q = query(mentionsCollectionRef, orderBy('publishedAt', 'desc'), orderBy('fetchedAt', 'desc'));
+    const q = query(mentionsCollectionRef, orderBy('publishedAt', 'desc'));
+    console.log(`[youtube-video-service (getStoredYouTubeMentions)] Using simplified query: orderBy('publishedAt', 'desc') for user ${userId}.`);
     
     const querySnapshot = await getDocs(q);
     console.log(`[youtube-video-service (getStoredYouTubeMentions)] Firestore query for user '${userId}' returned ${querySnapshot.docs.length} documents.`);
@@ -658,10 +661,11 @@ export async function getStoredYouTubeMentions(userId: string): Promise<YouTubeM
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error(`[youtube-video-service (getStoredYouTubeMentions)] Error fetching for user ${userId}: ${errorMessage}`, error);
-    if (error instanceof Error && (error.message.includes('needs an index') || error.message.includes('requires an index'))) {
-        console.error(`[SERVICE] Firestore index missing for '${mentionsPath}', likely on 'publishedAt' (desc) and 'fetchedAt' (desc). The error message from Firestore should contain a link to create it.`);
+    if (error instanceof Error && (error.message.includes(' benötigt einen Index') || error.message.includes('needs an index') || error.message.includes('requires an index'))) {
+        console.error(`[SERVICE] Firestore index missing for '${mentionsPath}'. The simplified query requires an index on 'publishedAt' (descending). The original query required 'publishedAt' (desc) then 'fetchedAt' (desc). Check Firestore console for index creation link.`);
     }
     return [];
   }
 }
+
 
