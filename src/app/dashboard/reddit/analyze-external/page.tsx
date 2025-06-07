@@ -49,6 +49,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
 import StatCard from '@/components/dashboard/StatCard';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import ReactDOM from 'react-dom/client';
 
 
 interface AnalysisResultDisplay {
@@ -109,6 +114,78 @@ const formatStatNumber = (num: number): string => {
     return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
   }
   return num.toString();
+};
+
+// Helper component for Daily Activity Chart (to be rendered temporarily)
+const DailyActivityChart = ({ data, width = 600, height = 300 }: { data: { date: string; posts: number; comments: number }[], width?: number, height?: number }) => (
+  <div style={{ width, height, backgroundColor: 'white', padding: '10px' }}>
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="date" angle={-30} textAnchor="end" height={50} tick={{ fontSize: 10 }} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+        <RechartsTooltip contentStyle={{ fontSize: '12px' }} />
+        <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+        <Line type="monotone" dataKey="posts" stroke="#8884d8" strokeWidth={2} name="Posts" dot={{ r: 2 }} activeDot={{ r: 4 }} />
+        <Line type="monotone" dataKey="comments" stroke="#82ca9d" strokeWidth={2} name="Comments" dot={{ r: 2 }} activeDot={{ r: 4 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+);
+
+// Helper component for Subreddit Activity Chart
+const SubredditActivityChart = ({ data, width = 600, height = 350 }: { data: { subreddit: string; posts: number; comments: number }[], width?: number, height?: number }) => (
+  <div style={{ width, height, backgroundColor: 'white', padding: '10px' }}>
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 5, right: 30, left: 0, bottom: 70 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="subreddit" angle={-45} textAnchor="end" interval={0} tick={{ fontSize: 10 }} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+        <RechartsTooltip contentStyle={{ fontSize: '12px' }} />
+        <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+        <Bar dataKey="posts" fill="#8884d8" name="Posts" />
+        <Bar dataKey="comments" fill="#82ca9d" name="Comments" />
+      </BarChart>
+    </ResponsiveContainer>
+  </div>
+);
+
+// Function to render chart to an image data URL
+const renderChartToImage = async (ChartComponent: React.FC<any>, chartData: any, chartProps?: {width?:number, height?:number}): Promise<string | null> => {
+  const chartContainer = document.createElement('div');
+  chartContainer.style.position = 'fixed';
+  chartContainer.style.left = '-9999px'; // Position off-screen
+  chartContainer.style.top = '-9999px';
+  chartContainer.style.width = `${chartProps?.width || 600}px`; // Ensure container has explicit size
+  chartContainer.style.height = `${chartProps?.height || 300}px`;
+  document.body.appendChild(chartContainer);
+
+  const root = ReactDOM.createRoot(chartContainer);
+  
+  return new Promise((resolve) => {
+    root.render(React.createElement(ChartComponent, { data: chartData, ...chartProps }));
+    
+    setTimeout(async () => {
+      try {
+        const canvas = await html2canvas(chartContainer.firstChild as HTMLElement, {
+          scale: 1.5, 
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+        });
+        const imgData = canvas.toDataURL('image/png');
+        resolve(imgData);
+      } catch (e) {
+        console.error("Error generating chart image with html2canvas:", e);
+        resolve(null);
+      } finally {
+        root.unmount();
+        if (document.body.contains(chartContainer)) {
+            document.body.removeChild(chartContainer);
+        }
+      }
+    }, 1000); // Increased delay for potentially complex charts
+  });
 };
 
 
@@ -453,16 +530,204 @@ export default function AnalyzeExternalRedditUserPage() {
     return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies };
   }, [currentDisplayResults]);
 
-  const handleGeneratePdfReport = () => {
-    console.log("Generate PDF Report clicked. Data:", currentDisplayResults, "Start Date:", startDate, "End Date:", endDate);
-    toast({ title: "PDF Report", description: "PDF report generation initiated (placeholder)." });
-    // Actual PDF generation logic will go here
+  const handleGeneratePdfReport = async () => {
+    if (!canGenerateReport) {
+      toast({ title: "No Data", description: "No analyzed profiles with data available to generate a report.", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Generating PDF Report...", description: "This may take a few moments. Please wait." });
+
+    const doc = new jsPDF({
+      orientation: 'p',
+      unit: 'pt',
+      format: 'a4'
+    });
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+    const margin = 40;
+    let yPos = margin;
+
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(41, 171, 226); 
+    doc.text("Insight Stream", margin, yPos);
+    yPos += 30;
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(40); 
+    doc.text("External Reddit User Analysis Report", margin, yPos);
+    yPos += 20;
+
+    if (startDate || endDate) {
+      const dateRangeStr = `Date Range: ${startDate ? format(startDate, 'MMM dd, yyyy') : 'Any'} - ${endDate ? format(endDate, 'MMM dd, yyyy') : 'Any'}`;
+      doc.setFontSize(10);
+      doc.text(dateRangeStr, margin, yPos);
+      yPos += 15;
+    }
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${format(new Date(), 'PPP p')}`, margin, yPos);
+    yPos += 25;
+
+    for (let i = 0; i < currentDisplayResults.length; i++) {
+      const result = currentDisplayResults[i];
+      if (!result.data || result.data._placeholder || result.error) continue;
+
+      if (i > 0) { 
+        doc.addPage();
+        yPos = margin;
+      }
+
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Analysis for: u/${result.username}`, margin, yPos);
+      yPos += 20;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      const summaryText = [
+        `Account Created: ${result.data.accountCreated ? format(parseISO(result.data.accountCreated), 'PPP') : 'N/A'}`,
+        `Post Karma: ${result.data.totalPostKarma.toLocaleString()}`,
+        `Comment Karma: ${result.data.totalCommentKarma.toLocaleString()}`,
+        `Subreddits (Recent): ${result.data.subredditsPostedIn?.slice(0, 5).join(', ') || 'None'}${result.data.subredditsPostedIn && result.data.subredditsPostedIn.length > 5 ? '...' : ''}`,
+      ];
+      summaryText.forEach(line => {
+        if (yPos + 15 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+        doc.text(line, margin, yPos);
+        yPos += 15;
+      });
+      yPos += 10;
+
+      const userCombinedItems = [
+        ...(result.data.fetchedPostsDetails || []),
+        ...(result.data.fetchedCommentsDetails || []),
+      ].sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+
+      const userFilteredItems = userCombinedItems.filter(item => {
+        if (!startDate && !endDate) return true;
+        const itemDate = parseISO(item.timestamp);
+        let inRange = true;
+        if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
+        if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
+        return inRange;
+      });
+
+      if (userFilteredItems.length > 0) {
+        if (yPos + 30 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+        doc.setFontSize(12); doc.setFont("helvetica", "bold");
+        doc.text("Daily Activity Trend", margin, yPos); yPos += 15;
+
+        const dailyDataMap = new Map<string, { date: string; posts: number; comments: number }>();
+        userFilteredItems.forEach(item => {
+          const itemDateStr = format(parseISO(item.timestamp), 'yyyy-MM-dd');
+          if (!dailyDataMap.has(itemDateStr)) { dailyDataMap.set(itemDateStr, { date: itemDateStr, posts: 0, comments: 0 }); }
+          const dayEntry = dailyDataMap.get(itemDateStr)!;
+          if (item.type === 'Post') dayEntry.posts++; else if (item.type === 'Comment') dayEntry.comments++;
+        });
+        const dailyChartData = Array.from(dailyDataMap.values()).sort((a,b) => a.date.localeCompare(b.date));
+        
+        if (dailyChartData.length > 0) {
+          const chartImage = await renderChartToImage(DailyActivityChart, dailyChartData, { width: 500, height: 250 });
+          if (chartImage) {
+            const chartHeightInPdf = (250 * 0.75);
+            if (yPos + chartHeightInPdf > pageHeight - margin) { doc.addPage(); yPos = margin; }
+            doc.addImage(chartImage, 'PNG', margin, yPos, 500 * 0.75, chartHeightInPdf); 
+            yPos += chartHeightInPdf + 20;
+          } else {
+            if (yPos + 15 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+            doc.setFontSize(9); doc.text("Daily activity chart generation failed.", margin, yPos); yPos+=15;
+          }
+        } else {
+           if (yPos + 15 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+           doc.setFontSize(9); doc.text("No daily activity data for chart.", margin, yPos); yPos+=15;
+        }
+
+        if (yPos + 30 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+        doc.setFontSize(12); doc.setFont("helvetica", "bold");
+        doc.text("Activity by Subreddit", margin, yPos); yPos += 15;
+
+        const subredditDataMap = new Map<string, { subreddit: string; posts: number; comments: number }>();
+        userFilteredItems.forEach(item => {
+          const subreddit = item.subreddit || 'N/A';
+          if (!subredditDataMap.has(subreddit)) { subredditDataMap.set(subreddit, { subreddit, posts: 0, comments: 0 });}
+          const subEntry = subredditDataMap.get(subreddit)!;
+          if (item.type === 'Post') subEntry.posts++; else if (item.type === 'Comment') subEntry.comments++;
+        });
+        const subredditChartData = Array.from(subredditDataMap.values()).filter(d => d.posts > 0 || d.comments > 0).sort((a,b) => (b.posts + b.comments) - (a.posts + a.comments)).slice(0,10);
+         
+        if (subredditChartData.length > 0) {
+          const chartImage = await renderChartToImage(SubredditActivityChart, subredditChartData, {width: 500, height: 300});
+          if (chartImage) {
+            const chartHeightInPdf = (300 * 0.75);
+            if (yPos + chartHeightInPdf > pageHeight - margin) { doc.addPage(); yPos = margin; }
+            doc.addImage(chartImage, 'PNG', margin, yPos, 500 * 0.75, chartHeightInPdf);
+            yPos += chartHeightInPdf + 20;
+          } else {
+            if (yPos + 15 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+            doc.setFontSize(9); doc.text("Subreddit activity chart generation failed.", margin, yPos); yPos+=15;
+          }
+        } else {
+           if (yPos + 15 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+           doc.setFontSize(9); doc.text("No subreddit activity data for chart.", margin, yPos); yPos+=15;
+        }
+
+        if (yPos + 40 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+        doc.setFontSize(12); doc.setFont("helvetica", "bold");
+        doc.text("Detailed Activity Log", margin, yPos);
+        yPos += 5; 
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Type', 'Date', 'Subreddit', 'Title/Content', 'Score', 'Replies']],
+          body: userFilteredItems.map(item => [
+            item.type,
+            format(parseISO(item.timestamp), 'MM/dd/yy HH:mm'),
+            item.subreddit,
+            item.titleOrContent.length > 70 ? item.titleOrContent.substring(0,67) + '...' : item.titleOrContent,
+            item.score,
+            item.type === 'Post' ? item.numComments ?? 0 : '-',
+          ]),
+          theme: 'grid',
+          styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+          headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+          columnStyles: { 
+            0: {cellWidth: 35}, // Type
+            1: {cellWidth: 55}, // Date
+            2: {cellWidth: 65}, // Subreddit
+            3: {cellWidth: 'auto'}, // Title/Content
+            4: {cellWidth: 30, halign: 'right'}, // Score
+            5: {cellWidth: 35, halign: 'right'}  // Replies
+          },
+          didDrawPage: (data) => { yPos = data.cursor?.y ? data.cursor.y + 10 : margin; } 
+        });
+         if ((doc as any).lastAutoTable.finalY) {
+            yPos = (doc as any).lastAutoTable.finalY + 20;
+        }
+
+      } else {
+        if (yPos + 15 > pageHeight - margin) { doc.addPage(); yPos = margin; }
+        doc.setFontSize(10);
+        doc.text("No detailed activity found for the selected filters or user.", margin, yPos);
+        yPos += 15;
+      }
+       yPos += 20; 
+    }
+
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let j = 1; j <= pageCount; j++) {
+      doc.setPage(j);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text( `Page ${j} of ${pageCount}`, pageWidth - margin - 35, pageHeight - 20);
+    }
+
+    doc.save(`reddit_user_analysis_report_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
+    toast({ title: "PDF Report Generated", description: "Download should start shortly." });
   };
 
   const handleGenerateExcelReport = () => {
     console.log("Generate Excel Report clicked. Data:", currentDisplayResults, "Start Date:", startDate, "End Date:", endDate);
-    toast({ title: "Excel Report", description: "Excel report generation initiated (placeholder)." });
-    // Actual Excel generation logic will go here
+    toast({ title: "Excel Report (Placeholder)", description: "Excel report generation coming soon!" });
   };
 
   const canGenerateReport = useMemo(() => {
@@ -1039,3 +1304,4 @@ export default function AnalyzeExternalRedditUserPage() {
 
 
     
+
