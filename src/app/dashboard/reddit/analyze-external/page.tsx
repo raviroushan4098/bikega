@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquare, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap, ListChecks, Users, MessagesSquare, TrendingUp, MessageCircleReply } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquare, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap, ListChecks, Users, MessagesSquare, TrendingUp, MessageCircleReply, Sheet } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +26,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -447,6 +453,23 @@ export default function AnalyzeExternalRedditUserPage() {
     return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies };
   }, [currentDisplayResults]);
 
+  const handleGeneratePdfReport = () => {
+    console.log("Generate PDF Report clicked. Data:", currentDisplayResults, "Start Date:", startDate, "End Date:", endDate);
+    toast({ title: "PDF Report", description: "PDF report generation initiated (placeholder)." });
+    // Actual PDF generation logic will go here
+  };
+
+  const handleGenerateExcelReport = () => {
+    console.log("Generate Excel Report clicked. Data:", currentDisplayResults, "Start Date:", startDate, "End Date:", endDate);
+    toast({ title: "Excel Report", description: "Excel report generation initiated (placeholder)." });
+    // Actual Excel generation logic will go here
+  };
+
+  const canGenerateReport = useMemo(() => {
+    return currentDisplayResults.filter(r => r.data && !r.data._placeholder && !r.data.error && !r.error).length > 0;
+  }, [currentDisplayResults]);
+
+
   if (authLoading) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -681,6 +704,24 @@ export default function AnalyzeExternalRedditUserPage() {
                     <ListTree className="mr-2 h-4 w-4" />
                     User list
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={!canGenerateReport || isLoadingStoredData || isUpdatingAll || isProcessingCsv || analysisResults.some(r => r.isLoading || r.isRefreshing)}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Get Report
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleGeneratePdfReport}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export as PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleGenerateExcelReport}>
+                      <Sheet className="mr-2 h-4 w-4" />
+                      Export as Excel
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
             </div>
             {(isProcessingCsv || isUpdatingAll) && (
                 <div className="mt-2 flex items-center text-sm text-primary">
