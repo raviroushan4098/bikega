@@ -29,7 +29,7 @@ export default function DashboardHeader() {
   // For now, the header is simplified.
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-md md:px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 pl-20 pr-4 backdrop-blur-md md:pl-24 md:pr-6">
       {/* 
         Mobile specific trigger for a drawer/sheet could be added here if hover nav isn't for mobile.
         Example:
