@@ -57,10 +57,10 @@ export function GenericDataTable<T extends { id: string, thumbnailUrl?: string, 
   }
 
   return (
-    <div className="rounded-md border overflow-hidden">
+    <div className="rounded-md border overflow-hidden overflow-y-auto max-h-[calc(100vh-29rem)]"> {/* Adjusted for screen fit */}
       <Table>
-        {caption && <caption className="mt-4 text-sm text-muted-foreground">{caption}</caption>}
-        <TableHeader>
+        {caption && <caption className="mt-4 text-sm text-muted-foreground sticky bottom-0 bg-background py-1">{caption}</caption>}
+        <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow className="bg-muted/50">
             {columns.map((column) => (
               <TableHead key={String(column.key)} className={cn("font-semibold", column.className)}>
@@ -118,3 +118,4 @@ export const renderImageCell = (item: { thumbnailUrl?: string, dataAiHint?: stri
   }
   return <div style={{ width: size.width, height: size.height }} className={cn("bg-muted", roundedClass)} />;
 };
+
