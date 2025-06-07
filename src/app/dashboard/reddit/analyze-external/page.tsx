@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass } from 'lucide-react';
+import { Loader2, UserSearch, Upload, FileText, BarChart3, MessageSquareText, ChevronsUpDown, Download, RefreshCw, Database, ListTree, Info, AlertTriangle, Clock, UserX as UserXIcon, Trash2, CalendarIcon, FilterX, SearchCheck, InfoIcon, Hourglass, DatabaseZap } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { analyzeExternalRedditUser, type ExternalRedditUserAnalysis, type ExternalRedditUserDataItem } from '@/ai/flows/analyze-external-reddit-user-flow';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -176,7 +176,7 @@ export default function AnalyzeExternalRedditUserPage() {
                     isLoading: isFirstTimeAnalysis && !isRefreshOp, 
                     isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
                     error: undefined, 
-                    data: r.data ? { ...r.data, error: undefined, _placeholder: false } : undefined, // Ensure _placeholder is false on new analysis
+                    data: r.data ? { ...r.data, error: undefined, _placeholder: false } : undefined,
                 };
             }
             return r;
@@ -192,7 +192,7 @@ export default function AnalyzeExternalRedditUserPage() {
                 toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 7000 });
             }
             setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data } : r 
+                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: resultFromFlow.error} : undefined } : r 
             ));
         } else {
             setAnalysisResults(prev => prev.map(r =>
@@ -209,7 +209,7 @@ export default function AnalyzeExternalRedditUserPage() {
             toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 7000 });
         }
         setAnalysisResults(prev => prev.map(r =>
-            r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data } : r 
+            r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: errorMessage } : undefined } : r 
         ));
     }
   };
@@ -235,22 +235,20 @@ export default function AnalyzeExternalRedditUserPage() {
           return;
       }
       
-      // Add to local state immediately as a loading placeholder
       setAnalysisResults(prev => [{ 
           username: trimmedUsername, 
-          isLoading: true, // Set to true because we will analyze immediately
+          isLoading: true, 
           isRefreshing: false, 
           error: undefined, 
-          data: { // Minimal placeholder data matching ExternalRedditUserAnalysis
+          data: { 
               username: trimmedUsername, _placeholder: true, lastRefreshedAt: null,
               accountCreated: null, totalPostKarma: 0, totalCommentKarma: 0, subredditsPostedIn: [],
               totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
               fetchedPostsDetails: [], fetchedCommentsDetails: [],
           }
-      }, ...prev]);
+      }, ...prev.sort((a, b) => a.username.localeCompare(b.username))]); // Keep sorted
       await processSingleUsername(trimmedUsername, false, currentUser.id);
     } else {
-      // User already in display list, just refresh their data
       await processSingleUsername(trimmedUsername, true, currentUser.id);
     }
     setSingleUsername(''); 
@@ -317,11 +315,11 @@ export default function AnalyzeExternalRedditUserPage() {
       
       toast({ 
         title: "CSV Processed", 
-        description: `${newPlaceholdersCreated} new usernames registered. ${alreadyExistedOrRegisteredCount} already existed or were just registered. Click "Update All Profiles" or individual "Analyze" buttons to fetch data.`,
-        duration: 7000 
+        description: `${newPlaceholdersCreated} new usernames registered as placeholders. ${alreadyExistedOrRegisteredCount} already existed. Click "Update All Profiles" or individual "Analyze" buttons to fetch data.`,
+        duration: 8000 
       });
       
-      await fetchAndSetStoredAnalyses(); // Refresh the list to show new placeholders
+      await fetchAndSetStoredAnalyses(); 
 
       setIsProcessingCsv(false);
       event.target.value = ''; 
@@ -352,7 +350,6 @@ export default function AnalyzeExternalRedditUserPage() {
     const usernamesToProcess = analysisResults.map(r => r.username);
 
     for (const username of usernamesToProcess) {
-        // Pass 'true' for isRefreshOp to ensure existing data is treated as a refresh
         await processSingleUsername(username, true, currentUser.id);
     }
 
@@ -422,28 +419,11 @@ export default function AnalyzeExternalRedditUserPage() {
   const handleResetFilters = () => {
     setStartDate(undefined);
     setEndDate(undefined);
-    toast({ title: "Filters Reset", description: "Showing all profiles.", duration: 3000 });
+    toast({ title: "Date Filters Reset", description: "Displaying all posts/comments within profiles.", duration: 3000 });
   };
 
-  const currentDisplayResults = useMemo(() => {
-    if (!startDate && !endDate) {
-      return analysisResults;
-    }
-    return analysisResults.filter(result => {
-      if (!result.data?.lastRefreshedAt) {
-        return false; // Exclude placeholders or items never successfully fetched when filtering
-      }
-      const itemDate = parseISO(result.data.lastRefreshedAt);
-      let inRange = true;
-      if (startDate) {
-        inRange = inRange && (itemDate >= startOfDay(startDate));
-      }
-      if (endDate) {
-        inRange = inRange && (itemDate <= endOfDay(endDate));
-      }
-      return inRange;
-    });
-  }, [analysisResults, startDate, endDate]);
+  // currentDisplayResults will always be analysisResults. Filtering happens *inside* the cards.
+  const currentDisplayResults = analysisResults;
 
 
   if (authLoading) {
@@ -470,7 +450,13 @@ export default function AnalyzeExternalRedditUserPage() {
   );
 
   const renderDataTable = (items: ExternalRedditUserDataItem[], type: 'Posts' | 'Comments') => {
-    if (!items || items.length === 0) return <p className="text-sm text-muted-foreground py-2 px-1">No recent {type.toLowerCase()} found in this analysis run.</p>;
+    if (!items || items.length === 0) {
+      let message = `No recent ${type.toLowerCase()} found in this analysis run.`;
+      if (startDate || endDate) {
+        message = `No ${type.toLowerCase()} match the selected date range for this user.`;
+      }
+      return <p className="text-sm text-muted-foreground py-3 px-1">{message}</p>;
+    }
     return (
       <div className="overflow-x-auto rounded-md border mt-2">
         <Table>
@@ -669,10 +655,10 @@ export default function AnalyzeExternalRedditUserPage() {
         <CardHeader>
           <CardTitle className="text-lg font-headline flex items-center">
             <SearchCheck className="mr-2 h-5 w-5 text-primary" />
-            Filter Profiles by Last Update Date
+            Filter Posts/Comments by Date
           </CardTitle>
           <CardDescription>
-            Select a date range to filter profiles by their 'Last Refreshed At' date.
+            Select a date range to filter the posts and comments shown within each profile card below. This does not hide profile cards.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -747,7 +733,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
       {isLoadingStoredData && analysisResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-            <Database className="h-10 w-10 text-primary mb-3 animate-pulse" />
+            <DatabaseZap className="h-10 w-10 text-primary mb-3 animate-pulse" />
             <p>Loading stored profiles from database...</p>
         </div>
       )}
@@ -755,16 +741,11 @@ export default function AnalyzeExternalRedditUserPage() {
       {!isLoadingStoredData && currentDisplayResults.length === 0 && !isProcessingCsv && (
          <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground bg-card rounded-lg shadow-lg p-8 border">
             <UserXIcon className="h-16 w-16 text-primary mb-4" /> 
-            <p className="text-xl font-semibold mb-2">
-              { (startDate || endDate) ? "No Profiles Match Date Filter" : "No Profiles Registered"}
-            </p>
+            <p className="text-xl font-semibold mb-2">No Profiles Registered</p>
             <p className="text-sm">
-              { (startDate || endDate) 
-                ? "No saved profiles match the selected date range. Try adjusting the dates or resetting the filters." 
-                : "Add a Reddit username above or upload a CSV file to begin registering profiles for analysis."
-              }
+              Add a Reddit username above or upload a CSV file to begin registering profiles for analysis.
             </p>
-            { !(startDate || endDate) && <p className="text-xs mt-3">Your registered profiles will appear here after analysis.</p>}
+            <p className="text-xs mt-3">Your registered profiles will appear here after analysis.</p>
         </div>
       )}
 
@@ -796,9 +777,29 @@ export default function AnalyzeExternalRedditUserPage() {
               statusIconColor = "text-amber-500";
             } else if (result.data && !result.data._placeholder && result.data.lastRefreshedAt) {
               cardBorderClass = "border-t-4 border-t-green-500";
-              StatusIcon = Clock; // Or CheckCircle for success
+              StatusIcon = Clock; 
               statusIconColor = "text-green-500";
             }
+            
+            // Filter posts and comments for this specific card based on startDate and endDate
+            const filteredPosts = result.data?.fetchedPostsDetails?.filter(post => {
+                if (!startDate && !endDate) return true;
+                const itemDate = parseISO(post.timestamp);
+                let inRange = true;
+                if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
+                if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
+                return inRange;
+            }) || [];
+
+            const filteredComments = result.data?.fetchedCommentsDetails?.filter(comment => {
+                if (!startDate && !endDate) return true;
+                const itemDate = parseISO(comment.timestamp);
+                let inRange = true;
+                if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
+                if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
+                return inRange;
+            }) || [];
+
 
             return (
             <Card key={`${result.username}-${index}`} className={cn("shadow-md transition-all duration-300 hover:shadow-xl", cardBorderClass)}>
@@ -856,8 +857,8 @@ export default function AnalyzeExternalRedditUserPage() {
                         {renderDataItem("Total Post Karma", result.data.totalPostKarma?.toLocaleString())}
                         {renderDataItem("Total Comment Karma", result.data.totalCommentKarma?.toLocaleString())}
                         {renderDataItem("Subreddits Active In (recent)", result.data.subredditsPostedIn?.length > 0 ? result.data.subredditsPostedIn.slice(0,3).join(', ') + (result.data.subredditsPostedIn.length > 3 ? '...' : '') : 'None found')}
-                        {renderDataItem("Recent Posts Fetched", result.data.totalPostsFetchedThisRun)}
-                        {renderDataItem("Recent Comments Fetched", result.data.totalCommentsFetchedThisRun)}
+                        {renderDataItem("Recent Posts Fetched Overall", result.data.totalPostsFetchedThisRun)}
+                        {renderDataItem("Recent Comments Fetched Overall", result.data.totalCommentsFetchedThisRun)}
                       </CardContent>
                     </Card>
                     
@@ -866,22 +867,22 @@ export default function AnalyzeExternalRedditUserPage() {
                             <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
                                 <div className="flex items-center gap-2">
                                     <MessageSquareText className="h-5 w-5" />
-                                    Fetched Posts ({result.data.fetchedPostsDetails?.length || 0})
+                                    Fetched Posts ({filteredPosts.length})
                                 </div>
                             </AccordionTrigger>
                             <AccordionContent>
-                                {renderDataTable(result.data.fetchedPostsDetails || [], 'Posts')}
+                                {renderDataTable(filteredPosts, 'Posts')}
                             </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="comments">
                             <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
                                 <div className="flex items-center gap-2">
                                     <MessageSquareText className="h-5 w-5" />
-                                    Fetched Comments ({result.data.fetchedCommentsDetails?.length || 0})
+                                    Fetched Comments ({filteredComments.length})
                                 </div>
                             </AccordionTrigger>
                             <AccordionContent>
-                                {renderDataTable(result.data.fetchedCommentsDetails || [], 'Comments')}
+                                {renderDataTable(filteredComments, 'Comments')}
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
