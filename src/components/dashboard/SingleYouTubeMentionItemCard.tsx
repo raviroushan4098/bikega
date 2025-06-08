@@ -26,33 +26,33 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
   let IconComponent: React.ElementType = HelpCircle;
   let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
   let text = "Unknown";
-  let iconColor = "text-muted-foreground";
+  let iconColor = "text-muted-foreground"; // Default icon color
 
   switch (sentiment) {
     case 'positive':
       IconComponent = SmilePlus;
-      badgeVariant = "default"; // Green in default theme, or primary
+      badgeVariant = "default"; 
       text = "Positive";
-      iconColor = "text-green-500"; // Explicit color for icon
+      iconColor = "text-green-500";
       break;
     case 'neutral':
       IconComponent = Smile;
       badgeVariant = "secondary";
       text = "Neutral";
-      iconColor = "text-yellow-500"; // Explicit color for icon
+      iconColor = "text-yellow-500"; 
       break;
     case 'negative':
       IconComponent = Frown;
       badgeVariant = "destructive";
       text = "Negative";
-      iconColor = "text-red-500"; // Explicit color for icon
+      iconColor = "text-red-500";
       break;
     case 'unknown':
     default:
       IconComponent = HelpCircle;
       badgeVariant = "outline";
       text = "Unknown";
-      iconColor = "text-gray-400"; // Standard muted color for unknown
+      iconColor = "text-gray-400";
       break;
   }
 
@@ -63,6 +63,7 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
     </Badge>
   );
 };
+
 
 const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> = ({ mention }) => {
   return (
@@ -86,8 +87,8 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           <Image
             src={mention.thumbnailUrl || "https://placehold.co/480x270.png"}
             alt={`Thumbnail for ${mention.title}`}
-            fill // Changed from layout="fill"
-            objectFit="cover"
+            fill 
+            style={{ objectFit: 'cover' }} // Replaced objectFit with style prop
             className="rounded-md transition-transform duration-300 group-hover:scale-105"
             data-ai-hint={mention.dataAiHint || "video content"}
           />
@@ -107,7 +108,8 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </CardContent>
 
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        <div className="w-full flex justify-between items-center px-3 py-2">
+        {/* Container for stats and sentiment, with padding to avoid overlap */}
+        <div className="w-full flex justify-between items-center pl-3 pr-24 py-2"> {/* Added pr-24 */}
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
@@ -133,10 +135,11 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           <div className="w-full bg-muted/40 px-3 py-1.5 border-t border-border/30">
             <div className="flex items-center gap-1 flex-wrap">
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                {mention.matchedKeywords[0]}:
+                {mention.matchedKeywords[0]}: {/* Show primary keyword */}
               </Badge>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-normal text-muted-foreground truncate flex-1 min-w-0">
-                {mention.matchedKeywords.slice(0, 3).join(', ')}
+                {/* Show other keywords, truncated if too many */}
+                {mention.matchedKeywords.slice(0, 3).join(', ')} 
                 {mention.matchedKeywords.length > 3 ? ` +${mention.matchedKeywords.length - 3} more` : ''}
               </Badge>
             </div>
