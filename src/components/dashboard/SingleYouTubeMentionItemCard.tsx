@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Smile, Frown, HelpCircle } from 'lucide-react';
+import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Smile, Frown, HelpCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SingleYouTubeMentionItemCardProps {
@@ -24,14 +24,14 @@ const StatDisplay: React.FC<{ icon: React.ElementType; value?: number; label: st
 
 const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
   let IconComponent: React.ElementType = HelpCircle;
-  let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
+  let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "secondary"; // Default to secondary for white/light bg
   let text = "Unknown";
-  let iconColor = "text-muted-foreground"; 
+  let iconColor = "text-gray-500"; 
 
   switch (sentiment) {
     case 'positive':
       IconComponent = SmilePlus;
-      badgeVariant = "secondary"; 
+      badgeVariant = "secondary"; // Keep background white/light gray
       text = "Positive";
       iconColor = "text-green-500";
       break;
@@ -39,26 +39,26 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       IconComponent = Smile;
       badgeVariant = "secondary";
       text = "Neutral";
-      iconColor = "text-yellow-500"; 
+      iconColor = "text-yellow-600"; // Adjusted for better visibility on light bg
       break;
     case 'negative':
       IconComponent = Frown;
       badgeVariant = "destructive";
       text = "Negative";
-      iconColor = "text-red-500"; 
+      iconColor = "text-destructive-foreground"; // Icon color for destructive badge
       break;
     case 'unknown':
     default:
       IconComponent = HelpCircle;
-      badgeVariant = "outline";
+      badgeVariant = "outline"; // Use outline for unknown to make it distinct
       text = "Unknown";
-      iconColor = "text-gray-400";
+      iconColor = "text-muted-foreground";
       break;
   }
 
   return (
     <Badge variant={badgeVariant} className="flex items-center gap-1 text-xs px-2 py-1">
-      <IconComponent className={cn("h-3.5 w-3.5", iconColor, sentiment === 'negative' ? 'text-destructive-foreground' : '')} />
+      <IconComponent className={cn("h-3.5 w-3.5", iconColor)} />
       <span>{text}</span>
     </Badge>
   );
@@ -108,7 +108,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </CardContent>
 
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        <div className="w-full flex justify-between items-center pl-3 pr-24 py-2"> 
+        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> {/* Reduced pr-24 to pr-20 */}
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
