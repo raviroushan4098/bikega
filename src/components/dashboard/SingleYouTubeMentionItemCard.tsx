@@ -62,7 +62,10 @@ const SentimentDisplay: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }
 
 const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> = ({ mention }) => {
   return (
-    <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col overflow-hidden h-full bg-card border border-border">
+    <Card className={cn(
+      "shadow-md flex flex-col overflow-hidden h-full bg-card border border-border",
+      "transition-all duration-300 ease-in-out hover:shadow-xl hover:scale-[1.02]" // Added hover effects
+    )}>
       <CardHeader className="p-3 pb-2 space-y-1">
         <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block group">
           <CardTitle className="text-sm font-semibold text-card-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors" title={mention.title}>
