@@ -24,10 +24,10 @@ const StatDisplay: React.FC<{ icon: React.ElementType; value?: number; label: st
 
 const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
   let IconComponent: React.ElementType = HelpCircle;
-  let badgeVariant: "secondary" | "destructive" | "outline" = "secondary";
+  let badgeVariant: "secondary" | "outline" = "secondary"; // "destructive" removed from general variants
   let text = "Unknown";
   let iconColor = "text-muted-foreground";
-  let textColor = "text-foreground"; // Default text color
+  let textColor = "text-muted-foreground"; // Default text color
 
   switch (sentiment) {
     case 'positive':
@@ -41,12 +41,12 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       IconComponent = Smile;
       badgeVariant = "secondary";
       text = "Neutral";
-      iconColor = "text-yellow-600"; // Or a gray like text-muted-foreground
-      textColor = "text-yellow-700"; // Or a gray like text-muted-foreground
+      iconColor = "text-yellow-600"; 
+      textColor = "text-yellow-700"; 
       break;
     case 'negative':
       IconComponent = Frown;
-      badgeVariant = "secondary"; // Changed from "destructive"
+      badgeVariant = "secondary"; // Changed to secondary
       text = "Negative";
       iconColor = "text-red-500"; // Explicitly red for icon
       textColor = "text-red-500"; // Explicitly red for text
@@ -82,9 +82,6 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
             {mention.title}
           </CardTitle>
         </Link>
-        <p className="text-xs text-muted-foreground truncate" title={mention.channelTitle}>
-          By: <span className="font-medium text-card-foreground/90">{mention.channelTitle}</span>
-        </p>
       </CardHeader>
 
       <div className="p-3 pt-0 relative group aspect-video">
@@ -104,6 +101,9 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </div>
       
       <CardContent className="p-3 pt-2 flex-grow space-y-1.5">
+         <p className="text-xs text-muted-foreground truncate" title={mention.channelTitle}>
+          By: <span className="font-medium text-card-foreground/90">{mention.channelTitle}</span>
+        </p>
         <p className="text-xs text-muted-foreground">
           Published: {formatDistanceToNow(new Date(mention.publishedAt), { addSuffix: true })}
         </p>
@@ -113,13 +113,15 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </CardContent>
 
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> 
+        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> {/* pr-20 to avoid YouTube logo corner */}
+          {/* Stats Group */}
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
           </div>
-          
-          <div className="flex items-center">
+
+          {/* Sentiment Badge - pushed right by justify-between, with added left margin */}
+          <div className="flex items-center ml-4"> {/* Added ml-4 here */}
             <SentimentDisplayBadge sentiment={mention.sentiment} />
           </div>
         </div>
@@ -155,4 +157,3 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
-
