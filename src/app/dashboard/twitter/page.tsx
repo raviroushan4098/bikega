@@ -1,3 +1,4 @@
+
 "use client";
 
 import { DataTableShell } from '@/components/analytics/data-table-shell';
@@ -6,7 +7,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { getFilteredData, mockTweets } from '@/lib/mock-data';
 import type { ColumnConfig, Tweet } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
-import { MessageSquare, Repeat, Heart } from 'lucide-react';
+import { MessageSquare, Repeat, Heart, InfoIcon } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const columns: ColumnConfig<Tweet>[] = [
   { 
@@ -75,10 +77,19 @@ export default function TwitterAnalyticsPage() {
       title="Twitter / X Analytics"
       description="Track tweets, comments, and replies based on your keywords."
     >
+      <Alert variant="default" className="mb-6 bg-primary/10 border-primary/30">
+        <InfoIcon className="h-5 w-5 text-primary" />
+        <AlertTitle className="font-semibold text-primary">Sample Data Notice</AlertTitle>
+        <AlertDescription className="text-primary/90 text-sm">
+          This page currently displays sample Twitter/X data. Integrating live data requires access to the Twitter/X API,
+          which may involve developer setup and potential costs depending on the usage tier. This view serves as a
+          preview of how Twitter/X analytics could be presented.
+        </AlertDescription>
+      </Alert>
       <GenericDataTable<Tweet>
         data={twitterData}
         columns={columns}
-        caption="Twitter/X Activity Data"
+        caption="Twitter/X Activity Data (Sample)"
       />
     </DataTableShell>
   );
