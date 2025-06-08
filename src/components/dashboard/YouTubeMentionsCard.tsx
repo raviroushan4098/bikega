@@ -3,12 +3,13 @@
 
 import React from 'react';
 import type { YouTubeMentionItem } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for the outer shell
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; 
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, Rss, SearchX, SmilePlus, Frown, MinusCircle, AlertCircle, ExternalLink, ThumbsUp, MessageSquare, Eye } from 'lucide-react'; // Added icons for sentiment and stats
+import { Loader2, AlertTriangle, Rss, SearchX, SmilePlus, Frown, MinusCircle, AlertCircle, ExternalLink, ThumbsUp, MessageSquare, Eye } from 'lucide-react'; 
 import { cn } from '@/lib/utils';
-import SingleYouTubeMentionItemCard from './SingleYouTubeMentionItemCard'; // Import the new card component
-import { Badge } from '@/components/ui/badge'; // Added missing import
+import SingleYouTubeMentionItemCard from './SingleYouTubeMentionItemCard'; 
+import { Badge } from '@/components/ui/badge'; 
+import { formatDistanceToNow } from 'date-fns'; // Import for formatting
 
 interface YouTubeMentionsCardProps {
   mentions: YouTubeMentionItem[];
@@ -17,6 +18,7 @@ interface YouTubeMentionsCardProps {
   onRefresh?: () => void;
   title: string;
   keywordsUsed?: string[];
+  lastRefreshTimestamp?: string | null; // New prop
 }
 
 const SentimentBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
@@ -70,7 +72,8 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
   error,
   onRefresh,
   title,
-  keywordsUsed
+  keywordsUsed,
+  lastRefreshTimestamp
 }) => {
   return (
     <Card className="shadow-lg">
@@ -90,6 +93,11 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
                 ))}
             </div>
           )}
+           {lastRefreshTimestamp && !isLoading && !error && (
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Last refreshed: {formatDistanceToNow(new Date(lastRefreshTimestamp), { addSuffix: true })}
+            </div>
+           )}
            {keywordsUsed && keywordsUsed.length === 0 && !isLoading && !error && (
             <div className="text-xs text-muted-foreground mt-1">No keywords configured to search for mentions.</div>
           )}
@@ -140,3 +148,4 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
 };
 
 export default YouTubeMentionsCard;
+

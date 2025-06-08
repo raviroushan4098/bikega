@@ -40,6 +40,7 @@ export default function YouTubeKeywordMentionsPage() {
   const [isLoadingMentions, setIsLoadingMentions] = useState<boolean>(true);
   const [mentionsError, setMentionsError] = useState<string | null>(null);
   const [keywordsForMentions, setKeywordsForMentions] = useState<string[]>([]);
+  const [lastRefreshTimestamp, setLastRefreshTimestamp] = useState<string | null>(null); // New state
 
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
@@ -78,7 +79,7 @@ export default function YouTubeKeywordMentionsPage() {
     try {
       const storedMentions = await getStoredYouTubeMentions(userIdForMentions);
       setYoutubeMentions(storedMentions);
-      applyFilters(storedMentions); // Apply filters after loading
+      applyFilters(storedMentions); 
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to load stored YouTube mentions.";
       setMentionsError(msg);
@@ -127,11 +128,11 @@ export default function YouTubeKeywordMentionsPage() {
         return;
       }
       
-      const apiMentions = apiResult.mentions;
+      const newApiMentions = apiResult.mentions;
       const storedMentions = await getStoredYouTubeMentions(userIdToRefresh);
       const storedMentionIds = new Set(storedMentions.map(m => m.id));
       
-      const newMentionsToSave = apiMentions.filter(apiMention => !storedMentionIds.has(apiMention.id));
+      const newMentionsToSave = newApiMentions.filter(apiMention => !storedMentionIds.has(apiMention.id));
 
       if (newMentionsToSave.length > 0) {
         const newMentionsWithUserId = newMentionsToSave.map(m => ({ ...m, userId: userIdToRefresh! }));
@@ -142,9 +143,10 @@ export default function YouTubeKeywordMentionsPage() {
           toast({ title: "Mentions Updated", description: `${saveResult.successCount} new mentions saved.` });
         }
       } else {
-        toast({ title: "No New Mentions", description: "No new YouTube mentions found for the given keywords." });
+        toast({ title: "No New Mentions", description: "No new YouTube mentions found to save." });
       }
-      await loadMentionsFromFirestore(userIdToRefresh); // This will also re-apply filters
+      await loadMentionsFromFirestore(userIdToRefresh); 
+      setLastRefreshTimestamp(new Date().toISOString()); // Set refresh timestamp
 
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to refresh YouTube mentions.";
@@ -168,6 +170,7 @@ export default function YouTubeKeywordMentionsPage() {
       currentKeywords = user?.assignedKeywords || [];
     }
     
+    setLastRefreshTimestamp(null); // Reset on user/filter change
     setKeywordsForMentions(currentKeywords);
 
     if (userIdForInitialLoad) {
@@ -320,6 +323,7 @@ export default function YouTubeKeywordMentionsPage() {
         error={mentionsError}
         onRefresh={handleRefreshMentions}
         keywordsUsed={keywordsForMentions}
+        lastRefreshTimestamp={lastRefreshTimestamp} 
       />
       
       <div className="mt-8 flex justify-center">
@@ -333,3 +337,4 @@ export default function YouTubeKeywordMentionsPage() {
     </div>
   );
 }
+
