@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { Eye, ThumbsUp, MessageSquare, ExternalLink, PlayCircle, SmilePlus, Frown, MinusCircle, AlertCircle } from 'lucide-react';
+import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Frown, MinusCircle, AlertCircle } from 'lucide-react'; // Added Youtube
 import { cn } from '@/lib/utils';
 
 interface SingleYouTubeMentionItemCardProps {
@@ -102,9 +102,9 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       <CardFooter className="p-3 border-t border-border/70 bg-muted/30 flex flex-col items-start gap-2">
         <div className="w-full flex justify-between items-center">
             <SentimentDisplay sentiment={mention.sentiment} />
-            <Button variant="ghost" size="icon" asChild className="h-7 w-7 text-primary hover:text-primary/80">
+            <Button variant="ghost" size="icon" asChild className="h-7 w-7 hover:bg-red-500/10">
               <a href={mention.url} target="_blank" rel="noopener noreferrer" title="Watch on YouTube">
-                <ExternalLink className="h-4 w-4" />
+                <Youtube className="h-5 w-5 text-red-600" />
               </a>
             </Button>
         </div>
