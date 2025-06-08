@@ -24,14 +24,14 @@ const StatDisplay: React.FC<{ icon: React.ElementType; value?: number; label: st
 
 const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
   let IconComponent: React.ElementType = HelpCircle;
-  let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "secondary"; // Default to secondary for white/light bg
+  let badgeVariant: "secondary" | "destructive" | "outline" = "secondary";
   let text = "Unknown";
-  let iconColor = "text-gray-500"; 
+  let iconColor = "text-muted-foreground"; 
 
   switch (sentiment) {
     case 'positive':
       IconComponent = SmilePlus;
-      badgeVariant = "secondary"; // Keep background white/light gray
+      badgeVariant = "secondary"; 
       text = "Positive";
       iconColor = "text-green-500";
       break;
@@ -39,18 +39,18 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       IconComponent = Smile;
       badgeVariant = "secondary";
       text = "Neutral";
-      iconColor = "text-yellow-600"; // Adjusted for better visibility on light bg
+      iconColor = "text-yellow-600";
       break;
     case 'negative':
       IconComponent = Frown;
       badgeVariant = "destructive";
       text = "Negative";
-      iconColor = "text-destructive-foreground"; // Icon color for destructive badge
+      iconColor = "text-destructive-foreground";
       break;
     case 'unknown':
     default:
       IconComponent = HelpCircle;
-      badgeVariant = "outline"; // Use outline for unknown to make it distinct
+      badgeVariant = "outline";
       text = "Unknown";
       iconColor = "text-muted-foreground";
       break;
@@ -108,11 +108,14 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </CardContent>
 
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> {/* Reduced pr-24 to pr-20 */}
+        {/* This div contains the stats and sentiment badge */}
+        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> {/* pr-20 is to avoid the corner logo */}
+          {/* Group for stats (Likes, Comments) */}
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
           </div>
+          {/* Wrapper for the sentiment badge */}
           <div className="flex items-center">
             <SentimentDisplayBadge sentiment={mention.sentiment} />
           </div>
