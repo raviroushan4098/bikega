@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react'; // Added useMemo
 import type { YouTubeMentionItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; 
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Loader2, AlertTriangle, Rss, SearchX, SmilePlus, Frown, MinusCircle, Al
 import { cn } from '@/lib/utils';
 import SingleYouTubeMentionItemCard from './SingleYouTubeMentionItemCard'; 
 import { Badge } from '@/components/ui/badge'; 
-import { formatDistanceToNow } from 'date-fns'; // Import for formatting
+import { format, parseISO } from 'date-fns'; // Import for formatting
 
 interface YouTubeMentionsCardProps {
   mentions: YouTubeMentionItem[];
@@ -18,53 +18,12 @@ interface YouTubeMentionsCardProps {
   onRefresh?: () => void;
   title: string;
   keywordsUsed?: string[];
-  lastRefreshTimestamp?: string | null; // New prop
+  lastRefreshTimestamp?: string | null;
 }
 
-const SentimentBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
-  let Icon = MinusCircle;
-  let text = "Neutral";
-  let textColorClass = "text-gray-500";
-  let bgColorClass = "bg-gray-100 dark:bg-gray-700";
-  let borderColorClass = "border-gray-300 dark:border-gray-600";
-
-
-  switch (sentiment) {
-    case 'positive':
-      Icon = SmilePlus;
-      text = "Positive";
-      textColorClass = "text-green-700 dark:text-green-400";
-      bgColorClass = "bg-green-100 dark:bg-green-700/30";
-      borderColorClass = "border-green-300 dark:border-green-600";
-      break;
-    case 'negative':
-      Icon = Frown;
-      text = "Negative";
-      textColorClass = "text-red-700 dark:text-red-400";
-      bgColorClass = "bg-red-100 dark:bg-red-700/30";
-      borderColorClass = "border-red-300 dark:border-red-600";
-      break;
-    case 'unknown':
-      Icon = AlertCircle;
-      text = "Unknown";
-       textColorClass = "text-yellow-700 dark:text-yellow-400";
-      bgColorClass = "bg-yellow-100 dark:bg-yellow-700/30";
-      borderColorClass = "border-yellow-300 dark:border-yellow-600";
-      break;
-    case 'neutral':
-    default:
-      // Defaults are already set
-      break;
-  }
-
-  return (
-    <Badge variant="outline" className={cn("text-xs px-1.5 py-0.5 flex items-center gap-1", textColorClass, bgColorClass, borderColorClass)}>
-      <Icon className={cn("h-3 w-3")} />
-      {text}
-    </Badge>
-  );
-};
-
+interface GroupedMentions {
+  [dateKey: string]: YouTubeMentionItem[];
+}
 
 const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
   mentions,
@@ -75,6 +34,50 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
   keywordsUsed,
   lastRefreshTimestamp
 }) => {
+
+  const groupedMentions = useMemo(() => {
+    if (!mentions || mentions.length === 0) return {};
+    
+    return mentions.reduce((acc, mention) => {
+      try {
+        // Format: "Saturday, June 7, 2025"
+        const dateKey = format(parseISO(mention.publishedAt), 'EEEE, MMMM d, yyyy');
+        if (!acc[dateKey]) {
+          acc[dateKey] = [];
+        }
+        acc[dateKey].push(mention);
+      } catch (e) {
+        console.error("Error parsing date for mention:", mention.id, mention.publishedAt, e);
+        // Fallback group if date is invalid
+        const fallbackKey = "Undated Mentions";
+         if (!acc[fallbackKey]) {
+          acc[fallbackKey] = [];
+        }
+        acc[fallbackKey].push(mention);
+      }
+      return acc;
+    }, {} as GroupedMentions);
+  }, [mentions]);
+
+  // Since the original mentions array is sorted newest first, Object.keys will likely give dates in a usable order.
+  // For guaranteed order, one might sort the keys if needed, but usually, it's fine.
+  const sortedDateKeys = useMemo(() => {
+    return Object.keys(groupedMentions).sort((a, b) => {
+      // Handle "Undated Mentions" case by pushing it to the end or beginning
+      if (a === "Undated Mentions") return 1;
+      if (b === "Undated Mentions") return -1;
+      // Attempt to parse dates for robust sorting, assuming format 'EEEE, MMMM d, yyyy'
+      // This might be complex due to format variations; for simplicity, rely on source sort if possible
+      // or use a more straightforward date key for sorting if performance is an issue.
+      // For now, as mentions are presorted, the Object.keys order should be mostly correct (newest date groups first)
+      // if parseISO was used consistently in grouping, or use timestamp from first item in group.
+      const dateA = groupedMentions[a][0] ? parseISO(groupedMentions[a][0].publishedAt).getTime() : 0;
+      const dateB = groupedMentions[b][0] ? parseISO(groupedMentions[b][0].publishedAt).getTime() : 0;
+      return dateB - dateA; // Sort date groups descending (newest first)
+    });
+  }, [groupedMentions]);
+
+
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-row items-start sm:items-center justify-between pb-4 gap-2">
@@ -136,10 +139,23 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
           </div>
         )}
         {!isLoading && !error && mentions.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {mentions.map((item) => (
-              <SingleYouTubeMentionItemCard key={item.id} mention={item} />
-            ))}
+          <div className="space-y-6">
+            {sortedDateKeys.map((dateKey) => {
+              const itemsForDate = groupedMentions[dateKey];
+              if (!itemsForDate || itemsForDate.length === 0) return null;
+              return (
+                <div key={dateKey}>
+                  <h2 className="text-xl font-semibold mb-3 text-primary">
+                    {dateKey} - <span className="font-medium">{itemsForDate.length} Result{itemsForDate.length === 1 ? '' : 's'}</span>
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {itemsForDate.map((item) => (
+                      <SingleYouTubeMentionItemCard key={item.id} mention={item} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
@@ -148,4 +164,3 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
 };
 
 export default YouTubeMentionsCard;
-
