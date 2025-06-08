@@ -31,7 +31,7 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
   switch (sentiment) {
     case 'positive':
       IconComponent = SmilePlus;
-      badgeVariant = "secondary"; // Changed from "default" to "secondary"
+      badgeVariant = "secondary"; 
       text = "Positive";
       iconColor = "text-green-500";
       break;
@@ -45,7 +45,7 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       IconComponent = Frown;
       badgeVariant = "destructive";
       text = "Negative";
-      iconColor = "text-red-500"; // Destructive variant text color will be light, icon will be red
+      iconColor = "text-red-500"; 
       break;
     case 'unknown':
     default:
@@ -119,14 +119,14 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
         </div>
         
         <div 
-          className="absolute bottom-0 right-0 h-16 w-20 bg-red-600 flex items-center justify-center"
+          className="absolute bottom-0 right-0 h-12 w-16 bg-red-600 flex items-center justify-center"
           style={{
             clipPath: 'polygon(25% 0%, 100% 0%, 100% 100%, 0% 100%)',
           }}
           title="Watch on YouTube"
         >
-          <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block p-2 -mr-2 -mb-1">
-             <Youtube className="h-6 w-6 text-white" />
+          <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block p-1 -mr-1 -mb-0.5">
+             <Youtube className="h-5 w-5 text-white" />
           </Link>
         </div>
         
@@ -134,10 +134,9 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           <div className="w-full bg-muted/40 px-3 py-1.5 border-t border-border/30">
             <div className="flex items-center gap-1 flex-wrap">
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                {mention.matchedKeywords[0]}: 
+                Matched:
               </Badge>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-normal text-muted-foreground truncate flex-1 min-w-0">
-                
                 {mention.matchedKeywords.slice(0, 3).join(', ')} 
                 {mention.matchedKeywords.length > 3 ? ` +${mention.matchedKeywords.length - 3} more` : ''}
               </Badge>
@@ -150,4 +149,3 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
-
