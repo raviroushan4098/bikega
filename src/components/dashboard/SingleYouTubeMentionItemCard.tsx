@@ -26,12 +26,12 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
   let IconComponent: React.ElementType = HelpCircle;
   let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
   let text = "Unknown";
-  let iconColor = "text-muted-foreground"; // Default icon color
+  let iconColor = "text-muted-foreground"; 
 
   switch (sentiment) {
     case 'positive':
       IconComponent = SmilePlus;
-      badgeVariant = "default"; 
+      badgeVariant = "secondary"; // Changed from "default" to "secondary"
       text = "Positive";
       iconColor = "text-green-500";
       break;
@@ -45,7 +45,7 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       IconComponent = Frown;
       badgeVariant = "destructive";
       text = "Negative";
-      iconColor = "text-red-500";
+      iconColor = "text-red-500"; // Destructive variant text color will be light, icon will be red
       break;
     case 'unknown':
     default:
@@ -58,7 +58,7 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
 
   return (
     <Badge variant={badgeVariant} className="flex items-center gap-1 text-xs px-2 py-1">
-      <IconComponent className={cn("h-3.5 w-3.5", iconColor)} />
+      <IconComponent className={cn("h-3.5 w-3.5", iconColor, sentiment === 'negative' ? 'text-destructive-foreground' : '')} />
       <span>{text}</span>
     </Badge>
   );
@@ -88,7 +88,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
             src={mention.thumbnailUrl || "https://placehold.co/480x270.png"}
             alt={`Thumbnail for ${mention.title}`}
             fill 
-            style={{ objectFit: 'cover' }} // Replaced objectFit with style prop
+            style={{ objectFit: 'cover' }} 
             className="rounded-md transition-transform duration-300 group-hover:scale-105"
             data-ai-hint={mention.dataAiHint || "video content"}
           />
@@ -108,8 +108,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </CardContent>
 
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        {/* Container for stats and sentiment, with padding to avoid overlap */}
-        <div className="w-full flex justify-between items-center pl-3 pr-24 py-2"> {/* Added pr-24 */}
+        <div className="w-full flex justify-between items-center pl-3 pr-24 py-2"> 
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
@@ -135,10 +134,10 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           <div className="w-full bg-muted/40 px-3 py-1.5 border-t border-border/30">
             <div className="flex items-center gap-1 flex-wrap">
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                {mention.matchedKeywords[0]}: {/* Show primary keyword */}
+                {mention.matchedKeywords[0]}: 
               </Badge>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-normal text-muted-foreground truncate flex-1 min-w-0">
-                {/* Show other keywords, truncated if too many */}
+                
                 {mention.matchedKeywords.slice(0, 3).join(', ')} 
                 {mention.matchedKeywords.length > 3 ? ` +${mention.matchedKeywords.length - 3} more` : ''}
               </Badge>
@@ -151,3 +150,4 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
+
