@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Smile, Frown, AlertCircle, HelpCircle } from 'lucide-react';
+import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Smile, Frown, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SingleYouTubeMentionItemCardProps {
@@ -22,24 +22,52 @@ const StatDisplay: React.FC<{ icon: React.ElementType; value?: number; label: st
   </div>
 );
 
-const SentimentIcon: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
+const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
+  let IconComponent: React.ElementType = HelpCircle;
+  let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
+  let text = "Unknown";
+  let iconColor = "text-muted-foreground";
+
   switch (sentiment) {
     case 'positive':
-      return <SmilePlus className="h-6 w-6 text-green-500" title="Positive Sentiment"/>;
+      IconComponent = SmilePlus;
+      badgeVariant = "default"; // Green in default theme, or primary
+      text = "Positive";
+      iconColor = "text-green-500"; // Explicit color for icon
+      break;
     case 'neutral':
-      return <Smile className="h-6 w-6 text-yellow-500" title="Neutral Sentiment"/>;
+      IconComponent = Smile;
+      badgeVariant = "secondary";
+      text = "Neutral";
+      iconColor = "text-yellow-500"; // Explicit color for icon
+      break;
     case 'negative':
-      return <Frown className="h-6 w-6 text-red-500" title="Negative Sentiment"/>;
+      IconComponent = Frown;
+      badgeVariant = "destructive";
+      text = "Negative";
+      iconColor = "text-red-500"; // Explicit color for icon
+      break;
     case 'unknown':
     default:
-      return <HelpCircle className="h-6 w-6 text-gray-400" title="Sentiment Unknown"/>;
+      IconComponent = HelpCircle;
+      badgeVariant = "outline";
+      text = "Unknown";
+      iconColor = "text-gray-400"; // Standard muted color for unknown
+      break;
   }
+
+  return (
+    <Badge variant={badgeVariant} className="flex items-center gap-1 text-xs px-2 py-1">
+      <IconComponent className={cn("h-3.5 w-3.5", iconColor)} />
+      <span>{text}</span>
+    </Badge>
+  );
 };
 
 const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> = ({ mention }) => {
   return (
     <Card className={cn(
-      "shadow-md flex flex-col overflow-hidden h-full bg-card border border-border rounded-lg", // Added rounded-lg
+      "shadow-md flex flex-col overflow-hidden h-full bg-card border border-border rounded-lg",
       "transition-all duration-300 ease-in-out hover:shadow-xl hover:scale-[1.02]"
     )}>
       <CardHeader className="p-3 pb-2 space-y-1">
@@ -58,7 +86,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           <Image
             src={mention.thumbnailUrl || "https://placehold.co/480x270.png"}
             alt={`Thumbnail for ${mention.title}`}
-            layout="fill"
+            fill // Changed from layout="fill"
             objectFit="cover"
             className="rounded-md transition-transform duration-300 group-hover:scale-105"
             data-ai-hint={mention.dataAiHint || "video content"}
@@ -78,26 +106,21 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
         </div>
       </CardContent>
 
-      {/* New Footer Implementation */}
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        {/* Top row of footer: Stats and Sentiment */}
         <div className="w-full flex justify-between items-center px-3 py-2">
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Placeholder for the second sentiment icon if needed in future, matching image style */}
-            {/* <Smile className="h-6 w-6 text-yellow-400" />  */}
-            <SentimentIcon sentiment={mention.sentiment} />
+          <div className="flex items-center">
+            <SentimentDisplayBadge sentiment={mention.sentiment} />
           </div>
         </div>
-
-        {/* Red diagonal corner with YouTube icon - This is a simplified version */}
+        
         <div 
           className="absolute bottom-0 right-0 h-16 w-20 bg-red-600 flex items-center justify-center"
           style={{
-            clipPath: 'polygon(25% 0%, 100% 0%, 100% 100%, 0% 100%)', // Creates a slanted right edge
+            clipPath: 'polygon(25% 0%, 100% 0%, 100% 100%, 0% 100%)',
           }}
           title="Watch on YouTube"
         >
@@ -106,8 +129,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           </Link>
         </div>
         
-        {/* Keywords strip at the very bottom */}
-        {mention.matchedKeywords.length > 0 && (
+        {mention.matchedKeywords && mention.matchedKeywords.length > 0 && (
           <div className="w-full bg-muted/40 px-3 py-1.5 border-t border-border/30">
             <div className="flex items-center gap-1 flex-wrap">
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
@@ -126,4 +148,3 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
-
