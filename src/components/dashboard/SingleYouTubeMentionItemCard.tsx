@@ -63,38 +63,39 @@ const SentimentDisplay: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }
 const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> = ({ mention }) => {
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col overflow-hidden h-full bg-card border border-border">
-      <CardHeader className="p-0 relative group">
-        <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block aspect-video relative">
+      <CardHeader className="p-3 pb-2 space-y-1">
+        <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block group">
+          <CardTitle className="text-sm font-semibold text-card-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors" title={mention.title}>
+            {mention.title}
+          </CardTitle>
+        </Link>
+        <p className="text-xs text-muted-foreground truncate" title={mention.channelTitle}>
+          By: <span className="font-medium text-card-foreground/90">{mention.channelTitle}</span>
+        </p>
+      </CardHeader>
+
+      <div className="p-3 pt-0 relative group aspect-video">
+        <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
           <Image
             src={mention.thumbnailUrl || "https://placehold.co/480x270.png"}
             alt={`Thumbnail for ${mention.title}`}
             layout="fill"
             objectFit="cover"
-            className="transition-transform duration-300 group-hover:scale-105"
+            className="rounded-md transition-transform duration-300 group-hover:scale-105"
             data-ai-hint={mention.dataAiHint || "video content"}
           />
-          {/* Play Icon Overlay */}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors duration-300">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors duration-300 rounded-md">
             <PlayCircle className="h-12 w-12 text-white/70 group-hover:text-white transition-all duration-300 group-hover:scale-110" />
           </div>
-          {/* Gradient Overlay for Title */}
-          <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-3 flex items-end">
-            <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug group-hover:text-primary-foreground/90 transition-colors" title={mention.title}>
-              {mention.title}
-            </h3>
-          </div>
         </Link>
-      </CardHeader>
-
-      <CardContent className="p-3 flex-grow space-y-2">
-        <p className="text-xs text-muted-foreground truncate" title={mention.channelTitle}>
-          By: <span className="font-medium text-card-foreground/90">{mention.channelTitle}</span>
-        </p>
+      </div>
+      
+      <CardContent className="p-3 pt-2 flex-grow space-y-2">
         <p className="text-xs text-muted-foreground">
-          {formatDistanceToNow(new Date(mention.publishedAt), { addSuffix: true })}
+          Published: {formatDistanceToNow(new Date(mention.publishedAt), { addSuffix: true })}
         </p>
         
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatDisplay icon={Eye} value={mention.viewCount} label="Views" />
           <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" />
           <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" />
@@ -133,4 +134,3 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
-
