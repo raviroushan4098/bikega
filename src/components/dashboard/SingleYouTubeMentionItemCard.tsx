@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Frown, MinusCircle, AlertCircle } from 'lucide-react'; // Added Youtube
+import { Eye, ThumbsUp, MessageSquare, Youtube, PlayCircle, SmilePlus, Frown, MinusCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SingleYouTubeMentionItemCardProps {
@@ -25,7 +25,7 @@ const StatDisplay: React.FC<{ icon: React.ElementType; value?: number; label: st
 
 const SentimentDisplay: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }> = ({ sentiment }) => {
   let Icon = MinusCircle;
-  let text = "Neutral"; // Default to Neutral if unknown or not strongly positive/negative
+  let text = "Neutral";
   let iconColor = "text-gray-500";
 
   switch (sentiment) {
@@ -63,8 +63,8 @@ const SentimentDisplay: React.FC<{ sentiment?: YouTubeMentionItem['sentiment'] }
 const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> = ({ mention }) => {
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col overflow-hidden h-full bg-card border border-border">
-      <CardHeader className="p-0 relative">
-        <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block aspect-video relative group">
+      <CardHeader className="p-0 relative group">
+        <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="block aspect-video relative">
           <Image
             src={mention.thumbnailUrl || "https://placehold.co/480x270.png"}
             alt={`Thumbnail for ${mention.title}`}
@@ -73,20 +73,22 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
             className="transition-transform duration-300 group-hover:scale-105"
             data-ai-hint={mention.dataAiHint || "video content"}
           />
-          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-            <PlayCircle className="h-12 w-12 text-white/80 group-hover:text-white transition-opacity opacity-75 group-hover:opacity-100" />
+          {/* Play Icon Overlay */}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors duration-300">
+            <PlayCircle className="h-12 w-12 text-white/70 group-hover:text-white transition-all duration-300 group-hover:scale-110" />
+          </div>
+          {/* Gradient Overlay for Title */}
+          <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-3 flex items-end">
+            <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug group-hover:text-primary-foreground/90 transition-colors" title={mention.title}>
+              {mention.title}
+            </h3>
           </div>
         </Link>
       </CardHeader>
 
       <CardContent className="p-3 flex-grow space-y-2">
-        <Link href={mention.url} target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
-          <h3 className="text-sm font-semibold text-card-foreground line-clamp-2 leading-snug" title={mention.title}>
-            {mention.title}
-          </h3>
-        </Link>
         <p className="text-xs text-muted-foreground truncate" title={mention.channelTitle}>
-          By: {mention.channelTitle}
+          By: <span className="font-medium text-card-foreground/90">{mention.channelTitle}</span>
         </p>
         <p className="text-xs text-muted-foreground">
           {formatDistanceToNow(new Date(mention.publishedAt), { addSuffix: true })}
@@ -99,7 +101,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
         </div>
       </CardContent>
 
-      <CardFooter className="p-3 border-t border-border/70 bg-muted/30 flex flex-col items-start gap-2">
+      <CardFooter className="p-3 border-t border-border/50 bg-muted/30 flex flex-col items-start gap-2">
         <div className="w-full flex justify-between items-center">
             <SentimentDisplay sentiment={mention.sentiment} />
             <Button variant="ghost" size="icon" asChild className="h-7 w-7 hover:bg-red-500/10">
@@ -112,7 +114,7 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
           <div className="w-full">
             <span className="text-xs text-muted-foreground mr-1">Keywords:</span>
             <div className="inline-flex flex-wrap gap-1">
-              {mention.matchedKeywords.slice(0, 3).map((kw, idx) => ( // Show max 3 keywords
+              {mention.matchedKeywords.slice(0, 3).map((kw, idx) => (
                 <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0.5">
                   {kw}
                 </Badge>
@@ -131,3 +133,4 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
+
