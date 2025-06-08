@@ -5,11 +5,11 @@ import React, { useMemo } from 'react'; // Added useMemo
 import type { YouTubeMentionItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; 
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, Rss, SearchX, SmilePlus, Frown, MinusCircle, AlertCircle, ExternalLink, ThumbsUp, MessageSquare, Eye } from 'lucide-react'; 
+import { Loader2, AlertTriangle, Rss, SearchX, SmilePlus, Smile, Frown, HelpCircle, ExternalLink, ThumbsUp, MessageSquare, Eye } from 'lucide-react'; 
 import { cn } from '@/lib/utils';
 import SingleYouTubeMentionItemCard from './SingleYouTubeMentionItemCard'; 
 import { Badge } from '@/components/ui/badge'; 
-import { format, parseISO } from 'date-fns'; // Import for formatting
+import { format, parseISO, formatDistanceToNow } from 'date-fns'; // Import for formatting
 
 interface YouTubeMentionsCardProps {
   mentions: YouTubeMentionItem[];
@@ -148,7 +148,7 @@ const YouTubeMentionsCard: React.FC<YouTubeMentionsCardProps> = ({
                   <h2 className="text-xl font-semibold mb-3 text-primary">
                     {dateKey} - <span className="font-medium">{itemsForDate.length} Result{itemsForDate.length === 1 ? '' : 's'}</span>
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
                     {itemsForDate.map((item) => (
                       <SingleYouTubeMentionItemCard key={item.id} mention={item} />
                     ))}
