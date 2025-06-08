@@ -26,7 +26,8 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
   let IconComponent: React.ElementType = HelpCircle;
   let badgeVariant: "secondary" | "destructive" | "outline" = "secondary";
   let text = "Unknown";
-  let iconColor = "text-muted-foreground"; 
+  let iconColor = "text-muted-foreground";
+  let textColor = "text-foreground"; // Default text color
 
   switch (sentiment) {
     case 'positive':
@@ -34,18 +35,21 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       badgeVariant = "secondary"; 
       text = "Positive";
       iconColor = "text-green-500";
+      textColor = "text-green-700";
       break;
     case 'neutral':
       IconComponent = Smile;
       badgeVariant = "secondary";
       text = "Neutral";
-      iconColor = "text-yellow-600";
+      iconColor = "text-yellow-600"; // Or a gray like text-muted-foreground
+      textColor = "text-yellow-700"; // Or a gray like text-muted-foreground
       break;
     case 'negative':
       IconComponent = Frown;
-      badgeVariant = "destructive";
+      badgeVariant = "secondary"; // Changed from "destructive"
       text = "Negative";
-      iconColor = "text-destructive-foreground";
+      iconColor = "text-red-500"; // Explicitly red for icon
+      textColor = "text-red-500"; // Explicitly red for text
       break;
     case 'unknown':
     default:
@@ -53,11 +57,12 @@ const SentimentDisplayBadge: React.FC<{ sentiment?: YouTubeMentionItem['sentimen
       badgeVariant = "outline";
       text = "Unknown";
       iconColor = "text-muted-foreground";
+      textColor = "text-muted-foreground";
       break;
   }
 
   return (
-    <Badge variant={badgeVariant} className="flex items-center gap-1 text-xs px-2 py-1">
+    <Badge variant={badgeVariant} className={cn("flex items-center gap-1 text-xs px-2 py-1", textColor)}>
       <IconComponent className={cn("h-3.5 w-3.5", iconColor)} />
       <span>{text}</span>
     </Badge>
@@ -108,14 +113,12 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
       </CardContent>
 
       <CardFooter className="p-0 relative mt-auto flex flex-col border-t border-border/50">
-        {/* This div contains the stats and sentiment badge */}
-        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> {/* pr-20 is to avoid the corner logo */}
-          {/* Group for stats (Likes, Comments) */}
+        <div className="w-full flex justify-between items-center pl-3 pr-20 py-2"> 
           <div className="flex items-center gap-3">
             <StatDisplay icon={ThumbsUp} value={mention.likeCount} label="Likes" iconClassName="text-blue-500" textClassName="text-muted-foreground"/>
             <StatDisplay icon={MessageSquare} value={mention.commentCount} label="Comments" iconClassName="text-gray-700 dark:text-gray-300" textClassName="text-muted-foreground"/>
           </div>
-          {/* Wrapper for the sentiment badge */}
+          
           <div className="flex items-center">
             <SentimentDisplayBadge sentiment={mention.sentiment} />
           </div>
@@ -152,3 +155,4 @@ const SingleYouTubeMentionItemCard: React.FC<SingleYouTubeMentionItemCardProps> 
 };
 
 export default SingleYouTubeMentionItemCard;
+
