@@ -9,9 +9,8 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
 import type { Mention, User } from '@/types';
-import { analyzeAdvancedSentiment } from '@/ai/flows/advanced-sentiment-flow';
+import { getApiKeys } from '@/lib/api-key-service'; // Import getApiKeys
 import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service';
 import { getUserById } from '@/lib/user-service';
 import {
@@ -21,6 +20,7 @@ import {
   type GatherGlobalMentionsOutput
 } from '@/types/global-mentions-schemas';
 
+import { fetchGnewsArticles } from '@/lib/gnews-api-service'; // Import fetchGnewsArticles
 
 const API_CALL_TIMEOUT_MS = 15000; // Timeout for external API calls like Algolia
 const SENTIMENT_ANALYSIS_DELAY_MS = 500; // Delay between sentiment analysis calls (0.5 seconds)
@@ -273,9 +273,72 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     allPotentialMentionsPartial.push(...webMentions);
     console.log(`[GatherGlobalMentionsFlow] Web Mentions (Mock) fetch complete. Found ${webMentions.length} mentions.`);
 
+    console.log('[GatherGlobalMentionsFlow] Starting GNews fetch...');
+    try {
+        // Fetch all API keys for the user and find the GNews one
+        const allUserApiKeys = await getApiKeys(userId);
+        const gnewsApiKeyEntry = allUserApiKeys.find(key => key.serviceName === 'GNews API');
+
+        if (gnewsApiKeyEntry && gnewsApiKeyEntry.keyValue) {
+            console(`[GatherGlobalMentionsFlow] GNews API key found for user ${userId}.`);
+            const gnewsApiKey = gnewsApiKeyEntry.keyValue;
+            const gnewsResult = await fetchGnewsArticles(gnewsApiKey, keywords);
+            console.log(`[GatherGlobalMentionsFlow] Fetched ${gnewsResult.articles.length} articles from GNews.`);
+            errors.push(...gnewsResult.errors); // Add any errors from the GNews fetch
+             // Generate a stable ID for GNews mentions. Prioritize URL.
+            const generateGnewsMentionId = (article: any, index: number, userId: string): string => {
+                if (article.url && typeof article.url === 'string' && article.url.trim() !== '') {
+                    return `gnews_${encodeURIComponent(article.url)}`;
+                }
+                // Fallback ID if URL is missing
+                const fallbackBase = article.title || article.description || `no_content_${index}`;
+                return `gnews_fallback_${userId}_${Date.now()}_${Math.abs(hashCode(fallbackBase))}`;
+            };
+
+            const gnewsMentions: Partial<Mention>[] = gnewsResult.articles.map((article, index) => {
+
+                return {
+                    id: `gnews_${userId}_${Date.now()}_${index}`, // Generate a unique ID for GNews mentions
+                    platform: 'Google News', // Gnews provides Google News data
+                    source: article.source?.name || article.source?.url || 'GNews', // Use name or URL as source
+                    title: article.title || 'No Title',
+                    excerpt: article.description || '',
+                    url: article.url || '#',
+                    timestamp: article.publishedAt || new Date().toISOString(), // Use publishedAt or current time
+                     // Attempt to find the keyword actually present in the title or description
+                    matchedKeyword: keywords.find(kw => 
+                        article.title?.toLowerCase().includes(kw.toLowerCase()) ||
+                        article.description?.toLowerCase().includes(kw.toLowerCase())
+                    ) || keywords[0] || 'unknown', // Fallback to first keyword or 'unknown'
+                };
+            });
+            allPotentialMentionsPartial.push(...gnewsMentions);
+            console.log(`[GatherGlobalMentionsFlow] GNews fetch complete. Added ${gnewsMentions.length} mentions.`);
+        } else {
+            console.log(`[GatherGlobalMentionsFlow] No GNews API key found for user ${userId}. Skipping GNews fetch.`);
+        }
+    } catch (error) {
+        const errorMsg = `Error fetching from GNews API: ${error instanceof Error ? error.message : String(error)}`;
+        errors.push(errorMsg);
+        console.error(`[GatherGlobalMentionsFlow] ${errorMsg}`, error);
+    }
+
     console.log(`[GatherGlobalMentionsFlow] Counts per platform: HN=${hnMentions.length}, GNewsMock=${googleNewsMentions.length}, WebMock=${webMentions.length}`);
     console.log(`[GatherGlobalMentionsFlow] Total potential mentions from all API sources BEFORE deduplication by ID: ${allPotentialMentionsPartial.length}`);
 
+// Simple hash function for fallback ID
+function hashCode(str: string): number {
+    let hash = 0;
+    if (str.length === 0) {
+        return hash;
+    }
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash;
+}
 
     const uniqueApiMentionsMap = new Map<string, Partial<Mention>>();
     allPotentialMentionsPartial.forEach(m => {
