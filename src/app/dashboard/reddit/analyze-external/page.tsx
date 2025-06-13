@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatDistanceToNow, startOfDay, endOfDay, formatDistanceToNowStrict } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from '@/components/ui/separator';
+import { doc, updateDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder, deleteStoredRedditAnalysis } from '@/lib/reddit-api-service';
@@ -55,6 +56,7 @@ import html2canvas from 'html2canvas';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Sector, LabelList } from 'recharts';
 import ReactDOM from 'react-dom/client';
 
+import { db } from '@/lib/firebase';
 
 interface AnalysisResultDisplay {
   username: string;
@@ -313,9 +315,19 @@ export default function AnalyzeExternalRedditUserPage() {
                 toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 7000 });
             }
             setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: resultFromFlow.error} : undefined } : r 
+                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: resultFromFlow.error} : undefined } : r
             ));
-        } else {
+
+            // Update Firestore document with suspension status if analysis fails
+ try {
+ await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
+ suspensionStatus: "This account has been suspended"
+ }, { merge: true });
+ } catch (dbError) {
+ console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
+ }
+        }
+ else {
             setAnalysisResults(prev => prev.map(r =>
                 r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: {...resultFromFlow, _placeholder: false}, isLoading: false, isRefreshing: false, error: undefined } : r
             ));
@@ -332,6 +344,15 @@ export default function AnalyzeExternalRedditUserPage() {
         setAnalysisResults(prev => prev.map(r =>
             r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: errorMessage } : undefined } : r 
         ));
+
+        // Update Firestore document with suspension status if analysis fails
+ try {
+ await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
+ suspensionStatus: "An error occurred during analysis" // Or refine based on actual error type
+ }, { merge: true });
+ } catch (dbError) {
+ console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
+ }
     }
   };
   
@@ -380,9 +401,10 @@ export default function AnalyzeExternalRedditUserPage() {
 
     if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
       toast({ variant: "destructive", title: "Invalid File", description: "Please upload a .csv file." });
-      setFileName(null);
-      event.target.value = ''; 
-      return;
+ event.target.value = '';
+ setFileName(null);
+ setIsProcessingCsv(false);
+ return;
     }
     setFileName(file.name);
     setIsProcessingCsv(true);
@@ -393,7 +415,10 @@ export default function AnalyzeExternalRedditUserPage() {
       if (!text) {
           toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
           setIsProcessingCsv(false);
-          setFileName(null);
+ 
+ 
+ 
+ setFileName(null);
           event.target.value = '';
           return;
       }
@@ -1392,7 +1417,7 @@ export default function AnalyzeExternalRedditUserPage() {
                   <div className="text-red-600 bg-red-50/70 p-4 rounded-md border border-red-200 flex items-start gap-3">
                     <AlertTriangle className="h-6 w-6 text-red-700 flex-shrink-0 mt-0.5" />
                     <div>
-                        <p className="font-semibold text-red-700">Analysis Error</p>
+                        <p className="font-semibold text-red-700">This account has been suspended</p>
                         <p className="text-sm">{displayError}</p>
                     </div>
                   </div>

@@ -9,6 +9,7 @@ import HoverNavMenu from '@/components/layout/hover-nav-menu';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import PageTransitionLoader from '@/components/layout/PageTransitionLoader';
+import dynamic from 'next/dynamic';
 
 export default function DashboardLayout({
   children,
@@ -20,6 +21,11 @@ export default function DashboardLayout({
   const pathname = usePathname();
 
   const [isPageLoading, setIsPageLoading] = useState(false);
+
+  // Dynamically import PageTransitionLoader with ssr: false
+  const DynamicPageTransitionLoader = dynamic(() => import('@/components/layout/PageTransitionLoader'), {
+    ssr: false,
+  });
   const previousPathnameRef = useRef(pathname); // Store previous pathname
 
   useEffect(() => {
@@ -77,7 +83,7 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
-      <PageTransitionLoader isLoading={isPageLoading} />
+      <DynamicPageTransitionLoader isLoading={isPageLoading} />
     </div>
   );
 }

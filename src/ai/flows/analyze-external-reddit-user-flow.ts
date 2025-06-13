@@ -73,12 +73,13 @@ interface RedditApiResponse {
 const analyzeExternalRedditUserFlow = ai.defineFlow(
   {
     name: 'analyzeExternalRedditUserFlow',
-    inputSchema: z.object({
-      username: z.string(),
-      appUserId: z.string().optional(), // appUserId is optional
-    }),
+    inputSchema: z.custom<ExternalRedditUserAnalysisInput>(), // Use custom to match the complex input type
     outputSchema: z.custom<ExternalRedditUserAnalysis>(), // Using custom to match the complex type
   },
+  // This is the main invoke function of the flow
+  // It's wrapped in a try-catch block to handle potential errors during analysis
+  // and save the suspension status if necessary.
+  // Note: The outer exported function analyzeExternalRedditUser also has a try-catch
   async (input): Promise<ExternalRedditUserAnalysis> => {
     console.log(`[AnalyzeExternalRedditUserFlow] Initiating analysis for u/${input.username}. App User ID: ${input.appUserId || 'N/A'}`);
     const authDetails = await getRedditAccessToken();
@@ -104,8 +105,10 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
 
     const uniqueSubreddits = new Set<string>();
 
+    // Outer try-catch to catch any unhandled errors in the flow
     try {
       // 1. Fetch user "about" info
+      console.log(`[AnalyzeExternalRedditUserFlow] Starting try block for u/${input.username}`);
       const aboutUrl = `https://oauth.reddit.com/user/${input.username}/about.json`;
       console.log(`[AnalyzeExternalRedditUserFlow] Fetching 'about' info for u/${input.username} from ${aboutUrl}`);
       const aboutResponse = await fetch(aboutUrl, {
@@ -189,20 +192,19 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
         console.log(`[AnalyzeExternalRedditUserFlow] Mapped ${result.fetchedCommentsDetails.length} comments for u/${input.username}.`);
       } else {
         const errorTextComments = await commentsResponse.text().catch(() => `Comments fetch status: ${commentsResponse.status}`);
-        console.warn(`[AnalyzeExternalRedditUserFlow] Failed to fetch comments for u/${input.username} (${commentsResponse.status}): ${errorTextComments.substring(0,200)}`);
+ console.warn(`[AnalyzeExternalRedditUserFlow] Failed to fetch comments for u/${input.username} (${commentsResponse.status}): ${errorTextComments.substring(0, 200)}`);
       }
 
       result.subredditsPostedIn = Array.from(uniqueSubreddits);
-      result.lastRefreshedAt = new Date().toISOString(); // Set the refresh timestamp
-      
-
-      // Save to Firestore if appUserId is provided
+      // Save analysis to Firestore
+      // This save operation has its own try-catch because a failure here shouldn't necessarily
+      // mark the account as suspended, but should still report an error.
       if (input.appUserId && input.username) {
         // Ensure the _placeholder field is removed or set to false upon successful analysis
-        const dataToSave: ExternalRedditUserAnalysis = { ...result, _placeholder: false }; 
-        const firestorePath = `ExternalRedditUser/${input.appUserId}/analyzedRedditProfiles/${input.username}`;
+        const dataToSave: ExternalRedditUserAnalysis = { ...result, _placeholder: false };
+        const firestorePath = `users/${input.appUserId}/redditAnalyses/${input.username}`;
         const analysisDocRef = doc(db, firestorePath);
-        try {
+        try { // This inner try-catch is specifically for the Firestore save operation
           await setDoc(analysisDocRef, dataToSave, { merge: true });
           console.log(`[AnalyzeExternalRedditUserFlow] Successfully saved analysis for u/${input.username} to Firestore at ${firestorePath}`);
         } catch (firestoreError) {
@@ -214,16 +216,50 @@ const analyzeExternalRedditUserFlow = ai.defineFlow(
       } else {
         console.log(`[AnalyzeExternalRedditUserFlow] appUserId not provided or username missing, skipping Firestore save for u/${input.username}.`);
       }
-      console.log(`[AnalyzeExternalRedditUserFlow] Analysis complete for u/${input.username}. Last refreshed: ${result.lastRefreshedAt}`);
+
+      result.lastRefreshedAt = new Date().toISOString(); // Set the refresh timestamp
+      console.log(`[AnalyzeExternalRedditUserFlow] Analysis completed successfully for u/${input.username}. Last refreshed: ${result.lastRefreshedAt}`);
+      return result;
 
     } catch (error) {
+      // This catch block handles errors during the core analysis logic
+      console.error(`[AnalyzeExternalRedditUserFlow] Exception caught in try block for u/${input.username}:`, error);
+      // This check is now within the try-catch that wraps the API calls and initial processing.
+
+
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during analysis.';
-      console.error(`[AnalyzeExternalRedditUserFlow] CRITICAL EXCEPTION during analysis for u/${input.username}: ${errorMessage}`, error);
-      // Ensure lastRefreshedAt is set for the result object that might be partially built before throwing
-      result.lastRefreshedAt = new Date().toISOString(); 
+      console.error(`[AnalyzeExternalRedditUserFlow] Exception during analysis for u/${input.username}: ${errorMessage}`, error);
+
+      // Check if the error indicates a suspended account or analysis failure
+      // Added explicit check for the "Invalid time value" as requested
+      // This catch block is intended to handle errors during the core analysis logic
+      // and save suspension status if the error is indicative of a suspended account.
+      if (errorMessage.includes('Invalid time value') ||
+        errorMessage.includes('Failed to fetch user details') ||
+        errorMessage.includes('user not found or suspended') ||
+        errorMessage.includes('Request timed out')) { // Added timeout as well
+        console.log(`[AnalyzeExternalRedditUserFlow] Detected likely suspended or inaccessible account or transient error for u/${input.username}. Attempting to update Firestore.`);
+        if (input.appUserId && input.username) {
+          const firestorePath = `users/${input.appUserId}/redditAnalyses/${input.username}`;
+          const analysisDocRef = doc(db, firestorePath);
+          try {
+            await setDoc(analysisDocRef, {
+              username: input.username, // Ensure username is included
+              suspensionStatus: "This account has been suspended", // Set suspension status here
+              lastAttemptedRefresh: new Date().toISOString(), // Record when the attempt was made
+              error: errorMessage // Include the specific error message
+            }, { merge: true });
+            console.log(`[AnalyzeExternalRedditUserFlow] Successfully updated Firestore with suspension status for u/${input.username} at ${firestorePath}`);
+          } catch (firestoreError) {
+            console.error(`[AnalyzeExternalRedditUserFlow] Failed to save suspension status to Firestore for u/${input.username}:`, firestoreError);
+          }
+        }
+      }
+
+      // Re-throw the error so the client-side knows the flow failed critically
       throw new Error(`Analysis failed for u/${input.username}: ${errorMessage}`);
+
     }
-    return result;
   }
 );
 
@@ -256,4 +292,12 @@ export async function analyzeExternalRedditUser(input: ExternalRedditUserAnalysi
     };
   }
 }
-
+// Helper types for Reddit API responses
+interface RedditApiListing {
+  kind: string;
+  data: {
+    children: Array<{ data: any }>;
+    after: string | null;
+    before: string | null;
+  };
+}
