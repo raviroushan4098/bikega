@@ -30,7 +30,7 @@ type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 export default function ForgotPasswordPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [isEmailSent, setIsEmailSent] = useState(false);
+  const [isEmailSent, setIsEmailSent] = useState(false); // Keep this to show confirmation UI
 
   const form = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -41,25 +41,40 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(data: ForgotPasswordFormValues) {
     setIsLoading(true);
-    console.log("Password reset requested for email:", data.email);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    setIsEmailSent(false); // Reset in case of re-submission
 
-    // In a real implementation, you would call an API route here:
-    // const response = await fetch('/api/auth/request-password-reset', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ email: data.email }),
-    // });
-    // const result = await response.json();
-    // if (response.ok) { ... } else { ... }
+    try {
+      const response = await fetch('/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email }),
+      });
 
-    toast({
-      title: "Reset Link Sent (Simulated)",
-      description: `If an account with email ${data.email} exists, a password reset link has been sent.`,
-    });
-    setIsEmailSent(true);
-    setIsLoading(false);
+      const result = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Check Your Email",
+          description: result.message, // Use the message from the API
+        });
+        setIsEmailSent(true); // Show the confirmation UI
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Request Failed",
+          description: result.error || "Could not process your request. Please try again.",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "An Error Occurred",
+        description: "Something went wrong. Please try again later.",
+      });
+      console.error("Forgot password error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -71,8 +86,8 @@ export default function ForgotPasswordPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl sm:text-3xl font-headline">Forgot Your Password?</CardTitle>
           <CardDescription>
-            {isEmailSent 
-              ? "Please check your email inbox (and spam folder) for the reset link."
+            {isEmailSent
+              ? "Please check your email inbox (and spam folder) for the reset link. It may take a few minutes to arrive."
               : "Enter your email address and we'll send you a link to reset your password."
             }
           </CardDescription>
@@ -82,7 +97,7 @@ export default function ForgotPasswordPage() {
             <div className="text-center space-y-4">
               <Mail className="mx-auto h-16 w-16 text-green-500" />
               <p className="text-muted-foreground">
-                The reset link is valid for a limited time.
+                The reset link is valid for 1 hour.
               </p>
               <Button asChild className="w-full">
                 <Link href="/login">Back to Login</Link>
@@ -98,10 +113,10 @@ export default function ForgotPasswordPage() {
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="email" 
-                          placeholder="name@example.com" 
-                          {...field} 
+                        <Input
+                          type="email"
+                          placeholder="name@example.com"
+                          {...field}
                           disabled={isLoading}
                           aria-invalid={form.formState.errors.email ? "true" : "false"}
                         />
