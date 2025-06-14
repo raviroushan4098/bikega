@@ -1,11 +1,12 @@
 
 "use client";
 
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AppLogo } from '@/components/layout/app-logo';
 import Image from 'next/image';
-import { BarChart3, DollarSign, Mail, Info, LogIn, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, Users as UsersIcon, ShieldCheck, SearchCode, LayoutGrid } from 'lucide-react';
+import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, DollarSign, Mail, Info, LogIn } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -14,21 +15,64 @@ interface FeatureCardProps {
   title: string;
   description: string;
   className?: string;
+  index: number; // For staggered animation
 }
 
-const FeatureCard: React.FC<FeatureCardProps> = ({ icon: Icon, title, description, className }) => (
-  <Card className={cn("shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col items-center text-center h-full", className)}>
-    <CardHeader className="pb-4">
-      <div className="p-3 bg-primary/10 rounded-full inline-block mb-3">
-        <Icon className="w-8 h-8 text-primary" />
-      </div>
-      <CardTitle className="text-lg font-headline">{title}</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <CardDescription className="text-sm">{description}</CardDescription>
-    </CardContent>
-  </Card>
-);
+const FeatureCard: React.FC<FeatureCardProps> = ({ icon: Icon, title, description, className, index }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const currentCardRef = cardRef.current;
+    if (!currentCardRef) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.unobserve(entry.target); // Stop observing once visible
+          }
+        });
+      },
+      {
+        threshold: 0.1, // Trigger when 10% of the card is visible
+      }
+    );
+
+    observer.observe(currentCardRef);
+
+    return () => {
+      observer.unobserve(currentCardRef); // Cleanup on unmount
+    };
+  }, []); // Runs once after initial render
+
+  const delayStyle = { transitionDelay: `${index * 100}ms` };
+
+  return (
+    <div
+      ref={cardRef}
+      style={delayStyle}
+      className={cn(
+        "transform transition-all duration-700 ease-out",
+        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10 pointer-events-none",
+        "h-full" // Ensure the div takes full height for card layout
+      )}
+    >
+      <Card className={cn("shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col items-center text-center h-full", className)}>
+        <CardHeader className="pb-4">
+          <div className="p-3 bg-primary/10 rounded-full inline-block mb-3">
+            <Icon className="w-8 h-8 text-primary" />
+          </div>
+          <CardTitle className="text-lg font-headline">{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CardDescription className="text-sm">{description}</CardDescription>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
 const features = [
   {
@@ -122,13 +166,14 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature) => (
+            {features.map((feature, idx) => (
               <FeatureCard
                 key={feature.title}
                 icon={feature.icon}
                 title={feature.title}
                 description={feature.description}
                 className={feature.className}
+                index={idx} 
               />
             ))}
           </div>
