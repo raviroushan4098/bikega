@@ -77,7 +77,7 @@ export default function LandingPage() {
         <div className="container mx-auto flex justify-between items-center">
           <AppLogo size="medium" />
           <Link href="/login" passHref>
-            <Button variant="outline" className="hidden sm:flex border-primary/50 text-primary hover:bg-primary/10 hover:text-primary-foreground focus:ring-accent">
+            <Button variant="outline" className="hidden sm:flex border-primary/50 text-primary hover:bg-primary/10 hover:text-primary focus:ring-accent">
               <LogIn className="mr-2 h-4 w-4" /> Login
             </Button>
           </Link>
@@ -94,7 +94,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10">
-            Unlock the power of social analytics. Gain valuable insights from YouTube, Reddit, X (Twitter), and global web mentions, all in one dynamic, easy-to-use platform.
+            Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
           </p>
 
           <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group">
