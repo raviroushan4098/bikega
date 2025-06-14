@@ -133,25 +133,66 @@ const DailyActivityChart = ({ data, width = 600, height = 300 }: { data: { date:
   </div>
 );
 
-const SubredditActivityChart = ({ data, width = 600, height = 350 }: { data: { subreddit: string; posts: number; comments: number }[], width?: number, height?: number }) => (
-  <div style={{ width, height, backgroundColor: 'white', padding: '10px', fontFamily: 'Inter, sans-serif' }}>
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={{ top: 5, right: 30, left: 0, bottom: 70 }}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="subreddit" angle={-45} textAnchor="end" interval={0} tick={{ fontSize: 10 }} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-        <RechartsTooltip contentStyle={{ fontSize: '12px' }} />
-        <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-        <Bar dataKey="posts" fill="#29ABE2" name="Posts">
-           <LabelList dataKey="posts" position="top" style={{ fontSize: '8px', fill: '#333' }} formatter={(value: number) => value > 0 ? value : ''} />
-        </Bar>
-        <Bar dataKey="comments" fill="#77DDE7" name="Comments">
-           <LabelList dataKey="comments" position="top" style={{ fontSize: '8px', fill: '#333' }} formatter={(value: number) => value > 0 ? value : ''} />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  </div>
-);
+const SubredditActivityChart = ({ data, width = 600, height = 700 }: { data: { subreddit: string; posts: number; comments: number }[], width?: number, height?: number }) => {
+  // Calculate max value and round up to nearest 10
+  const maxValue = Math.max(
+    ...data.map(item => Math.max(item.posts, item.comments))
+  );
+  const yAxisMax = Math.ceil(maxValue / 10) * 10;
+
+  return (
+    <div style={{ width, height, backgroundColor: 'white', padding: '10px', fontFamily: 'Inter, sans-serif' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart 
+          data={data} 
+          margin={{ top: 20, right: 30, left: 20, bottom: 90 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis 
+            dataKey="subreddit" 
+            angle={-45} 
+            textAnchor="end" 
+            interval={0} 
+            tick={{ fontSize: 10 }}
+            height={80}
+          />
+          <YAxis 
+            allowDecimals={false}
+            domain={[0, yAxisMax]}
+            ticks={Array.from({ length: (yAxisMax / 10) + 1 }, (_, i) => i * 10)}
+            tick={{ fontSize: 10 }}
+          />
+          <RechartsTooltip contentStyle={{ fontSize: '12px' }} />
+          <Legend 
+            wrapperStyle={{ 
+              fontSize: '12px', 
+              paddingTop: '20px',
+              bottom: -5
+            }} 
+          />
+          <Bar dataKey="posts" fill="#29ABE2" name="Posts">
+            <LabelList 
+              dataKey="posts" 
+              position="top" 
+              style={{ fontSize: '8px', fill: '#333' }} 
+              formatter={(value: number) => value > 0 ? value : ''}
+              //offset={7}
+            />
+          </Bar>
+          <Bar dataKey="comments" fill="#77DDE7" name="Comments">
+            <LabelList 
+              dataKey="comments" 
+              position="top" 
+              style={{ fontSize: '8px', fill: '#333' }} 
+              formatter={(value: number) => value > 0 ? value : ''}
+              //offset={7}
+            />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
 
 const SentimentPieChart = ({ data, width = 400, height = 250 }: { data: { name: string; value: number }[], width?: number, height?: number }) => {
   const COLORS = {
@@ -740,6 +781,40 @@ export default function AnalyzeExternalRedditUserPage() {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   };
 
+  const prepareSubredditChartData = (results: AnalysisResultDisplay[]) => {
+    const subredditActivity: { [key: string]: { posts: number; comments: number } } = {};
+    
+    results.forEach(result => {
+      if (!result.data || result.data._placeholder || result.data.error) return;
+
+      // Process posts
+      result.data.fetchedPostsDetails.forEach(post => {
+        if (!subredditActivity[post.subreddit]) {
+          subredditActivity[post.subreddit] = { posts: 0, comments: 0 };
+        }
+        subredditActivity[post.subreddit].posts++;
+      });
+
+      // Process comments
+      result.data.fetchedCommentsDetails.forEach(comment => {
+        if (!subredditActivity[comment.subreddit]) {
+          subredditActivity[comment.subreddit] = { posts: 0, comments: 0 };
+        }
+        subredditActivity[comment.subreddit].comments++;
+      });
+    });
+
+    // Convert to array and sort by total activity
+    return Object.entries(subredditActivity)
+      .map(([subreddit, data]) => ({
+        subreddit,
+        posts: data.posts,
+        comments: data.comments
+      }))
+      .sort((a, b) => ((b.posts + b.comments) - (a.posts + a.comments)))
+      .slice(0, 10); // Get top 10 most active subreddits
+  };
+
   const handleGeneratePdfReport = async () => {
     if (!canGenerateReport) {
       toast({ title: "No Data", description: "No analyzed profiles with data available to generate a report.", variant: "destructive" });
@@ -747,8 +822,13 @@ export default function AnalyzeExternalRedditUserPage() {
     }
     toast({ title: "Generating PDF Report...", description: "This may take a few moments. Please wait." });
 
+    // Add chart dimensions
+    const chartWidth = 750;  // Adjusted for landscape
+    const chartHeight = 400; // Adjusted for better visibility
+
     // Prepare chart data
     const dailyChartData = prepareDailyChartData(currentDisplayResults);
+    const subredditChartData = prepareSubredditChartData(currentDisplayResults);
 
     // Create PDF in landscape mode with A4 dimensions
     const doc = new jsPDF({ 
@@ -785,10 +865,24 @@ export default function AnalyzeExternalRedditUserPage() {
     doc.setFontSize(16);
     doc.text("Aggregated Reddit User Analysis Report", margin, 70);
 
-    yPos = 110; // Start content below header bar
+    yPos = 250; // Add space after header
 
-    // Add report metadata with improved styling
+    // Add overview text with centered styling
+    const centerX = pageWidth / 2;
+
     doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.text("Analysis Overview", centerX, yPos, { align: "center" });
+    yPos += 40;
+
+    // Add metadata with charts heading - centered
+    doc.setFontSize(18);
+    doc.text("Report Duration & Activity Charts", centerX, yPos, { align: "center" });
+    yPos += 30;
+
+    // Add metadata points - centered
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
     const metadata = [
       `Report Generated: ${format(new Date(), 'PPP p')}`,
@@ -798,14 +892,14 @@ export default function AnalyzeExternalRedditUserPage() {
     ];
 
     metadata.forEach(text => {
-      doc.text(text, margin, yPos);
-      yPos += 20;
+      doc.text(text, centerX, yPos, { align: "center" });
+      yPos += 30;
     });
 
     const addNewPage = () => {
       doc.addPage();
       pageNum++;
-      yPos = margin;
+      yPos = 60;
       
       // Add header to new page
       doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
@@ -823,72 +917,38 @@ export default function AnalyzeExternalRedditUserPage() {
       return false;
     };
 
-    // First page content
-    // Add visual charts with increased size for landscape
-    yPos += 20;
-    const chartWidth = 800;
-    const chartHeight = 300;
-
-    // Add Daily Activity Chart
+    // First Chart Section - Daily Activity
     checkPageBreak(chartHeight + 60);
-    if (dailyChartData.length > 0) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-      doc.text("Daily Activity Overview", margin, yPos);
-      yPos += 20;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("Daily Activity Overview", margin, yPos);
+    yPos += 30;
 
+    if (dailyChartData.length > 0) {
       const dailyChartImage = await renderChartToImage(DailyActivityChart, dailyChartData, 
         { width: chartWidth, height: chartHeight });
       if (dailyChartImage) {
         doc.addImage(dailyChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
-        yPos += chartHeight + 40;
+        yPos += chartHeight + 60;
       }
     }
 
-    // Prepare subreddit activity data
-    const subredditActivity = currentDisplayResults.reduce((acc: { [key: string]: { posts: number; comments: number } }, result) => {
-      if (!result.data || result.data._placeholder || result.data.error) return acc;
-
-      result.data.fetchedPostsDetails.forEach(post => {
-        if (!acc[post.subreddit]) {
-          acc[post.subreddit] = { posts: 0, comments: 0 };
-        }
-        acc[post.subreddit].posts++;
-      });
-
-      result.data.fetchedCommentsDetails.forEach(comment => {
-        if (!acc[comment.subreddit]) {
-          acc[comment.subreddit] = { posts: 0, comments: 0 };
-        }
-        acc[comment.subreddit].comments++;
-      });
-
-      return acc;
-    }, {});
-
-    const subredditChartData = Object.entries(subredditActivity)
-      .map(([subreddit, data]) => ({
-        subreddit,
-        posts: data.posts,
-        comments: data.comments
-      }))
-      .sort((a, b) => (b.posts + b.comments) - (a.posts + a.comments))
-      .slice(0, 10); // Top 10 most active subreddits
-
-    // Add Subreddit Activity Chart on new page if needed
-    checkPageBreak(chartHeight + 60);
+    // Second Chart Section - Subreddit Activity
+    // Only check for page break, don't force new page
     if (subredditChartData.length > 0) {
+      checkPageBreak(chartHeight + 60);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
+      doc.setFontSize(18);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.text("Subreddits by Collective Activity", margin, yPos);
-      yPos += 20;
+      yPos += 30;
 
       const subredditChartImage = await renderChartToImage(SubredditActivityChart, subredditChartData, 
         { width: chartWidth, height: chartHeight });
       if (subredditChartImage) {
         doc.addImage(subredditChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
-        yPos += chartHeight + 40;
+        yPos += chartHeight + 60;
       }
     }
 
