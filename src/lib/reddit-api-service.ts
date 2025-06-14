@@ -1,4 +1,3 @@
-
 'use server';
 
 import type { RedditPost, ExternalRedditUserAnalysis } from '@/types';
@@ -19,8 +18,8 @@ let accessToken: string | null = null;
 let tokenExpiry: number | null = null;
 
 const FETCH_PERIOD_DAYS = 30; // Fetch data from the last 30 days on refresh
-const COMMENTS_PER_POST_LIMIT = 5; // Max comments to fetch per post
-const COMMENT_FETCH_DEPTH = 1; // Depth of comments to fetch
+const COMMENTS_PER_POST_LIMIT = 100; // Max comments to fetch per post
+const COMMENT_FETCH_DEPTH = 10; // Depth of comments to fetch
 const API_CALL_DELAY_MS = 10000; // Delay in milliseconds between sentiment API calls (10 seconds)
 
 // Utility function to introduce a delay
@@ -262,7 +261,7 @@ export async function refreshUserRedditData(
   console.log(`[Reddit API Service] refreshUserRedditData: Fetched ${storedItemsMap.size} existing stored items for comparison.`);
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = 1; // Fetch only 1 post to reduce processing time and avoid timeouts
+  const limit = 100; // Fetch only 1 post to reduce processing time and avoid timeouts
   const sort = 'new';
   
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
@@ -505,31 +504,35 @@ export async function addOrUpdateRedditUserPlaceholder(appUserId: string, userna
 }
 
 
-export async function getStoredRedditAnalyses(appUserId: string): Promise<ExternalRedditUserAnalysis[]> {
-  if (!appUserId) {
-    console.warn('[Reddit API Service] getStoredRedditAnalyses: No appUserId provided.');
-    return [];
-  }
-  const analyses: ExternalRedditUserAnalysis[] = [];
-  try {
-    const profilesCollectionRef = collection(db, TOP_LEVEL_EXTERNAL_REDDIT_USER_COLLECTION, appUserId, ANALYZED_PROFILES_SUBCOLLECTION);
-    const q = query(profilesCollectionRef, orderBy('username', 'asc'));
-    const querySnapshot = await getDocs(q);
-
-    querySnapshot.forEach((docSnap) => {
-      analyses.push(docSnap.data() as ExternalRedditUserAnalysis);
+export const getStoredRedditAnalyses = async (userId: string): Promise<ExternalRedditUserAnalysis[]> => {
+    const analysesRef = collection(db, `ExternalRedditUser/${userId}/analyzedRedditProfiles`);
+    const snapshot = await getDocs(analysesRef);
+    
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        // Include suspended/blocked accounts in the results
+        if (data.suspensionStatus) {
+            return {
+                username: data.username,
+                _placeholder: false,
+                lastRefreshedAt: null,
+                accountCreated: null,
+                totalPostKarma: 0,
+                totalCommentKarma: 0,
+                subredditsPostedIn: [],
+                totalPostsFetchedThisRun: 0,
+                totalCommentsFetchedThisRun: 0,
+                fetchedPostsDetails: [],
+                fetchedCommentsDetails: [],
+                suspensionStatus: data.suspensionStatus,
+                lastError: data.lastError,
+                lastErrorAt: data.lastErrorAt,
+                error: data.lastError // Set error to show suspension status
+            };
+        }
+        return data as ExternalRedditUserAnalysis;
     });
-    console.log(`[Reddit API Service] getStoredRedditAnalyses: Fetched ${analyses.length} stored analyses for appUser ${appUserId}.`);
-    return analyses;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching stored Reddit analyses.';
-    console.error(`[Reddit API Service] getStoredRedditAnalyses: Error for appUser ${appUserId}: ${errorMessage}`, error);
-    if (error instanceof Error && (error.message.includes('needs an index') || error.message.includes('requires an index'))) {
-        console.error(`[SERVICE] Firestore index missing for '${ANALYZED_PROFILES_SUBCOLLECTION}' subcollection, likely on 'username' (asc). The error message from Firestore should contain a link to create it.`);
-    }
-    return []; 
-  }
-}
+};
 
 export async function deleteStoredRedditAnalysis(appUserId: string, redditUsername: string): Promise<{ success: boolean; error?: string }> {
   if (!appUserId || !redditUsername) {
