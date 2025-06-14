@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { Loader2, Mail } from "lucide-react";
+import { Loader2, Mail, KeyRound } from "lucide-react"; // Added KeyRound
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AppLogo } from '@/components/layout/app-logo';
 import Link from "next/link";
@@ -41,10 +41,10 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(data: ForgotPasswordFormValues) {
     setIsLoading(true);
-    setIsEmailSent(false);
+    setIsEmailSent(false); // Reset this in case of re-submission attempt
 
     try {
-      const response = await fetch('/api/auth/request-password-reset', { // This route now sends OTP
+      const response = await fetch('/api/auth/request-password-reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: data.email }),
@@ -55,7 +55,6 @@ export default function ForgotPasswordPage() {
       if (response.ok) {
         toast({
           title: "Check Your Email",
-          // Updated message to reflect OTP being sent
           description: "If an account with this email exists, an OTP has been sent. It's valid for 10 minutes.", 
         });
         setIsEmailSent(true); 
@@ -98,9 +97,15 @@ export default function ForgotPasswordPage() {
             <div className="text-center space-y-4">
               <Mail className="mx-auto h-16 w-16 text-green-500" />
               <p className="text-muted-foreground">
-                Once you receive your OTP, you'll use it on the next step (which we'll build soon) to set a new password.
+                Once you receive your OTP, please proceed to the Reset Password page to set your new password.
               </p>
-              <Button asChild className="w-full">
+              <Button asChild className="w-full" variant="default">
+                <Link href="/reset-password">
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Proceed to Reset Password
+                </Link>
+              </Button>
+              <Button asChild className="w-full" variant="outline">
                 <Link href="/login">Back to Login</Link>
               </Button>
             </div>
