@@ -63,14 +63,17 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon: Icon, title, descriptio
       ref={cardRef}
       style={delayStyle}
       className={cn(
-        "transform transition-all duration-700 ease-out",
+        "transform transition-all duration-700 ease-out group", // Added group for icon hover
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10 pointer-events-none",
         "h-full"
       )}
     >
-      <Card className={cn("shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col items-center text-center h-full", className)}>
+      <Card className={cn(
+        "shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center h-full hover:-translate-y-1", 
+        className
+      )}>
         <CardHeader className="pb-4">
-          <div className="p-3 bg-primary/10 rounded-full inline-block mb-3">
+          <div className="p-3 bg-primary/10 rounded-full inline-block mb-3 transition-transform duration-300 group-hover:scale-110">
             <Icon className="w-8 h-8 text-primary" />
           </div>
           <CardTitle className="text-lg font-headline">{title}</CardTitle>
@@ -177,7 +180,7 @@ const pricingPlans: PricingPlan[] = [
     isPopular: true,
     ctaText: "Choose Growth Plan",
     ctaLink: "#",
-    highlightClass: "border-primary shadow-primary/20 scale-105",
+    highlightClass: "border-primary shadow-primary/20", 
   },
   {
     name: "Pro",
@@ -310,7 +313,6 @@ export default function LandingPage() {
               priority
               className="transform transition-transform duration-500 group-hover:scale-105"
             />
-             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/5 transition-opacity duration-500 group-hover:opacity-70"></div>
           </div>
         </div>
       </section>
@@ -349,9 +351,9 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
             {pricingPlans.map((plan, idx) => (
               <Card key={plan.name} className={cn(
-                "shadow-lg flex flex-col relative overflow-hidden",
-                plan.highlightClass,
-                idx === 1 ? "lg:transform lg:scale-105" : "" // Emphasize Growth plan slightly more on large screens
+                "shadow-lg flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-1",
+                plan.isPopular ? "border-2 border-primary shadow-primary/20 lg:scale-105" : plan.highlightClass,
+                idx === 1 && !plan.isPopular ? "lg:transform lg:scale-105" : "" 
               )}>
                 {plan.isPopular && (
                   <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold tracking-wider uppercase transform translate-x-1/3 -translate-y-1/3 rotate-45">
@@ -378,7 +380,7 @@ export default function LandingPage() {
                   </ul>
                 </CardContent>
                 <CardFooter className="mt-auto p-6 pt-0">
-                  <Button asChild className={cn("w-full", plan.isPopular ? "bg-primary hover:bg-primary/90" : "bg-accent hover:bg-accent/90 text-accent-foreground")}>
+                  <Button asChild className={cn("w-full transition-transform duration-200 hover:scale-105", plan.isPopular ? "bg-primary hover:bg-primary/90" : "bg-accent hover:bg-accent/90 text-accent-foreground")}>
                     <Link href={plan.ctaLink}>{plan.ctaText}</Link>
                   </Button>
                 </CardFooter>
