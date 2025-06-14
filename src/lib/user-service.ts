@@ -19,15 +19,15 @@ export const login = async (email: string, passwordInput: string): Promise<User 
     const userDoc = querySnapshot.docs[0];
     const user = { id: userDoc.id, ...userDoc.data() } as User;
 
-    // Conceptual password check
-    // In a real app, compare hashed passwords. Here, we compare plaintext.
+    // CRITICAL: Compare the input password with the stored password
     if (user.password !== passwordInput) {
-      console.warn(`Login Failed: Password mismatch for user '${email}'.`);
+      console.warn(`Login Failed: Password mismatch for user '${email}'. Input: '${passwordInput}', Stored: '${user.password}'`);
       return null;
     }
 
     console.log(`Login Succeeded: User '${email}' found in Firestore with ID '${user.id}'.`);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Simulate network delay if needed, but often not necessary here
+    // await new Promise(resolve => setTimeout(resolve, 500)); 
     return user;
   } catch (error) {
     console.error(`Login Failed: Error querying Firestore for email '${email}'. Error Details:`, error);
@@ -60,20 +60,20 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
         : [];
     }
 
-    const newUser: Omit<User, 'id'> = {
+    const newUser: Omit<User, 'id' | 'createdAt'> & { createdAt: Timestamp } = { // Ensure createdAt is a Firestore Timestamp
       email: userData.email,
-      password: userData.password, // Store the password (conceptually)
+      password: userData.password,
       name: userData.name,
       role: userData.role,
       profilePictureUrl: `https://placehold.co/100x100.png?text=${userData.name.substring(0,2)}`,
       assignedKeywords: keywordsArray,
       assignedYoutubeUrls: [],
-      createdAt: new Date().toISOString(),
+      createdAt: Timestamp.now(), // Use Firestore Timestamp
     };
 
     await setDoc(newUserDocRef, newUser);
-    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}, CreatedAt: ${newUser.createdAt}`);
-    return { id: newUserDocRef.id, ...newUser };
+    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}, CreatedAt: ${newUser.createdAt.toDate().toISOString()}`);
+    return { id: newUserDocRef.id, ...newUser, createdAt: newUser.createdAt.toDate().toISOString() };
 
   } catch (error) {
     console.error("Error adding user to Firestore: ", error);
@@ -87,8 +87,15 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
 export const getUsers = async (): Promise<User[]> => {
   try {
     const querySnapshot = await getDocs(usersCollectionRef);
-    const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    // console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords, YouTube URLs, CreatedAt):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords, youtubeUrls: u.assignedYoutubeUrls, createdAt: u.createdAt })));
+    const users = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        ...data,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+        passwordLastResetAt: data.passwordLastResetAt instanceof Timestamp ? data.passwordLastResetAt.toDate().toISOString() : data.passwordLastResetAt,
+      } as User;
+    });
     return users;
   } catch (error) {
     console.error("Error fetching users from Firestore: ", error);
@@ -102,7 +109,13 @@ export const getUserById = async (userId: string): Promise<User | null> => {
     const userDocSnap = await getDoc(userDocRef);
 
     if (userDocSnap.exists()) {
-      return { id: userDocSnap.id, ...userDocSnap.data() } as User;
+      const data = userDocSnap.data();
+      return {
+        id: userDocSnap.id,
+        ...data,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+        passwordLastResetAt: data.passwordLastResetAt instanceof Timestamp ? data.passwordLastResetAt.toDate().toISOString() : data.passwordLastResetAt,
+      } as User;
     } else {
       console.log(`[user-service] No such user document with ID: ${userId}`);
       return null;
@@ -182,8 +195,8 @@ export const updateUserPassword = async (userId: string, newPassword: string): P
   try {
     const userDocRef = doc(db, 'users', userId);
     await updateDoc(userDocRef, {
-      password: newPassword, // Store the new password (plaintext for this demo)
-      passwordLastResetAt: Timestamp.now(), // Firestore Timestamp
+      password: newPassword, 
+      passwordLastResetAt: Timestamp.now(),
     });
     console.log(`[user-service] Password for user ${userId} has been updated (conceptually).`);
     return { success: true };

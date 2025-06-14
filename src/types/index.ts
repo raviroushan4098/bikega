@@ -2,14 +2,14 @@
 export interface User {
   id: string;
   email: string;
-  password?: string; // Added for conceptual password storage
+  password?: string; 
   role: 'admin' | 'user';
   name: string;
   profilePictureUrl?: string;
-  assignedKeywords?: string[]; // For filtering data for 'user' role
-  assignedYoutubeUrls?: string[]; // Array of YouTube video URLs
-  createdAt?: string; // ISO date string for when the user was created
-  passwordLastResetAt?: string; // ISO date string, added by password reset
+  assignedKeywords?: string[]; 
+  assignedYoutubeUrls?: string[]; 
+  createdAt?: string; 
+  passwordLastResetAt?: string; 
 }
 
 // Represents video details fetched from YouTube API for display
@@ -23,9 +23,9 @@ export interface YoutubeVideo {
   likeCount?: number;
   commentCount?: number;
   viewCount?: number;
-  shareCount?: number; // Note: shareCount is often not available or zero from API
-  assignedToUserId: string; // User to whom this URL is assigned
-  assignedToUserName?: string; // Optional: Name of the user for display
+  shareCount?: number; 
+  assignedToUserId: string; 
+  assignedToUserName?: string; 
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
 }
 
@@ -36,32 +36,32 @@ export interface YouTubeMentionItem {
   thumbnailUrl: string;
   channelTitle: string;
   publishedAt: string; // ISO date string
-  descriptionSnippet?: string; // A short snippet from description showing keyword context
+  descriptionSnippet?: string; 
   matchedKeywords: string[];
   dataAiHint?: string;
-  userId: string; // ID of the user this mention is for
+  userId: string; 
   viewCount?: number;
   likeCount?: number;
   commentCount?: number;
-  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; // Added sentiment field
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; 
 }
 
 export interface RedditPost {
-  id:string; // Fullname from Reddit API (e.g., t3_xxxxxx or t1_yyyyyy)
-  sno?: number; // Client-side serial number for table display
-  title: string; // For posts: post title. For comments: title of the post the comment is on (link_title)
-  content?: string; // For posts: selftext. For comments: comment body.
+  id:string; 
+  sno?: number; 
+  title: string; 
+  content?: string; 
   subreddit: string;
   author: string;
   timestamp: string; // ISO date string
   score: number;
-  numComments: number; // Primarily for posts. For comments, this might be 0 or link to post's comment count.
-  url: string; // For posts: post URL. For comments: comment permalink.
-  flair?: string | null; // Flair can be a string or null (if not present or explicitly set to null)
+  numComments: number; 
+  url: string; 
+  flair?: string | null; 
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown';
   type: 'Post' | 'Comment';
-  matchedKeyword?: string; // Keyword that this post/comment matched
-  processedAt?: string; // ISO string timestamp of when this item was last processed/saved
+  matchedKeyword?: string; 
+  processedAt?: string; 
 }
 
 export interface Tweet {
@@ -78,32 +78,32 @@ export interface Tweet {
 }
 
 export interface Mention {
-  id: string; // Should be unique across platforms, e.g., platform_originalId
-  userId: string; // ID of the user this mention belongs to
+  id: string; 
+  userId: string; 
   platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Web Mention' | 'Other';
-  source: string; // e.g., "Reddit r/webdev", "Hacker News", "TechCrunch", "My Awesome Blog"
+  source: string; 
   title: string;
   excerpt: string;
   url: string;
   timestamp: string; // ISO date string (publication time)
-  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; // Matching AdvancedSentimentOutput
-  matchedKeyword: string; // The keyword that triggered this mention
-  fetchedAt?: string; // ISO date string (when our system fetched it)
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; 
+  matchedKeyword: string; 
+  fetchedAt?: string; 
 }
 
 // For table column definitions
 export interface ColumnConfig<T> {
-  key: keyof T | string; // Allow string for custom/action columns
+  key: keyof T | string; 
   header: string;
-  render?: (item: T, index?: number) => React.ReactNode; // Custom render function for a cell
+  render?: (item: T, index?: number) => React.ReactNode; 
   sortable?: boolean;
-  className?: string; // Optional className for th/td
+  className?: string; 
 }
 
 export interface ApiKey {
   id: string;
   serviceName: string;
-  keyValue: string; // SECURITY NOTE: Storing raw API keys readable by client is risky for production.
+  keyValue: string; 
   description?: string;
   createdAt: string; // ISO date string
   addedByUserId: string;
@@ -120,15 +120,15 @@ export interface NewApiKeyData {
 export interface NewUserDetails {
   name: string;
   email: string;
-  password?: string; // Password will be stored conceptually (plaintext for this demo)
+  password?: string; 
   role: 'admin' | 'user';
-  assignedKeywords?: string; // Comma-separated string for form input
+  assignedKeywords?: string; 
 }
 
 // Types for External Reddit User Analysis
 export interface ExternalRedditUserAnalysisInput {
   username: string;
-  appUserId?: string; // ID of the app user initiating the analysis, for saving results
+  appUserId?: string; 
 }
 
 export interface ExternalRedditUserDataItem {
@@ -152,9 +152,9 @@ export interface ExternalRedditUserAnalysis {
   totalCommentsFetchedThisRun: number;
   fetchedPostsDetails: ExternalRedditUserDataItem[];
   fetchedCommentsDetails: ExternalRedditUserDataItem[];
-  lastRefreshedAt?: string | null; // ISO string, can be null if pending
-  _placeholder?: boolean; // True if this is just a placeholder, not a full analysis
-  error?: string; // Optional error message if analysis failed
-  suspensionStatus?: string; // Specifically for suspended accounts
-  lastErrorAt?: string; // Timestamp for the last error, if suspensionStatus or error is set
+  lastRefreshedAt?: string | null; 
+  _placeholder?: boolean; 
+  error?: string; 
+  suspensionStatus?: string; 
+  lastErrorAt?: string; 
 }
