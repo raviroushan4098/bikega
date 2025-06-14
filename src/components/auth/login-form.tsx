@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +19,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loader2, LogIn } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import Link from "next/link"; // Added Link import
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -120,6 +122,13 @@ export function LoginForm() {
           )}
           Sign In
         </Button>
+        <div className="text-center">
+          <Link href="/forgot-password" passHref>
+            <Button variant="link" className="text-sm px-0">
+              Forgot Password?
+            </Button>
+          </Link>
+        </div>
       </form>
     </Form>
   );

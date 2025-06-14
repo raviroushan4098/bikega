@@ -1,0 +1,246 @@
+[33mcommit 2dfc558b3eef062b67d9f85c607433e3adb43e4f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:57:33 2025 +0000
+
+    remove this"<div class="jsx-e5514c6235fe8724 absolute inset-0 bg-gradien
+
+[33mcommit cc5f7dbeec9f99f6d9f615b223cb2960b859f429[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:55:46 2025 +0000
+
+    add one button home after clicking on that jump to top of the page
+
+[33mcommit ad0a4ab0662955cd777acfb27e6aef4e8fdb7bb7[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:46:08 2025 +0000
+
+    for pricing  button make a card for each plan
+    
+    Here’s a pricing structu
+
+[33mcommit e1155a71b34578f0356f9a99eaf1c9f3c19ee4c9[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:42:07 2025 +0000
+
+    add contact form ,
+    
+    when user press submit button it should be send on m
+
+[33mcommit ece20eb4f0aa4a5f88dc07f9edf6353b16c8e428[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:34:28 2025 +0000
+
+    crate about a fully discriptive of platform giving you refrence"Who We A
+
+[33mcommit 86b646b9129fec0ecf7a1079649a787e1401401a[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:25:33 2025 +0000
+
+    shift all button on top of page
+
+[33mcommit d7d3e215baea883597b93a46e2b5391efa49b702[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:14:13 2025 +0000
+
+    add fade in effect for each card on scroll
+
+[33mcommit 0a082b0270f0c7a8559dc74fdc3d1de374c23870[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:11:35 2025 +0000
+
+    one container is there showing  for what purpus
+
+[33mcommit 8eb4602a2551d2fdc963d7ee1f878c758c87e86f[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:07:14 2025 +0000
+
+    its not eye catching
+    
+    display all the features of this platform
+
+[33mcommit b3bfe110501afe89d652e463b1ec9834e1b1dd11[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 16:01:39 2025 +0000
+
+    make page more attractive gradient eyecatching
+
+[33mcommit 213bf43dfc418c0692687769c3775127eb7ac633[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 15:41:12 2025 +0000
+
+    crate a landing page and add 3 button pricing contactus about and login
+
+[33mcommit 44092d3a162403e6919fbbdafd66d39582042ac2[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 14 05:33:27 2025 +0000
+
+    on this page "External Reddit User Analyzer" i wish to add one card in s
+
+[33mcommit 6b707feae3e70f659583ec11b1b490a3211542a3[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Fri Jun 13 07:07:53 2025 +0000
+
+    I see this error with the app, reported by NextJS, please fix it. The er
+
+[33mcommit fa19a97b9c576703d86022378fc17260fe809ef7[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Mon Jun 9 03:12:46 2025 +0000
+
+    The NextJS app server is having trouble starting. Please identify what c
+
+[33mcommit bdeb711a6ce09e89173c55a63a44d3b2c6450a51[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 09:43:52 2025 +0000
+
+    on "Twitter/X Analytics "page a beautiful eye caching add comming soon p
+
+[33mcommit 9fbbcaedc6a7d8d3134a3f37a0c0f421b6e95794[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 08:41:31 2025 +0000
+
+    any alternative way api is very costly
+
+[33mcommit 6a449a72cd01444509903d943e8a933e40c36761[m
+Merge: 57a2e74 f4f9a0c
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 07:09:19 2025 +0000
+
+    Merge branch 'main' of https://github.com/raviroushan4098/social-eye
+
+[33mcommit 57a2e74ee1e58dcd085712d19bfadcd9790af9cb[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 05:51:00 2025 +0000
+
+    apply this for all pages like"on Reddit Analytics page if i click on Ext
+
+[33mcommit 3001597b8b34e66923d321e12ddb766772932359[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 05:40:51 2025 +0000
+
+    well start implementation in code
+
+[33mcommit 9530bc9cb7ef2a7e77e36af73fc29a84e25dfe31[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 05:27:11 2025 +0000
+
+    for negative increase the gap bettween comment and sentiment negative
+
+[33mcommit 754dc75ed466709c895c092a838d0cc6e83a26bf[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 05:23:51 2025 +0000
+
+    from ngative sentiment remove red background make is like netural as giv
+
+[33mcommit 9a59e434738fd25ee98432e7e6fb6dec0a152f08[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 05:16:40 2025 +0000
+
+    still sentimrnt data overly the comment make more right shift
+
+[33mcommit 7aa7d50b446adcd822fa667d59dd23156e3043e7[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 05:10:01 2025 +0000
+
+    shift sentiment little right
+
+[33mcommit 1237862af98851ae845d57cb64ff648ae2523343[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:54:50 2025 +0000
+
+    decrease the size of bottom right cornor logo
+
+[33mcommit 4355c1c5750a8b9c4bc1001a598ea1c7b7782de6[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:51:26 2025 +0000
+
+    decrease the width of card
+
+[33mcommit b67bddb608d8b184e5c59b0cbf2a613a20d1a316[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:49:19 2025 +0000
+
+    in positive sentiment having background  keep it white like netural
+
+[33mcommit 2b40c6613ecceb308cdd5a10ffd2c3b756ec9217[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:45:45 2025 +0000
+
+    its hiding under right corner youtube logo shift more thoward left
+
+[33mcommit d6c394a95657286aabd643dadfcc4b90807d7ae3[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:43:11 2025 +0000
+
+    on footer not showing sentiment
+
+[33mcommit 98e87d0e0eea7f602c335140f312e7dd8868857c[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:25:25 2025 +0000
+
+    footer sectionn i want like this in given picture
+
+[33mcommit 1d5c41dc368638ee1e4208ce50e3704dc510254d[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:22:15 2025 +0000
+
+    add hover effect for each card
+
+[33mcommit 4a9c1a087f0dd38da32ce59cedf855784c86eb4e[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:20:59 2025 +0000
+
+    card header top of the card but u overlayed on thumbmnail
+
+[33mcommit 312155b4677abe65f1d50f82334b112a4ce1afc1[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:18:19 2025 +0000
+
+    implement in code
+
+[33mcommit 3a7e1c0addb9bd2a5570d95de837193ac8f0f76b[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:14:42 2025 +0000
+
+    Your YouTube Keyword Mentions card result group byy date like in given p
+
+[33mcommit bc41a4dd71a1a26aa9af851887a8d1a9bdbb9880[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:05:28 2025 +0000
+
+    Your YouTube Keyword Mentions
+    
+    Displaying mentions for:lpu
+    
+    "below Displ
+
+[33mcommit 59f6169859660dcbd76624f86865082e70028121[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sun Jun 8 04:00:29 2025 +0000
+
+    add youtube badging on footer right corner
+
+[33mcommit 533c86997e5edb5a6a79b67c3a88ba33fd00c96c[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 7 21:34:21 2025 +0000
+
+    add date filter option
+
+[33mcommit 1ec3c0234268f822f8c2e802a3792ae6e7efcf7c[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 7 21:30:17 2025 +0000
+
+    I see this error with the app, reported by NextJS, please fix it. The er
+
+[33mcommit 372dbdaeef8d32da489b03df25aaad90d1a5a1b2[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 7 21:28:32 2025 +0000
+
+    The NextJS app server is having trouble starting. Please identify what c
+
+[33mcommit b46a3fbf25b412da990b3c7a1097ddb564a0d7bc[m
+Author: Dav Bhagalpur <davbhagalpur52@gmail.com>
+Date:   Sat Jun 7 21:24:48 2025 +0000
+
+    i want fetched data of youtube mentions should be display like card for
+
+[33mcommit 

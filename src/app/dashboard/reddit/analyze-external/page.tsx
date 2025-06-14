@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatDistanceToNow, startOfDay, endOfDay, formatDistanceToNowStrict } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from '@/components/ui/separator';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder, deleteStoredRedditAnalysis } from '@/lib/reddit-api-service';
@@ -347,52 +347,125 @@ export default function AnalyzeExternalRedditUserPage() {
     });
 
     try {
-        const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
-        
-        if (resultFromFlow.error) {
-            console.error(`Error analyzing/refreshing user ${usernameToAnalyze} (from flow):`, resultFromFlow.error);
-            if (!isUpdatingAll) { 
-                toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 7000 });
-            }
-            setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: resultFromFlow.error} : undefined } : r
-            ));
+      const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
 
-            // Update Firestore document with suspension status if analysis fails
- try {
- await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
- suspensionStatus: "This account has been suspended"
- }, { merge: true });
- } catch (dbError) {
- console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
- }
-        }
- else {
-            setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: {...resultFromFlow, _placeholder: false}, isLoading: false, isRefreshing: false, error: undefined } : r
-            ));
-            if (!isUpdatingAll && isRefreshOp) {
-                toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
-            }
-        }
-    } catch (error) { 
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
-        console.error(`[Client] Error calling analyzeExternalRedditUser for ${usernameToAnalyze}:`, error);
-        if (!isUpdatingAll) { 
-            toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 7000 });
-        }
+      if (resultFromFlow.error) {
+        const errorMessage = resultFromFlow.error;
+        const isSuspendedAccount = errorMessage.toLowerCase().includes('suspended');
+
+        // Update UI with error state
         setAnalysisResults(prev => prev.map(r =>
-            r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: errorMessage } : undefined } : r 
+          r.username === usernameToAnalyze ? {
+            username: usernameToAnalyze,
+            error: errorMessage,
+            isLoading: false,
+            isRefreshing: false,
+            data: r.data ? { ...r.data, error: errorMessage } : undefined
+          } : r
         ));
 
-        // Update Firestore document with suspension status if analysis fails
- try {
- await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
- suspensionStatus: "An error occurred during analysis" // Or refine based on actual error type
- }, { merge: true });
- } catch (dbError) {
- console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
- }
+        // Only show toast for non-updating-all operations
+        if (!isUpdatingAll) {
+          toast({
+            variant: "destructive",
+            title: `Analysis Failed for u/${usernameToAnalyze}`,
+            description: errorMessage,
+            duration: 7000
+          });
+        }
+
+        // Update Firestore with suspension status
+        try {
+          const docRef = doc(db, `ExternalRedditUser/${appUserIdForCall}/analyzedRedditProfiles/${usernameToAnalyze}`);
+          await setDoc(docRef, {
+            username: usernameToAnalyze,
+            suspensionStatus: isSuspendedAccount ? "This account has been suspended" : "Account inaccessible",
+            lastError: errorMessage,
+            lastErrorAt: new Date().toISOString(),
+            _placeholder: false,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+
+          console.log(`Updated Firestore with error status for u/${usernameToAnalyze}`);
+        } catch (dbError) {
+          console.error(`Failed to update Firestore for user ${usernameToAnalyze} with error status:`, dbError);
+          toast({ 
+            variant: "destructive", 
+            title: "Database Update Failed", 
+            description: "Failed to save error status to database." 
+          });
+        }
+      } else {
+        // Success case - update UI with analysis results
+        setAnalysisResults(prev => prev.map(r => 
+          r.username === usernameToAnalyze ? {
+            username: usernameToAnalyze,
+            data: { ...resultFromFlow, _placeholder: false },
+            isLoading: false,
+            isRefreshing: false,
+            error: undefined
+          } : r
+        ));
+
+        // Add this Firestore update for successful analysis
+        try {
+          const docRef = doc(db, `ExternalRedditUser/${appUserIdForCall}/analyzedRedditProfiles/${usernameToAnalyze}`);
+          await setDoc(docRef, {
+            ...resultFromFlow,
+            _placeholder: false,
+            updatedAt: new Date().toISOString(),
+            lastRefreshedAt: new Date().toISOString()
+          }, { merge: true });
+
+          console.log(`Successfully updated Firestore data for u/${usernameToAnalyze}`);
+        } catch (dbError) {
+          console.error(`Failed to update Firestore for user ${usernameToAnalyze}:`, dbError);
+          toast({ 
+            variant: "destructive", 
+            title: "Database Update Failed", 
+            description: "Analysis completed but failed to save to database." 
+          });
+        }
+
+        if (!isUpdatingAll && isRefreshOp) {
+          toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
+      console.error(`[Client] Error analyzing user ${usernameToAnalyze}:`, error);
+
+      // Update UI with error state
+      setAnalysisResults(prev => prev.map(r =>
+        r.username === usernameToAnalyze ? {
+          username: usernameToAnalyze,
+          error: errorMessage,
+          isLoading: false,
+          isRefreshing: false,
+          data: r.data ? { ...r.data, error: errorMessage } : undefined
+        } : r
+      ));
+
+      // Only show toast for non-updating-all operations
+      if (!isUpdatingAll) {
+        toast({
+          variant: "destructive",
+          title: `Analysis Failed for u/${usernameToAnalyze}`,
+          description: errorMessage,
+          duration: 7000
+        });
+      }
+
+      // Update Firestore with error status
+      try {
+        await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
+          suspensionStatus: "Analysis error occurred",
+          lastError: errorMessage,
+          lastErrorAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (dbError) {
+        console.error(`Failed to update Firestore for user ${usernameToAnalyze} with error status:`, dbError);
+      }
     }
   };
   
@@ -455,43 +528,43 @@ export default function AnalyzeExternalRedditUserPage() {
     const file = event.target.files?.[0];
     if (!file || !currentUser?.id) return;
 
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-      toast({ variant: "destructive", title: "Invalid File", description: "Please upload a .csv file." });
- event.target.value = '';
- setFileName(null);
- setIsProcessingCsv(false);
- return;
+    // Validate file type and extension
+    if (!file.type.match('text/csv|application/vnd.ms-excel') && !file.name.toLowerCase().endsWith('.csv')) {
+      toast({ 
+        variant: "destructive", 
+        title: "Invalid File", 
+        description: "Please upload a valid CSV file." 
+      });
+      event.target.value = '';
+      setFileName(null);
+      return;
     }
 
     setFileName(file.name);
     setIsProcessingCsv(true);
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      if (!text) {
-          toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
-          setIsProcessingCsv(false);
- 
- 
- 
- setFileName(null);
-          event.target.value = '';
-          return;
-      }
-      
-      let lines = text.split(/\\r\\n|\\n|\\r/); 
-      const header = lines[0].toLowerCase();
-      if (header.includes('user_name') || header.includes('username')) { 
-        lines.shift(); 
-      }
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(file);
+      });
 
-      const csvUsernamesRaw = lines
-        .flatMap(line => line.split(',')) 
-        .map(usernamePart => usernamePart.trim().replace(/^u\//i, '')) 
-        .filter(username => username !== ''); 
+      // Split lines and handle different line endings
+      const lines = text.split(/\r\n|\n|\r/).filter(line => line.trim());
       
-      const uniqueCsvUsernames = Array.from(new Set(csvUsernamesRaw));
+      // Check if first line is header and remove it
+      const firstLine = lines[0].toLowerCase();
+      const dataLines = firstLine.includes('user_name') || firstLine.includes('username') 
+        ? lines.slice(1) 
+        : lines;
+
+      // Extract and clean usernames
+      const usernames = dataLines
+        .map(line => line.split(',')[0]) // Take first column
+        .map(username => username.trim().replace(/^u\//i, ''))
+        .filter(username => username && username.length > 0);
 
       if (usernames.length === 0) {
         toast({ 
@@ -621,33 +694,359 @@ export default function AnalyzeExternalRedditUserPage() {
   };
   
   const currentDisplayResults = useMemo(() => {
-    return analysisResults.filter(r => r.data && !r.data._placeholder && !r.data.error && !r.data.suspensionStatus);
+    return analysisResults.filter(r => r.data && !r.data._placeholder && !r.data.error);
   }, [analysisResults]);
 
 
   const summaryStats = useMemo(() => {
-    let totalUsernames = currentDisplayResults.length;
-    let totalPosts = 0;
-    let totalComments = 0;
-    let totalScore = 0;
-    let totalReplies = 0;
+    const initialStats = {
+      totalUsernames: currentDisplayResults?.length || 0,
+      totalPosts: 0,
+      totalComments: 0,
+      totalScore: 0,
+      totalReplies: 0,
+      blockedAccounts: analysisResults.filter(r => 
+        r.data?.suspensionStatus || r.data?.error || r.error
+      ).length || 0
+    };
 
-    currentDisplayResults.forEach(result => {
-      if (result.data && !result.data._placeholder) {
-        result.data.fetchedPostsDetails.forEach(post => {
-          totalPosts++;
-          totalScore += post.score;
-          totalReplies += post.numComments || 0;
-        });
-        result.data.fetchedCommentsDetails.forEach(comment => {
-          totalComments++;
-          totalScore += comment.score;
-        });
+    if (!Array.isArray(currentDisplayResults)) {
+      return initialStats;
+    }
+
+    return currentDisplayResults.reduce((stats, result) => {
+      // Skip if data is undefined or is a placeholder
+      if (!result?.data || result.data._placeholder) {
+        return stats;
       }
-    });
-    return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies };
-  }, [currentDisplayResults]);
 
+      // Filter and process posts within date range
+      const filteredPosts = result.data.fetchedPostsDetails.filter(post => {
+        const postDate = parseISO(post.timestamp);
+        if (!startDate && !endDate) return true;
+        let inRange = true;
+        if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+        if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+        return inRange;
+      });
+
+      // Filter and process comments within date range
+      const filteredComments = result.data.fetchedCommentsDetails.filter(comment => {
+        const commentDate = parseISO(comment.timestamp);
+        if (!startDate && !endDate) return true;
+        let inRange = true;
+        if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+        if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+        return inRange;
+      });
+
+      // Calculate stats from filtered data
+      filteredPosts.forEach(post => {
+        if (post) {
+          stats.totalPosts++;
+          stats.totalScore += post.score || 0;
+          stats.totalReplies += post.numComments || 0;
+        }
+      });
+
+      filteredComments.forEach(comment => {
+        if (comment) {
+          stats.totalComments++;
+          stats.totalScore += comment.score || 0;
+        }
+      });
+
+      return stats;
+    }, initialStats);
+
+  }, [currentDisplayResults, analysisResults, startDate, endDate]);
+
+
+  const prepareDailyChartData = (results: AnalysisResultDisplay[]) => {
+    const dailyActivity: { [key: string]: { posts: number; comments: number } } = {};
+    
+    results.forEach(result => {
+      if (!result.data || result.data._placeholder || result.data.error) return;
+
+      // Filter posts by date range
+      result.data.fetchedPostsDetails
+        .filter(post => {
+          const postDate = parseISO(post.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(post => {
+          const date = format(parseISO(post.timestamp), 'yyyy-MM-dd');
+          if (!dailyActivity[date]) {
+            dailyActivity[date] = { posts: 0, comments: 0 };
+          }
+          dailyActivity[date].posts++;
+        });
+
+      // Filter comments by date range
+      result.data.fetchedCommentsDetails
+        .filter(comment => {
+          const commentDate = parseISO(comment.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(comment => {
+          const date = format(parseISO(comment.timestamp), 'yyyy-MM-dd');
+          if (!dailyActivity[date]) {
+            dailyActivity[date] = { posts: 0, comments: 0 };
+          }
+          dailyActivity[date].comments++;
+        });
+    });
+
+    return Object.entries(dailyActivity)
+      .map(([date, data]) => ({
+        date: format(parseISO(date), 'MMM dd'),
+        posts: data.posts,
+        comments: data.comments
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
+  const prepareSubredditChartData = (results: AnalysisResultDisplay[]) => {
+    const subredditActivity: { [key: string]: { posts: number; comments: number } } = {};
+    
+    results.forEach(result => {
+      if (!result.data || result.data._placeholder || result.data.error) return;
+
+      // Filter posts by date range
+      result.data.fetchedPostsDetails
+        .filter(post => {
+          const postDate = parseISO(post.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(post => {
+          if (!subredditActivity[post.subreddit]) {
+            subredditActivity[post.subreddit] = { posts: 0, comments: 0 };
+          }
+          subredditActivity[post.subreddit].posts++;
+        });
+
+      // Filter comments by date range
+      result.data.fetchedCommentsDetails
+        .filter(comment => {
+          const commentDate = parseISO(comment.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(comment => {
+          if (!subredditActivity[comment.subreddit]) {
+            subredditActivity[comment.subreddit] = { posts: 0, comments: 0 };
+          }
+          subredditActivity[comment.subreddit].comments++;
+        });
+    });
+
+    return Object.entries(subredditActivity)
+      .map(([subreddit, data]) => ({
+        subreddit,
+        posts: data.posts,
+        comments: data.comments
+      }))
+      .sort((a, b) => ((b.posts + b.comments) - (a.posts + a.comments)))
+      .slice(0, 10); // Get top 10 most active subreddits
+  };
+
+  const prepareUserActivityChartData = (results: AnalysisResultDisplay[]) => {
+    return results
+      .filter(result => result.data && !result.data._placeholder && !result.data.error)
+      .map(result => ({
+        username: `u/${result.data!.username}`,
+        posts: result.data!.fetchedPostsDetails
+          .filter(post => {
+            const postDate = parseISO(post.timestamp);
+            if (!startDate && !endDate) return true;
+            let inRange = true;
+            if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+            if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+            return inRange;
+          }).length,
+        comments: result.data!.fetchedCommentsDetails
+          .filter(comment => {
+            const commentDate = parseISO(comment.timestamp);
+            if (!startDate && !endDate) return true;
+            let inRange = true;
+            if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+            if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+            return inRange;
+          }).length
+      }))
+      .sort((a, b) => (b.posts + b.comments) - (a.posts + a.comments));
+  };
+
+  const UserActivityChart = ({ data, width = 600, height = 400 }: { 
+    data: { username: string; posts: number; comments: number }[],
+    width?: number,
+    height?: number 
+  }) => {
+    const maxValue = Math.max(...data.map(item => Math.max(item.posts, item.comments)));
+    const yAxisMax = Math.ceil(maxValue / 10) * 10;
+
+    return (
+      <div style={{ width, height, backgroundColor: 'white', padding: '10px', fontFamily: 'Inter, sans-serif' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart 
+            data={data} 
+            margin={{ top: 20, right: 30, left: 20, bottom: 90 }}
+            layout="vertical"
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" domain={[0, yAxisMax]} />
+            <YAxis 
+              type="category" 
+              dataKey="username" 
+              width={100}
+              tick={{ fontSize: 10 }}
+            />
+            <RechartsTooltip contentStyle={{ fontSize: '12px' }} />
+            <Legend 
+              wrapperStyle={{ 
+                fontSize: '12px',
+                paddingTop: '20px'
+              }}
+            />
+            <Bar dataKey="posts" fill="#29ABE2" name="Posts">
+              <LabelList 
+                dataKey="posts" 
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+            <Bar dataKey="comments" fill="#77DDE7" name="Comments">
+              <LabelList 
+                dataKey="comments" 
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  const UserSubredditActivityChart = ({ data, width = 800, height = 500 }: {
+    data: AnalysisResultDisplay[],
+    width?: number,
+    height?: number
+  }) => {
+    // Prepare data for grouped bar chart
+    const chartData = data.reduce((acc: any[], result) => {
+      if (!result.data || result.data._placeholder || result.data.error) return acc;
+      
+      const processActivities = (activities: any[], type: 'posts' | 'comments') => {
+        return activities
+          .filter(item => {
+            const itemDate = parseISO(item.timestamp);
+            if (!startDate && !endDate) return true;
+            let inRange = true;
+            if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
+            if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
+            return inRange;
+          })
+          .reduce((subredditCounts: { [key: string]: number }, item) => {
+            subredditCounts[item.subreddit] = (subredditCounts[item.subreddit] || 0) + 1;
+            return subredditCounts;
+          }, {});
+      };
+
+      const postCounts = processActivities(result.data.fetchedPostsDetails, 'posts');
+      const commentCounts = processActivities(result.data.fetchedCommentsDetails, 'comments');
+
+      // Combine all subreddits
+      const allSubreddits = new Set([
+        ...Object.keys(postCounts),
+        ...Object.keys(commentCounts)
+      ]);
+
+      allSubreddits.forEach(subreddit => {
+        if (postCounts[subreddit] || commentCounts[subreddit]) {
+          acc.push({
+            username: result.data!.username,
+            subreddit,
+            posts: postCounts[subreddit] || 0,
+            comments: commentCounts[subreddit] || 0
+          });
+        }
+      });
+
+      return acc;
+    }, []);
+
+    // Sort by total activity and take top N
+    const sortedData = chartData
+      .sort((a, b) => ((b.posts + b.comments) - (a.posts + a.comments)))
+      .slice(0, 15); // Show top 15 most active combinations
+
+    // Calculate Y-axis max
+    const maxValue = Math.max(...sortedData.map(item => Math.max(item.posts, item.comments)));
+    const yAxisMax = Math.ceil(maxValue / 10) * 10;
+
+    return (
+      <div style={{ width, height, backgroundColor: 'white', padding: '10px', fontFamily: 'Inter, sans-serif' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={sortedData}
+            margin={{ top: 20, right: 30, left: 150, bottom: 60 }}
+            layout="vertical"
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" domain={[0, yAxisMax]} />
+            <YAxis
+              type="category"
+              dataKey={(entry) => `u/${entry.username} - r/${entry.subreddit}`}
+              width={140}
+              tick={{ fontSize: 10 }}
+            />
+            <RechartsTooltip
+              contentStyle={{ fontSize: '12px' }}
+              formatter={(value: number, name: string, props: any) => [
+                value,
+                `${name} in r/${props.payload.subreddit}`
+              ]}
+            />
+            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+            <Bar dataKey="posts" fill="#29ABE2" name="Posts">
+              <LabelList
+                dataKey="posts"
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+            <Bar dataKey="comments" fill="#77DDE7" name="Comments">
+              <LabelList
+                dataKey="comments"
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
 
   const handleGeneratePdfReport = async () => {
     if (!canGenerateReport) {
@@ -1054,12 +1453,6 @@ export default function AnalyzeExternalRedditUserPage() {
           value={formatStatNumber(summaryStats.totalReplies)}
           icon={MessageCircleReply}
           iconBgClass="bg-rose-500"
-        />
-        <StatCard
-          title="Blocked Accounts"
-          value={formatStatNumber(summaryStats.totalBlockedUsernames)}
-          icon={UserXIcon}
-          iconBgClass="bg-slate-600"
         />
       </div>
 
@@ -1469,12 +1862,3 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
-    
-
-    
-
-
-    
-
-
-
