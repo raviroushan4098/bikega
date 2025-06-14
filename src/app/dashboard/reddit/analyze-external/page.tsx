@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -14,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatDistanceToNow, startOfDay, endOfDay, formatDistanceToNowStrict } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from '@/components/ui/separator';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder, deleteStoredRedditAnalysis } from '@/lib/reddit-api-service';
@@ -289,70 +288,143 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const processSingleUsername = async (usernameToAnalyze: string, isRefreshOp: boolean = false, appUserIdForCall: string) => {
     setAnalysisResults(prevResults => {
-        const currentEntry = prevResults.find(r => r.username === usernameToAnalyze);
-        const isFirstTimeAnalysis = !currentEntry?.data || currentEntry.data._placeholder === true;
+      const currentEntry = prevResults.find(r => r.username === usernameToAnalyze);
+      const isFirstTimeAnalysis = !currentEntry?.data || currentEntry.data._placeholder === true;
 
-        return prevResults.map(r => {
-            if (r.username === usernameToAnalyze) {
-                return {
-                    ...r,
-                    isLoading: isFirstTimeAnalysis && !isRefreshOp, 
-                    isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
-                    error: undefined, 
-                    data: r.data ? { ...r.data, error: undefined, _placeholder: false } : undefined,
-                };
-            }
-            return r;
-        });
+      return prevResults.map(r => {
+        if (r.username === usernameToAnalyze) {
+          return {
+            ...r,
+            isLoading: isFirstTimeAnalysis && !isRefreshOp,
+            isRefreshing: isRefreshOp || (!isFirstTimeAnalysis && !currentEntry?.data?.lastRefreshedAt),
+            error: undefined,
+            data: r.data ? { ...r.data, error: undefined, _placeholder: false } : undefined,
+          };
+        }
+        return r;
+      });
     });
 
     try {
-        const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
-        
-        if (resultFromFlow.error) {
-            console.error(`Error analyzing/refreshing user ${usernameToAnalyze} (from flow):`, resultFromFlow.error);
-            if (!isUpdatingAll) { 
-                toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: resultFromFlow.error, duration: 7000 });
-            }
-            setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: resultFromFlow.error, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: resultFromFlow.error} : undefined } : r
-            ));
+      const resultFromFlow = await analyzeExternalRedditUser({ username: usernameToAnalyze, appUserId: appUserIdForCall });
 
-            // Update Firestore document with suspension status if analysis fails
- try {
- await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
- suspensionStatus: "This account has been suspended"
- }, { merge: true });
- } catch (dbError) {
- console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
- }
-        }
- else {
-            setAnalysisResults(prev => prev.map(r =>
-                r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: {...resultFromFlow, _placeholder: false}, isLoading: false, isRefreshing: false, error: undefined } : r
-            ));
-            if (!isUpdatingAll && isRefreshOp) {
-                toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
-            }
-        }
-    } catch (error) { 
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
-        console.error(`[Client] Error calling analyzeExternalRedditUser for ${usernameToAnalyze}:`, error);
-        if (!isUpdatingAll) { 
-            toast({ variant: "destructive", title: `Analysis Failed for u/${usernameToAnalyze}`, description: errorMessage, duration: 7000 });
-        }
+      if (resultFromFlow.error) {
+        const errorMessage = resultFromFlow.error;
+        const isSuspendedAccount = errorMessage.toLowerCase().includes('suspended');
+
+        // Update UI with error state
         setAnalysisResults(prev => prev.map(r =>
-            r.username === usernameToAnalyze ? { username: usernameToAnalyze, error: errorMessage, isLoading: false, isRefreshing: false, data: r.data ? {...r.data, error: errorMessage } : undefined } : r 
+          r.username === usernameToAnalyze ? {
+            username: usernameToAnalyze,
+            error: errorMessage,
+            isLoading: false,
+            isRefreshing: false,
+            data: r.data ? { ...r.data, error: errorMessage } : undefined
+          } : r
         ));
 
-        // Update Firestore document with suspension status if analysis fails
- try {
- await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
- suspensionStatus: "An error occurred during analysis" // Or refine based on actual error type
- }, { merge: true });
- } catch (dbError) {
- console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
- }
+        // Only show toast for non-updating-all operations
+        if (!isUpdatingAll) {
+          toast({
+            variant: "destructive",
+            title: `Analysis Failed for u/${usernameToAnalyze}`,
+            description: errorMessage,
+            duration: 7000
+          });
+        }
+
+        // Update Firestore with suspension status
+        try {
+          const docRef = doc(db, `ExternalRedditUser/${appUserIdForCall}/analyzedRedditProfiles/${usernameToAnalyze}`);
+          await setDoc(docRef, {
+            username: usernameToAnalyze,
+            suspensionStatus: isSuspendedAccount ? "This account has been suspended" : "Account inaccessible",
+            lastError: errorMessage,
+            lastErrorAt: new Date().toISOString(),
+            _placeholder: false,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+
+          console.log(`Updated Firestore with error status for u/${usernameToAnalyze}`);
+        } catch (dbError) {
+          console.error(`Failed to update Firestore for user ${usernameToAnalyze} with error status:`, dbError);
+          toast({ 
+            variant: "destructive", 
+            title: "Database Update Failed", 
+            description: "Failed to save error status to database." 
+          });
+        }
+      } else {
+        // Success case - update UI with analysis results
+        setAnalysisResults(prev => prev.map(r => 
+          r.username === usernameToAnalyze ? {
+            username: usernameToAnalyze,
+            data: { ...resultFromFlow, _placeholder: false },
+            isLoading: false,
+            isRefreshing: false,
+            error: undefined
+          } : r
+        ));
+
+        // Add this Firestore update for successful analysis
+        try {
+          const docRef = doc(db, `ExternalRedditUser/${appUserIdForCall}/analyzedRedditProfiles/${usernameToAnalyze}`);
+          await setDoc(docRef, {
+            ...resultFromFlow,
+            _placeholder: false,
+            updatedAt: new Date().toISOString(),
+            lastRefreshedAt: new Date().toISOString()
+          }, { merge: true });
+
+          console.log(`Successfully updated Firestore data for u/${usernameToAnalyze}`);
+        } catch (dbError) {
+          console.error(`Failed to update Firestore for user ${usernameToAnalyze}:`, dbError);
+          toast({ 
+            variant: "destructive", 
+            title: "Database Update Failed", 
+            description: "Analysis completed but failed to save to database." 
+          });
+        }
+
+        if (!isUpdatingAll && isRefreshOp) {
+          toast({ title: `Refreshed u/${usernameToAnalyze}`, description: "Data updated successfully." });
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during analysis.";
+      console.error(`[Client] Error analyzing user ${usernameToAnalyze}:`, error);
+
+      // Update UI with error state
+      setAnalysisResults(prev => prev.map(r =>
+        r.username === usernameToAnalyze ? {
+          username: usernameToAnalyze,
+          error: errorMessage,
+          isLoading: false,
+          isRefreshing: false,
+          data: r.data ? { ...r.data, error: errorMessage } : undefined
+        } : r
+      ));
+
+      // Only show toast for non-updating-all operations
+      if (!isUpdatingAll) {
+        toast({
+          variant: "destructive",
+          title: `Analysis Failed for u/${usernameToAnalyze}`,
+          description: errorMessage,
+          duration: 7000
+        });
+      }
+
+      // Update Firestore with error status
+      try {
+        await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
+          suspensionStatus: "Analysis error occurred",
+          lastError: errorMessage,
+          lastErrorAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (dbError) {
+        console.error(`Failed to update Firestore for user ${usernameToAnalyze} with error status:`, dbError);
+      }
     }
   };
   
@@ -399,84 +471,81 @@ export default function AnalyzeExternalRedditUserPage() {
     const file = event.target.files?.[0];
     if (!file || !currentUser?.id) return;
 
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-      toast({ variant: "destructive", title: "Invalid File", description: "Please upload a .csv file." });
- event.target.value = '';
- setFileName(null);
- setIsProcessingCsv(false);
- return;
+    // Validate file type and extension
+    if (!file.type.match('text/csv|application/vnd.ms-excel') && !file.name.toLowerCase().endsWith('.csv')) {
+      toast({ 
+        variant: "destructive", 
+        title: "Invalid File", 
+        description: "Please upload a valid CSV file." 
+      });
+      event.target.value = '';
+      setFileName(null);
+      return;
     }
+
     setFileName(file.name);
     setIsProcessingCsv(true);
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      if (!text) {
-          toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
-          setIsProcessingCsv(false);
- 
- 
- 
- setFileName(null);
-          event.target.value = '';
-          return;
-      }
-      
-      let lines = text.split(/\\r\\n|\\n|\\r/); 
-      const header = lines[0].toLowerCase();
-      if (header.includes('user_name') || header.includes('username')) { 
-        lines.shift(); 
-      }
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(file);
+      });
 
-      const csvUsernamesRaw = lines
-        .flatMap(line => line.split(',')) 
-        .map(usernamePart => usernamePart.trim().replace(/^u\//i, '')) 
-        .filter(username => username !== ''); 
+      // Split lines and handle different line endings
+      const lines = text.split(/\r\n|\n|\r/).filter(line => line.trim());
       
-      const uniqueCsvUsernames = Array.from(new Set(csvUsernamesRaw));
+      // Check if first line is header and remove it
+      const firstLine = lines[0].toLowerCase();
+      const dataLines = firstLine.includes('user_name') || firstLine.includes('username') 
+        ? lines.slice(1) 
+        : lines;
 
-      if (uniqueCsvUsernames.length === 0) {
-        toast({ variant: "destructive", title: "No Usernames", description: "No valid usernames found in the CSV file." });
-        event.target.value = ''; 
-        setFileName(null);
-        setIsProcessingCsv(false);
+      // Extract and clean usernames
+      const usernames = dataLines
+        .map(line => line.split(',')[0]) // Take first column
+        .map(username => username.trim().replace(/^u\//i, ''))
+        .filter(username => username && username.length > 0);
+
+      if (usernames.length === 0) {
+        toast({ 
+          variant: "destructive", 
+          title: "No Usernames Found", 
+          description: "CSV file appears to be empty or contains no valid usernames." 
+        });
         return;
       }
-      
-      let newPlaceholdersCreated = 0;
-      let alreadyExistedOrRegisteredCount = 0;
 
-      for (const username of uniqueCsvUsernames) {
+      // Process unique usernames
+      const uniqueUsernames = [...new Set(usernames)];
+      for (const username of uniqueUsernames) {
         const result = await addOrUpdateRedditUserPlaceholder(currentUser.id, username);
         if ('error' in result) {
-          console.error(`Failed to add/update placeholder for ${username}: ${result.error}`);
-        } else if (result.new) {
-          newPlaceholdersCreated++;
-        } else {
-          alreadyExistedOrRegisteredCount++;
+          console.error(`Failed to process username: ${username}`, result.error);
         }
       }
-      
-      toast({ 
-        title: "CSV Processed", 
-        description: `${newPlaceholdersCreated} new usernames registered as placeholders. ${alreadyExistedOrRegisteredCount} already existed. Click "Update All Profiles" or individual "Analyze" buttons to fetch data.`,
-        duration: 8000 
-      });
-      
-      await fetchAndSetStoredAnalyses(); 
 
+      toast({ 
+        title: "CSV Processing Complete", 
+        description: `Successfully processed ${uniqueUsernames.length} unique usernames.` 
+      });
+
+      await fetchAndSetStoredAnalyses();
+
+    } catch (error) {
+      console.error('CSV processing error:', error);
+      toast({ 
+        variant: "destructive", 
+        title: "CSV Processing Failed", 
+        description: "Failed to read or process the CSV file." 
+      });
+    } finally {
       setIsProcessingCsv(false);
-      event.target.value = ''; 
+      event.target.value = '';
       setFileName(null);
-    };
-    reader.onerror = () => {
-      toast({ variant: "destructive", title: "File Read Error", description: "Could not read the file."});
-      setFileName(null);
-      event.target.value = ''; 
-      setIsProcessingCsv(false);
     }
-    reader.readAsText(file);
   };
 
   const handleRefreshAnalysis = async (username: string) => {
@@ -540,7 +609,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
   const handleDeleteUserAnalysis = (username: string) => {
     setUserToDelete(username);
-    setIsConfirmDeleteDialogOpen(true);
+    setIsConfirmDeleteDialogOpen(true); // Make sure this matches
   };
 
   const handleConfirmDelete = async () => {
@@ -817,25 +886,8 @@ export default function AnalyzeExternalRedditUserPage() {
     doc.setFontSize(10);
     doc.setTextColor(textColor[0], textColor[1], textColor[2]);
 
-    const allFilteredPostsOnly = allFilteredItems.filter(item => item.type === 'Post');
-    const topPostByScore = [...allFilteredPostsOnly].sort((a, b) => b.score - a.score)[0];
-    const topPostByReplies = [...allFilteredPostsOnly].sort((a, b) => (b.numComments || 0) - (a.numComments || 0))[0];
-    
-    doc.setFont("helvetica", "bold"); doc.text("Highest Scored Post:", margin, yPos); yPos += 15; doc.setFont("helvetica", "normal");
-    if (topPostByScore) {
-        doc.text(`  Title: "${topPostByScore.titleOrContent.substring(0, 60)}..." (Score: ${topPostByScore.score})`, margin + 10, yPos); yPos += 12;
-        doc.text(`  Author: u/${currentDisplayResults.find(r => r.data?.fetchedPostsDetails.some(p => p.id === topPostByScore.id))?.username || 'N/A'}, Subreddit: ${topPostByScore.subreddit}`, margin + 10, yPos); yPos += 15;
-    } else { doc.text("  N/A", margin + 10, yPos); yPos += 15; }
-
-    doc.setFont("helvetica", "bold"); doc.text("Most Replied-To Post:", margin, yPos); yPos += 15; doc.setFont("helvetica", "normal");
-    if (topPostByReplies) {
-        doc.text(`  Title: "${topPostByReplies.titleOrContent.substring(0, 60)}..." (Replies: ${topPostByReplies.numComments || 0})`, margin + 10, yPos); yPos += 12;
-        doc.text(`  Author: u/${currentDisplayResults.find(r => r.data?.fetchedPostsDetails.some(p => p.id === topPostByReplies.id))?.username || 'N/A'}, Subreddit: ${topPostByReplies.subreddit}`, margin + 10, yPos); yPos += 15;
-    } else { doc.text("  N/A", margin + 10, yPos); yPos += 15; }
-    yPos += 10;
-
-    // --- Detailed Activity Log Table ---
-    yPos = addPageIfNeeded(yPos, 40);
+    // --- Consolidated Activity Log Section ---
+    yPos = addPageIfNeeded(yPos, 30);
     yPos = drawSectionSeparator(yPos);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
@@ -1476,12 +1528,12 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
-    
-
-    
 
 
-    
+
+
+
+
 
 
 
