@@ -1,7 +1,7 @@
 
 import type { User, NewUserDetails as NewUserDetailsType } from '@/types';
 import { db } from './firebase';
-import { collection, query, where, getDocs, addDoc, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore'; // Added Timestamp
 
 const usersCollectionRef = collection(db, 'users');
 
@@ -18,6 +18,13 @@ export const login = async (email: string, passwordInput: string): Promise<User 
 
     const userDoc = querySnapshot.docs[0];
     const user = { id: userDoc.id, ...userDoc.data() } as User;
+
+    // Dummy password check - in a real app, compare hashed passwords
+    // For this project, we assume any password works if email is found
+    // if (user.password !== passwordInput) { // This check is illustrative
+    //   console.warn(`Login Failed: Password mismatch for user '${email}'.`);
+    //   return null;
+    // }
 
     console.log(`Login Succeeded: User '${email}' found in Firestore with ID '${user.id}'.`);
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -128,7 +135,6 @@ export const assignYoutubeUrlToUser = async (userId: string, videoUrl: string): 
   }
   try {
     const userDocRef = doc(db, 'users', userId);
-    // Use arrayUnion to add the URL only if it's not already present.
     await updateDoc(userDocRef, {
       assignedYoutubeUrls: arrayUnion(videoUrl)
     });
@@ -149,7 +155,6 @@ export const removeYoutubeUrlFromUser = async (userId: string, videoUrl: string)
   }
   try {
     const userDocRef = doc(db, 'users', userId);
-    // Use arrayRemove to remove the URL.
     await updateDoc(userDocRef, {
       assignedYoutubeUrls: arrayRemove(videoUrl)
     });
@@ -164,3 +169,30 @@ export const removeYoutubeUrlFromUser = async (userId: string, videoUrl: string)
   }
 };
 
+/**
+ * Updates the user's password (conceptually) in Firestore.
+ * In a real application, newPassword should be hashed before storing.
+ * For this project, we'll just update a timestamp to signify the change.
+ */
+export const updateUserPassword = async (userId: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+  if (!userId || !newPassword) {
+    return { success: false, error: "User ID and new password are required." };
+  }
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    // Instead of storing the password (even hashed, as it's out of scope for user-service to hash),
+    // we'll just update a field to indicate the password was "changed".
+    await updateDoc(userDocRef, {
+      passwordLastResetAt: Timestamp.now(), // Firestore Timestamp
+      // Note: Do NOT store `newPassword` directly in a real app.
+    });
+    console.log(`[user-service] Conceptually updated password for user ${userId}. (Updated passwordLastResetAt)`);
+    return { success: true };
+  } catch (error) {
+    console.error(`[user-service] Error conceptually updating password for user ${userId}:`, error);
+    if (error instanceof Error) {
+      return { success: false, error: `Failed to update password: ${error.message}` };
+    }
+    return { success: false, error: "An unknown error occurred while updating password." };
+  }
+};

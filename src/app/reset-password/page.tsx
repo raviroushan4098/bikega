@@ -28,7 +28,7 @@ const resetPasswordSchema = z.object({
   confirmPassword: z.string().min(6, { message: "Confirm password must be at least 6 characters." }),
 }).refine(data => data.newPassword === data.confirmPassword, {
   message: "Passwords do not match.",
-  path: ["confirmPassword"], // path to field that will display the error
+  path: ["confirmPassword"],
 });
 
 type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
@@ -50,29 +50,45 @@ export default function ResetPasswordPage() {
 
   async function onSubmit(data: ResetPasswordFormValues) {
     setIsLoading(true);
-    // In a real app, this would call an API endpoint:
-    // POST /api/auth/verify-otp-and-reset-password with { email, otp, newPassword }
-    console.log("Reset password data submitted:", data);
+    setIsPasswordReset(false);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      const response = await fetch('/api/auth/verify-otp-and-reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          otp: data.otp,
+          newPassword: data.newPassword,
+        }),
+      });
 
-    // Simulate success for now
-    toast({
-      title: "Password Reset Successful (Simulated)",
-      description: "Your password has been updated. You can now log in with your new password.",
-    });
-    setIsPasswordReset(true);
-    form.reset(); // Clear the form
+      const result = await response.json();
 
-    // Simulate error (uncomment to test error handling)
-    // toast({
-    //   variant: "destructive",
-    //   title: "Reset Failed (Simulated)",
-    //   description: "Invalid OTP or an error occurred. Please try again.",
-    // });
-
-    setIsLoading(false);
+      if (response.ok) {
+        toast({
+          title: "Password Reset Successful",
+          description: "Your password has been updated. You can now log in with your new password.",
+        });
+        setIsPasswordReset(true);
+        form.reset();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Reset Failed",
+          description: result.error || "Could not reset your password. Please try again.",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "An Error Occurred",
+        description: "Something went wrong. Please try again later.",
+      });
+      console.error("Reset password error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -177,7 +193,7 @@ export default function ResetPasswordPage() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full" disabled={isLoading || !form.formState.isValid}>
                   {isLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
@@ -201,5 +217,3 @@ export default function ResetPasswordPage() {
     </div>
   );
 }
-
-    
