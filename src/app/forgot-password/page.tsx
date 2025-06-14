@@ -30,7 +30,7 @@ type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 export default function ForgotPasswordPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [isEmailSent, setIsEmailSent] = useState(false); // Keep this to show confirmation UI
+  const [isEmailSent, setIsEmailSent] = useState(false);
 
   const form = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -41,10 +41,10 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(data: ForgotPasswordFormValues) {
     setIsLoading(true);
-    setIsEmailSent(false); // Reset in case of re-submission
+    setIsEmailSent(false);
 
     try {
-      const response = await fetch('/api/auth/request-password-reset', {
+      const response = await fetch('/api/auth/request-password-reset', { // This route now sends OTP
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: data.email }),
@@ -55,9 +55,10 @@ export default function ForgotPasswordPage() {
       if (response.ok) {
         toast({
           title: "Check Your Email",
-          description: result.message, // Use the message from the API
+          // Updated message to reflect OTP being sent
+          description: "If an account with this email exists, an OTP has been sent. It's valid for 10 minutes.", 
         });
-        setIsEmailSent(true); // Show the confirmation UI
+        setIsEmailSent(true); 
       } else {
         toast({
           variant: "destructive",
@@ -84,11 +85,11 @@ export default function ForgotPasswordPage() {
       </div>
       <Card className="w-full max-w-md sm:max-w-lg shadow-xl border">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl sm:text-3xl font-headline">Forgot Your Password?</CardTitle>
+          <CardTitle className="text-2xl sm:text-3xl font-headline">Reset Your Password</CardTitle>
           <CardDescription>
             {isEmailSent
-              ? "Please check your email inbox (and spam folder) for the reset link. It may take a few minutes to arrive."
-              : "Enter your email address and we'll send you a link to reset your password."
+              ? "An OTP has been sent to your email. Please check your inbox (and spam folder). It may take a few minutes to arrive and is valid for 10 minutes."
+              : "Enter your email address and we'll send you an OTP to reset your password."
             }
           </CardDescription>
         </CardHeader>
@@ -97,7 +98,7 @@ export default function ForgotPasswordPage() {
             <div className="text-center space-y-4">
               <Mail className="mx-auto h-16 w-16 text-green-500" />
               <p className="text-muted-foreground">
-                The reset link is valid for 1 hour.
+                Once you receive your OTP, you'll use it on the next step (which we'll build soon) to set a new password.
               </p>
               <Button asChild className="w-full">
                 <Link href="/login">Back to Login</Link>
@@ -131,7 +132,7 @@ export default function ForgotPasswordPage() {
                   ) : (
                     <Mail className="mr-2 h-4 w-4" />
                   )}
-                  Send Reset Link
+                  Send OTP
                 </Button>
                 <div className="text-center">
                   <Button variant="link" className="text-sm px-0" asChild>
