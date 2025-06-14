@@ -945,6 +945,109 @@ export default function AnalyzeExternalRedditUserPage() {
     );
   };
 
+  const UserSubredditActivityChart = ({ data, width = 800, height = 500 }: {
+    data: AnalysisResultDisplay[],
+    width?: number,
+    height?: number
+  }) => {
+    // Prepare data for grouped bar chart
+    const chartData = data.reduce((acc: any[], result) => {
+      if (!result.data || result.data._placeholder || result.data.error) return acc;
+      
+      const processActivities = (activities: any[], type: 'posts' | 'comments') => {
+        return activities
+          .filter(item => {
+            const itemDate = parseISO(item.timestamp);
+            if (!startDate && !endDate) return true;
+            let inRange = true;
+            if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
+            if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
+            return inRange;
+          })
+          .reduce((subredditCounts: { [key: string]: number }, item) => {
+            subredditCounts[item.subreddit] = (subredditCounts[item.subreddit] || 0) + 1;
+            return subredditCounts;
+          }, {});
+      };
+
+      const postCounts = processActivities(result.data.fetchedPostsDetails, 'posts');
+      const commentCounts = processActivities(result.data.fetchedCommentsDetails, 'comments');
+
+      // Combine all subreddits
+      const allSubreddits = new Set([
+        ...Object.keys(postCounts),
+        ...Object.keys(commentCounts)
+      ]);
+
+      allSubreddits.forEach(subreddit => {
+        if (postCounts[subreddit] || commentCounts[subreddit]) {
+          acc.push({
+            username: result.data!.username,
+            subreddit,
+            posts: postCounts[subreddit] || 0,
+            comments: commentCounts[subreddit] || 0
+          });
+        }
+      });
+
+      return acc;
+    }, []);
+
+    // Sort by total activity and take top N
+    const sortedData = chartData
+      .sort((a, b) => ((b.posts + b.comments) - (a.posts + a.comments)))
+      .slice(0, 15); // Show top 15 most active combinations
+
+    // Calculate Y-axis max
+    const maxValue = Math.max(...sortedData.map(item => Math.max(item.posts, item.comments)));
+    const yAxisMax = Math.ceil(maxValue / 10) * 10;
+
+    return (
+      <div style={{ width, height, backgroundColor: 'white', padding: '10px', fontFamily: 'Inter, sans-serif' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={sortedData}
+            margin={{ top: 20, right: 30, left: 150, bottom: 60 }}
+            layout="vertical"
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" domain={[0, yAxisMax]} />
+            <YAxis
+              type="category"
+              dataKey={(entry) => `u/${entry.username} - r/${entry.subreddit}`}
+              width={140}
+              tick={{ fontSize: 10 }}
+            />
+            <RechartsTooltip
+              contentStyle={{ fontSize: '12px' }}
+              formatter={(value: number, name: string, props: any) => [
+                value,
+                `${name} in r/${props.payload.subreddit}`
+              ]}
+            />
+            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+            <Bar dataKey="posts" fill="#29ABE2" name="Posts">
+              <LabelList
+                dataKey="posts"
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+            <Bar dataKey="comments" fill="#77DDE7" name="Comments">
+              <LabelList
+                dataKey="comments"
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
   const handleGeneratePdfReport = async () => {
     if (!canGenerateReport) {
       toast({ title: "No Data", description: "No analyzed profiles with data available to generate a report.", variant: "destructive" });
@@ -994,7 +1097,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
     // Subtitle
     doc.setFontSize(16);
-    doc.text("Aggregated Reddit User Analysis Report", margin, 70);
+    doc.text("Internal /External Reddit User Analysis Report", margin, 70);
 
     yPos = 250; // Add space after header
 
@@ -1097,6 +1200,26 @@ export default function AnalyzeExternalRedditUserPage() {
       if (userActivityChartImage) {
         doc.addImage(userActivityChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
         yPos += chartHeight + 60;
+      }
+    }
+
+    // User Activity by Subreddit Chart
+    if (currentDisplayResults.length > 0) {
+      checkPageBreak(chartHeight + 60);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.text("User Activity by Subreddit", margin, yPos);
+      yPos += 30;
+
+      const userSubredditChartImage = await renderChartToImage(
+        UserSubredditActivityChart,
+        currentDisplayResults,
+        { width: chartWidth, height: chartHeight + 100 }
+      );
+      if (userSubredditChartImage) {
+        doc.addImage(userSubredditChartImage, 'PNG', margin, yPos, chartWidth, chartHeight + 100);
+        yPos += chartHeight + 160;
       }
     }
 
@@ -1693,32 +1816,33 @@ export default function AnalyzeExternalRedditUserPage() {
                   <div className="space-y-4">
                     <Card className="bg-background/50">
                       <CardHeader className="pb-2 pt-4 px-4">
-                        <CardTitle className="text-base font-medium text-muted-foreground flex items-center">
-                            <BarChart3 className="mr-2 h-4 w-4" /> Profile Summary
-                        </CardTitle>
+                        <CardTitle className="text-base font-medium">Profile Overview</CardTitle>
                       </CardHeader>
-                      <CardContent className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-                        {renderDataItem("Account Created", result.data.accountCreated ? format(parseISO(result.data.accountCreated), 'PPP') : 'N/A')}
-                        {renderDataItem("Total Post Karma", result.data.totalPostKarma?.toLocaleString())}
-                        {renderDataItem("Total Comment Karma", result.data.totalCommentKarma?.toLocaleString())}
-                        {renderDataItem("Subreddits Active In (recent)", result.data.subredditsPostedIn?.length > 0 ? result.data.subredditsPostedIn.slice(0,3).join(', ') + (result.data.subredditsPostedIn.length > 3 ? '...' : '') : 'None found')}
-                                               {renderDataItem("Recent Posts Fetched Overall", result.data.totalPostsFetchedThisRun)}
-                        {renderDataItem("Recent Comments Fetched Overall", result.data.totalCommentsFetchedThisRun)}
+                      <CardContent className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                        {renderDataItem('Account Created', result.data.accountCreated ? format(parseISO(result.data.accountCreated), 'PPP') : 'N/A', <Clock className="h-4 w-4" />)}
+                        {renderDataItem('Total Post Karma', formatStatNumber(result.data.totalPostKarma), <FileText className="h-4 w-4" />)}
+                        {renderDataItem('Total Comment Karma', formatStatNumber(result.data.totalCommentKarma), <MessageSquare className="h-4 w-4" />)}
+                        {renderDataItem('Posts Analyzed', formatStatNumber(result.data.totalPostsFetchedThisRun), <Database className="h-4 w-4" />)}
+                        {renderDataItem('Comments Analyzed', formatStatNumber(result.data.totalCommentsFetchedThisRun), <ListChecks className="h-4 w-4" />)}
+                        {renderDataItem('Subreddits Posted In', formatStatNumber(result.data.subredditsPostedIn.length), <BarChart3 className="h-4 w-4" />)}
                       </CardContent>
                     </Card>
-                    
-                    <Accordion type="single" collapsible className="w-full" defaultValue="combined-content">
-                        <AccordionItem value="combined-content">
-                            <AccordionTrigger className="text-base font-medium hover:no-underline hover:text-primary focus:text-primary [&[data-state=open]]:text-primary">
-                                <div className="flex items-center gap-2">
-                                    <ListChecks className="h-5 w-5" /> 
-                                    Fetched Posts and Comments ({filteredCombinedItems.length})
-                                </div>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                                {renderDataTable(filteredCombinedItems, combinedTableColumns)}
-                            </AccordionContent>
-                        </AccordionItem>
+
+                    <Accordion type="single" collapsible className="w-full">
+                      <AccordionItem value="items">
+                        <AccordionTrigger className="text-base font-medium hover:no-underline">
+                          <div className="flex items-center gap-3">
+                            <ListTree className="h-5 w-5 text-primary" />
+                            <span>Posts & Comments</span>
+                            <Badge variant="secondary" className="ml-2">
+                              {filteredCombinedItems.length} items
+                            </Badge>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          {renderDataTable(filteredCombinedItems, combinedTableColumns)}
+                        </AccordionContent>
+                      </AccordionItem>
                     </Accordion>
                   </div>
                 )}
