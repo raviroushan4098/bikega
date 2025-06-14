@@ -720,31 +720,46 @@ export default function AnalyzeExternalRedditUserPage() {
         return stats;
       }
 
-      // Safely handle posts
-      if (Array.isArray(result.data.fetchedPostsDetails)) {
-        result.data.fetchedPostsDetails.forEach(post => {
-          if (post) {
-            stats.totalPosts++;
-            stats.totalScore += post.score || 0;
-            stats.totalReplies += post.numComments || 0;
-          }
-        });
-      }
+      // Filter and process posts within date range
+      const filteredPosts = result.data.fetchedPostsDetails.filter(post => {
+        const postDate = parseISO(post.timestamp);
+        if (!startDate && !endDate) return true;
+        let inRange = true;
+        if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+        if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+        return inRange;
+      });
 
-      // Safely handle comments
-      if (Array.isArray(result.data.fetchedCommentsDetails)) {
-        result.data.fetchedCommentsDetails.forEach(comment => {
-          if (comment) {
-            stats.totalComments++;
-            stats.totalScore += comment.score || 0;
-          }
-        });
-      }
+      // Filter and process comments within date range
+      const filteredComments = result.data.fetchedCommentsDetails.filter(comment => {
+        const commentDate = parseISO(comment.timestamp);
+        if (!startDate && !endDate) return true;
+        let inRange = true;
+        if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+        if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+        return inRange;
+      });
+
+      // Calculate stats from filtered data
+      filteredPosts.forEach(post => {
+        if (post) {
+          stats.totalPosts++;
+          stats.totalScore += post.score || 0;
+          stats.totalReplies += post.numComments || 0;
+        }
+      });
+
+      filteredComments.forEach(comment => {
+        if (comment) {
+          stats.totalComments++;
+          stats.totalScore += comment.score || 0;
+        }
+      });
 
       return stats;
     }, initialStats);
 
-  }, [currentDisplayResults, analysisResults]);
+  }, [currentDisplayResults, analysisResults, startDate, endDate]);
 
 
   const prepareDailyChartData = (results: AnalysisResultDisplay[]) => {
@@ -1079,7 +1094,7 @@ export default function AnalyzeExternalRedditUserPage() {
     },
     {
       key: 'score',
-      header: 'Score',
+      header: 'Upvotes',
       render: (item) => <span className="text-right block">{item.score.toLocaleString()}</span>,
       className: "text-right whitespace-nowrap"
     },
@@ -1172,7 +1187,7 @@ export default function AnalyzeExternalRedditUserPage() {
           iconBgClass="bg-emerald-500"
         />
         <StatCard
-          title="Total Combined Score"
+          title="Total Combined Upvotes"
           value={formatStatNumber(summaryStats.totalScore)}
           icon={TrendingUp}
           iconBgClass="bg-amber-500"
