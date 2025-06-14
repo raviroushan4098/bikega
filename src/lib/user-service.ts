@@ -19,12 +19,12 @@ export const login = async (email: string, passwordInput: string): Promise<User 
     const userDoc = querySnapshot.docs[0];
     const user = { id: userDoc.id, ...userDoc.data() } as User;
 
-    // Dummy password check - in a real app, compare hashed passwords
-    // For this project, we assume any password works if email is found
-    // if (user.password !== passwordInput) { // This check is illustrative
-    //   console.warn(`Login Failed: Password mismatch for user '${email}'.`);
-    //   return null;
-    // }
+    // Conceptual password check
+    // In a real app, compare hashed passwords. Here, we compare plaintext.
+    if (user.password !== passwordInput) {
+      console.warn(`Login Failed: Password mismatch for user '${email}'.`);
+      return null;
+    }
 
     console.log(`Login Succeeded: User '${email}' found in Firestore with ID '${user.id}'.`);
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -62,12 +62,13 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
 
     const newUser: Omit<User, 'id'> = {
       email: userData.email,
+      password: userData.password, // Store the password (conceptually)
       name: userData.name,
       role: userData.role,
       profilePictureUrl: `https://placehold.co/100x100.png?text=${userData.name.substring(0,2)}`,
       assignedKeywords: keywordsArray,
-      assignedYoutubeUrls: [], // Initialize as empty array
-      createdAt: new Date().toISOString(), // Add createdAt timestamp
+      assignedYoutubeUrls: [],
+      createdAt: new Date().toISOString(),
     };
 
     await setDoc(newUserDocRef, newUser);
@@ -87,7 +88,7 @@ export const getUsers = async (): Promise<User[]> => {
   try {
     const querySnapshot = await getDocs(usersCollectionRef);
     const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords, YouTube URLs, CreatedAt):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords, youtubeUrls: u.assignedYoutubeUrls, createdAt: u.createdAt })));
+    // console.log("[user-service] getUsers fetched users (ID, Name, Email, Keywords, YouTube URLs, CreatedAt):", users.map(u => ({ id: u.id, name: u.name, email: u.email, keywords: u.assignedKeywords, youtubeUrls: u.assignedYoutubeUrls, createdAt: u.createdAt })));
     return users;
   } catch (error) {
     console.error("Error fetching users from Firestore: ", error);
@@ -170,9 +171,9 @@ export const removeYoutubeUrlFromUser = async (userId: string, videoUrl: string)
 };
 
 /**
- * Updates the user's password (conceptually) in Firestore.
- * In a real application, newPassword should be hashed before storing.
- * For this project, we'll just update a timestamp to signify the change.
+ * Updates the user's password in Firestore.
+ * For this project, `newPassword` is stored as plaintext.
+ * In a real application, newPassword should be securely hashed before storing.
  */
 export const updateUserPassword = async (userId: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
   if (!userId || !newPassword) {
@@ -180,16 +181,14 @@ export const updateUserPassword = async (userId: string, newPassword: string): P
   }
   try {
     const userDocRef = doc(db, 'users', userId);
-    // Instead of storing the password (even hashed, as it's out of scope for user-service to hash),
-    // we'll just update a field to indicate the password was "changed".
     await updateDoc(userDocRef, {
+      password: newPassword, // Store the new password (plaintext for this demo)
       passwordLastResetAt: Timestamp.now(), // Firestore Timestamp
-      // Note: Do NOT store `newPassword` directly in a real app.
     });
-    console.log(`[user-service] Conceptually updated password for user ${userId}. (Updated passwordLastResetAt)`);
+    console.log(`[user-service] Password for user ${userId} has been updated (conceptually).`);
     return { success: true };
   } catch (error) {
-    console.error(`[user-service] Error conceptually updating password for user ${userId}:`, error);
+    console.error(`[user-service] Error updating password for user ${userId}:`, error);
     if (error instanceof Error) {
       return { success: false, error: `Failed to update password: ${error.message}` };
     }

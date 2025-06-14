@@ -2,12 +2,14 @@
 export interface User {
   id: string;
   email: string;
+  password?: string; // Added for conceptual password storage
   role: 'admin' | 'user';
   name: string;
   profilePictureUrl?: string;
   assignedKeywords?: string[]; // For filtering data for 'user' role
   assignedYoutubeUrls?: string[]; // Array of YouTube video URLs
   createdAt?: string; // ISO date string for when the user was created
+  passwordLastResetAt?: string; // ISO date string, added by password reset
 }
 
 // Represents video details fetched from YouTube API for display
@@ -37,6 +39,7 @@ export interface YouTubeMentionItem {
   descriptionSnippet?: string; // A short snippet from description showing keyword context
   matchedKeywords: string[];
   dataAiHint?: string;
+  userId: string; // ID of the user this mention is for
   viewCount?: number;
   likeCount?: number;
   commentCount?: number;
@@ -66,6 +69,7 @@ export interface Tweet {
   text: string;
   author: string;
   authorAvatarUrl?: string;
+  dataAiHint?: string;
   timestamp: string; // ISO date string
   commentsOrRepliesCount: number;
   retweetCount: number;
@@ -112,12 +116,13 @@ export interface NewApiKeyData {
   addedByUserId: string;
 }
 
+// This type is used by the User Management (Add User) form and the user-service
 export interface NewUserDetails {
   name: string;
   email: string;
-  password?: string; // Password handling is dummy in this Firestore-only setup
+  password?: string; // Password will be stored conceptually (plaintext for this demo)
   role: 'admin' | 'user';
-  assignedKeywords?: string; // Comma-separated string
+  assignedKeywords?: string; // Comma-separated string for form input
 }
 
 // Types for External Reddit User Analysis
@@ -138,7 +143,7 @@ export interface ExternalRedditUserDataItem {
 }
 
 export interface ExternalRedditUserAnalysis {
-  username: string;
+  username:string;
   accountCreated: string | null; // ISO string or null
   totalPostKarma: number;
   totalCommentKarma: number;
@@ -150,5 +155,6 @@ export interface ExternalRedditUserAnalysis {
   lastRefreshedAt?: string | null; // ISO string, can be null if pending
   _placeholder?: boolean; // True if this is just a placeholder, not a full analysis
   error?: string; // Optional error message if analysis failed
+  suspensionStatus?: string; // Specifically for suspended accounts
+  lastErrorAt?: string; // Timestamp for the last error, if suspensionStatus or error is set
 }
-
