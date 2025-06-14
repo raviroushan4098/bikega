@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AppLogo } from '@/components/layout/app-logo';
 import Image from 'next/image';
-import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, LogIn, Users, Lightbulb, Target, Send, Phone, Mail, CheckCircle2, Star, Zap } from 'lucide-react';
+import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, LogIn, Users, Lightbulb, Target, Send, Phone, Mail, CheckCircle2, Star, Zap, Home as HomeIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -271,6 +271,12 @@ export default function LandingPage() {
         <div className="container mx-auto flex justify-between items-center">
           <AppLogo size="medium" />
           <nav className="flex items-center gap-1 sm:gap-2">
+            <Link href="/" passHref>
+              <Button variant="ghost" size="sm">
+                <HomeIcon className="mr-1 h-4 w-4 sm:hidden" />
+                <span className="hidden sm:inline">Home</span>
+              </Button>
+            </Link>
             <Link href="#pricing" passHref>
               <Button variant="ghost" size="sm">Pricing</Button>
             </Link>
@@ -351,7 +357,7 @@ export default function LandingPage() {
               <Card key={plan.name} className={cn(
                 "shadow-lg flex flex-col relative overflow-hidden",
                 plan.highlightClass,
-                idx === 1 ? "lg:transform lg:scale-105" : "" // Emphasize Growth plan slightly more on large screens
+                idx === 1 ? "lg:transform lg:scale-105" : "" 
               )}>
                 {plan.isPopular && (
                   <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold tracking-wider uppercase transform translate-x-1/3 -translate-y-1/3 rotate-45">
