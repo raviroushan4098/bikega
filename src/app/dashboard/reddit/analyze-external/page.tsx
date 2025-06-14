@@ -768,23 +768,41 @@ export default function AnalyzeExternalRedditUserPage() {
     results.forEach(result => {
       if (!result.data || result.data._placeholder || result.data.error) return;
 
-      // Process posts
-      result.data.fetchedPostsDetails.forEach(post => {
-        const date = format(parseISO(post.timestamp), 'yyyy-MM-dd');
-        if (!dailyActivity[date]) {
-          dailyActivity[date] = { posts: 0, comments: 0 };
-        }
-        dailyActivity[date].posts++;
-      });
+      // Filter posts by date range
+      result.data.fetchedPostsDetails
+        .filter(post => {
+          const postDate = parseISO(post.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(post => {
+          const date = format(parseISO(post.timestamp), 'yyyy-MM-dd');
+          if (!dailyActivity[date]) {
+            dailyActivity[date] = { posts: 0, comments: 0 };
+          }
+          dailyActivity[date].posts++;
+        });
 
-      // Process comments
-      result.data.fetchedCommentsDetails.forEach(comment => {
-        const date = format(parseISO(comment.timestamp), 'yyyy-MM-dd');
-        if (!dailyActivity[date]) {
-          dailyActivity[date] = { posts: 0, comments: 0 };
-        }
-        dailyActivity[date].comments++;
-      });
+      // Filter comments by date range
+      result.data.fetchedCommentsDetails
+        .filter(comment => {
+          const commentDate = parseISO(comment.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(comment => {
+          const date = format(parseISO(comment.timestamp), 'yyyy-MM-dd');
+          if (!dailyActivity[date]) {
+            dailyActivity[date] = { posts: 0, comments: 0 };
+          }
+          dailyActivity[date].comments++;
+        });
     });
 
     return Object.entries(dailyActivity)
@@ -802,24 +820,41 @@ export default function AnalyzeExternalRedditUserPage() {
     results.forEach(result => {
       if (!result.data || result.data._placeholder || result.data.error) return;
 
-      // Process posts
-      result.data.fetchedPostsDetails.forEach(post => {
-        if (!subredditActivity[post.subreddit]) {
-          subredditActivity[post.subreddit] = { posts: 0, comments: 0 };
-        }
-        subredditActivity[post.subreddit].posts++;
-      });
+      // Filter posts by date range
+      result.data.fetchedPostsDetails
+        .filter(post => {
+          const postDate = parseISO(post.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(post => {
+          if (!subredditActivity[post.subreddit]) {
+            subredditActivity[post.subreddit] = { posts: 0, comments: 0 };
+          }
+          subredditActivity[post.subreddit].posts++;
+        });
 
-      // Process comments
-      result.data.fetchedCommentsDetails.forEach(comment => {
-        if (!subredditActivity[comment.subreddit]) {
-          subredditActivity[comment.subreddit] = { posts: 0, comments: 0 };
-        }
-        subredditActivity[comment.subreddit].comments++;
-      });
+      // Filter comments by date range
+      result.data.fetchedCommentsDetails
+        .filter(comment => {
+          const commentDate = parseISO(comment.timestamp);
+          if (!startDate && !endDate) return true;
+          let inRange = true;
+          if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+          if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+          return inRange;
+        })
+        .forEach(comment => {
+          if (!subredditActivity[comment.subreddit]) {
+            subredditActivity[comment.subreddit] = { posts: 0, comments: 0 };
+          }
+          subredditActivity[comment.subreddit].comments++;
+        });
     });
 
-    // Convert to array and sort by total activity
     return Object.entries(subredditActivity)
       .map(([subreddit, data]) => ({
         subreddit,
@@ -828,6 +863,86 @@ export default function AnalyzeExternalRedditUserPage() {
       }))
       .sort((a, b) => ((b.posts + b.comments) - (a.posts + a.comments)))
       .slice(0, 10); // Get top 10 most active subreddits
+  };
+
+  const prepareUserActivityChartData = (results: AnalysisResultDisplay[]) => {
+    return results
+      .filter(result => result.data && !result.data._placeholder && !result.data.error)
+      .map(result => ({
+        username: `u/${result.data!.username}`,
+        posts: result.data!.fetchedPostsDetails
+          .filter(post => {
+            const postDate = parseISO(post.timestamp);
+            if (!startDate && !endDate) return true;
+            let inRange = true;
+            if (startDate) inRange = inRange && (postDate >= startOfDay(startDate));
+            if (endDate) inRange = inRange && (postDate <= endOfDay(endDate));
+            return inRange;
+          }).length,
+        comments: result.data!.fetchedCommentsDetails
+          .filter(comment => {
+            const commentDate = parseISO(comment.timestamp);
+            if (!startDate && !endDate) return true;
+            let inRange = true;
+            if (startDate) inRange = inRange && (commentDate >= startOfDay(startDate));
+            if (endDate) inRange = inRange && (commentDate <= endOfDay(endDate));
+            return inRange;
+          }).length
+      }))
+      .sort((a, b) => (b.posts + b.comments) - (a.posts + a.comments));
+  };
+
+  const UserActivityChart = ({ data, width = 600, height = 400 }: { 
+    data: { username: string; posts: number; comments: number }[],
+    width?: number,
+    height?: number 
+  }) => {
+    const maxValue = Math.max(...data.map(item => Math.max(item.posts, item.comments)));
+    const yAxisMax = Math.ceil(maxValue / 10) * 10;
+
+    return (
+      <div style={{ width, height, backgroundColor: 'white', padding: '10px', fontFamily: 'Inter, sans-serif' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart 
+            data={data} 
+            margin={{ top: 20, right: 30, left: 20, bottom: 90 }}
+            layout="vertical"
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" domain={[0, yAxisMax]} />
+            <YAxis 
+              type="category" 
+              dataKey="username" 
+              width={100}
+              tick={{ fontSize: 10 }}
+            />
+            <RechartsTooltip contentStyle={{ fontSize: '12px' }} />
+            <Legend 
+              wrapperStyle={{ 
+                fontSize: '12px',
+                paddingTop: '20px'
+              }}
+            />
+            <Bar dataKey="posts" fill="#29ABE2" name="Posts">
+              <LabelList 
+                dataKey="posts" 
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+            <Bar dataKey="comments" fill="#77DDE7" name="Comments">
+              <LabelList 
+                dataKey="comments" 
+                position="right"
+                style={{ fontSize: '8px', fill: '#333' }}
+                formatter={(value: number) => value > 0 ? value : ''}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
   };
 
   const handleGeneratePdfReport = async () => {
@@ -844,6 +959,7 @@ export default function AnalyzeExternalRedditUserPage() {
     // Prepare chart data
     const dailyChartData = prepareDailyChartData(currentDisplayResults);
     const subredditChartData = prepareSubredditChartData(currentDisplayResults);
+    const userActivityData = prepareUserActivityChartData(currentDisplayResults);
 
     // Create PDF in landscape mode with A4 dimensions
     const doc = new jsPDF({ 
@@ -963,6 +1079,23 @@ export default function AnalyzeExternalRedditUserPage() {
         { width: chartWidth, height: chartHeight });
       if (subredditChartImage) {
         doc.addImage(subredditChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
+        yPos += chartHeight + 60;
+      }
+    }
+
+    // User Activity Chart
+    if (userActivityData.length > 0) {
+      checkPageBreak(chartHeight + 60);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.text("User Activity Comparison", margin, yPos);
+      yPos += 30;
+
+      const userActivityChartImage = await renderChartToImage(UserActivityChart, userActivityData, 
+        { width: chartWidth, height: chartHeight });
+      if (userActivityChartImage) {
+        doc.addImage(userActivityChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
         yPos += chartHeight + 60;
       }
     }
