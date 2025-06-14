@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AppLogo } from '@/components/layout/app-logo';
 import Image from 'next/image';
-import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, DollarSign, Mail, Info, LogIn } from 'lucide-react';
+import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, LogIn } from 'lucide-react'; // Removed DollarSign, Mail, Info as they are not directly used for icons in buttons now
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -120,11 +120,22 @@ export default function LandingPage() {
       <header className="py-4 px-6 sm:px-10 md:px-16 shadow-sm bg-card/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="container mx-auto flex justify-between items-center">
           <AppLogo size="medium" />
-          <Link href="/login" passHref>
-            <Button variant="outline" className="hidden sm:flex border-primary/50 text-primary hover:bg-primary/10 hover:text-primary focus:ring-accent">
-              <LogIn className="mr-2 h-4 w-4" /> Login
-            </Button>
-          </Link>
+          <nav className="flex items-center gap-1 sm:gap-2">
+            <Link href="#pricing" passHref>
+              <Button variant="ghost" size="sm">Pricing</Button>
+            </Link>
+            <Link href="#contact" passHref>
+              <Button variant="ghost" size="sm">Contact Us</Button>
+            </Link>
+            <Link href="#about" passHref>
+              <Button variant="ghost" size="sm">About</Button>
+            </Link>
+            <Link href="/login" passHref>
+              <Button variant="default" size="sm">
+                <LogIn className="mr-2 h-4 w-4" /> Login
+              </Button>
+            </Link>
+          </nav>
         </div>
       </header>
 
@@ -138,7 +149,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10">
-            Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
+             Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
           </p>
 
           <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group">
@@ -180,35 +191,6 @@ export default function LandingPage() {
         </div>
       </section>
       
-      {/* Call to Action / Links Section */}
-       <section id="actions" className="py-16 sm:py-20 bg-muted/40">
-        <div className="container mx-auto text-center px-4">
-           <h2 className="text-2xl sm:text-3xl font-bold font-headline mb-8">Ready to Dive In?</h2>
-          <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
-            <Link href="#pricing" passHref>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-primary-foreground focus:ring-accent">
-                <DollarSign className="mr-2 h-5 w-5" /> View Pricing
-              </Button>
-            </Link>
-            <Link href="#contact" passHref>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-primary-foreground focus:ring-accent">
-                <Mail className="mr-2 h-5 w-5" /> Contact Us
-              </Button>
-            </Link>
-            <Link href="#about" passHref>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-primary-foreground focus:ring-accent">
-                <Info className="mr-2 h-5 w-5" /> Learn More
-              </Button>
-            </Link>
-            <Link href="/login" passHref>
-              <Button size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground focus:ring-ring">
-                <LogIn className="mr-2 h-5 w-5" /> Login / Get Started
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="py-8 text-center border-t border-border/30 bg-card/50">
         <p className="text-sm text-muted-foreground">
