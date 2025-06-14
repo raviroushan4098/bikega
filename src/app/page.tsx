@@ -16,6 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
+import { ThemeToggleButton } from '@/components/layout/ThemeToggleButton'; // Added import
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -283,8 +284,9 @@ export default function LandingPage() {
             <Link href="#about" passHref>
               <Button variant="ghost" size="sm">About</Button>
             </Link>
+            <ThemeToggleButton /> 
             <Link href="/login" passHref>
-              <Button variant="default" size="sm">
+              <Button variant="default" size="sm" className="ml-2">
                 <LogIn className="mr-2 h-4 w-4" /> Login
               </Button>
             </Link>
@@ -549,3 +551,4 @@ export default function LandingPage() {
     </div>
   );
 }
+
