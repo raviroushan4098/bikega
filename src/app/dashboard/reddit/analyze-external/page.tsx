@@ -435,8 +435,8 @@ export default function AnalyzeExternalRedditUserPage() {
       return;
     }
     if (!currentUser?.id) {
-        toast({ variant: "destructive", title: "Authentication Error", description: "Current user not found." });
-        return;
+      toast({ variant: "destructive", title: "Authentication Error", description: "Current user not found." });
+      return;
     }
     
     const existingUserDisplayIndex = analysisResults.findIndex(r => r.username === trimmedUsername);
@@ -444,22 +444,38 @@ export default function AnalyzeExternalRedditUserPage() {
     if (existingUserDisplayIndex === -1) {
       const placeholderResult = await addOrUpdateRedditUserPlaceholder(currentUser.id, trimmedUsername);
       if ('error' in placeholderResult) {
-          toast({ variant: "destructive", title: "Registration Error", description: placeholderResult.error });
-          return;
+        toast({ variant: "destructive", title: "Registration Error", description: placeholderResult.error });
+        return;
       }
       
-      setAnalysisResults(prev => [{ 
+      setAnalysisResults(prev => {
+        // Create the new result
+        const newResult = { 
           username: trimmedUsername, 
           isLoading: true, 
           isRefreshing: false, 
           error: undefined, 
           data: { 
-              username: trimmedUsername, _placeholder: true, lastRefreshedAt: null,
-              accountCreated: null, totalPostKarma: 0, totalCommentKarma: 0, subredditsPostedIn: [],
-              totalPostsFetchedThisRun: 0, totalCommentsFetchedThisRun: 0,
-              fetchedPostsDetails: [], fetchedCommentsDetails: [],
+            username: trimmedUsername,
+            _placeholder: true,
+            lastRefreshedAt: null,
+            accountCreated: null,
+            totalPostKarma: 0,
+            totalCommentKarma: 0,
+            subredditsPostedIn: [],
+            totalPostsFetchedThisRun: 0,
+            totalCommentsFetchedThisRun: 0,
+            fetchedPostsDetails: [],
+            fetchedCommentsDetails: [],
           }
-      }, ...prev.sort((a, b) => a.username.localeCompare(b.username))]);
+        };
+
+        // Sort all results including the new one
+        return [...(prev || []), newResult].sort((a, b) => 
+          (a?.username || '').localeCompare(b?.username || '')
+        );
+      });
+
       await processSingleUsername(trimmedUsername, false, currentUser.id);
     } else {
       await processSingleUsername(trimmedUsername, true, currentUser.id);
@@ -642,27 +658,52 @@ export default function AnalyzeExternalRedditUserPage() {
 
 
   const summaryStats = useMemo(() => {
-    let totalUsernames = currentDisplayResults.length;
-    let totalPosts = 0;
-    let totalComments = 0;
-    let totalScore = 0;
-    let totalReplies = 0;
+    const initialStats = {
+      totalUsernames: currentDisplayResults?.length || 0,
+      totalPosts: 0,
+      totalComments: 0,
+      totalScore: 0,
+      totalReplies: 0,
+      blockedAccounts: analysisResults.filter(r => 
+        r.data?.suspensionStatus || r.data?.error || r.error
+      ).length || 0
+    };
 
-    currentDisplayResults.forEach(result => {
-      if (result.data && !result.data._placeholder) {
+    if (!Array.isArray(currentDisplayResults)) {
+      return initialStats;
+    }
+
+    return currentDisplayResults.reduce((stats, result) => {
+      // Skip if data is undefined or is a placeholder
+      if (!result?.data || result.data._placeholder) {
+        return stats;
+      }
+
+      // Safely handle posts
+      if (Array.isArray(result.data.fetchedPostsDetails)) {
         result.data.fetchedPostsDetails.forEach(post => {
-          totalPosts++;
-          totalScore += post.score;
-          totalReplies += post.numComments || 0;
-        });
-        result.data.fetchedCommentsDetails.forEach(comment => {
-          totalComments++;
-          totalScore += comment.score;
+          if (post) {
+            stats.totalPosts++;
+            stats.totalScore += post.score || 0;
+            stats.totalReplies += post.numComments || 0;
+          }
         });
       }
-    });
-    return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies };
-  }, [currentDisplayResults]);
+
+      // Safely handle comments
+      if (Array.isArray(result.data.fetchedCommentsDetails)) {
+        result.data.fetchedCommentsDetails.forEach(comment => {
+          if (comment) {
+            stats.totalComments++;
+            stats.totalScore += comment.score || 0;
+          }
+        });
+      }
+
+      return stats;
+    }, initialStats);
+
+  }, [currentDisplayResults, analysisResults]);
 
 
   const handleGeneratePdfReport = async () => {
@@ -1090,12 +1131,18 @@ export default function AnalyzeExternalRedditUserPage() {
 
   return (
     <div className="w-full space-y-6 overflow-x-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
         <StatCard
           title="Total Usernames"
-          value={formatStatNumber(summaryStats.totalUsernames)}
+          value={formatStatNumber(analysisResults.length)} // Total users added
           icon={Users}
           iconBgClass="bg-indigo-500"
+        />
+        <StatCard
+          title="Blocked Accounts"
+          value={formatStatNumber(analysisResults.length - currentDisplayResults.length)} // Blocked accounts
+          icon={UserXIcon}
+          iconBgClass="bg-red-500"
         />
         <StatCard
           title="Total Posts Fetched"
@@ -1492,7 +1539,7 @@ export default function AnalyzeExternalRedditUserPage() {
                         {renderDataItem("Total Post Karma", result.data.totalPostKarma?.toLocaleString())}
                         {renderDataItem("Total Comment Karma", result.data.totalCommentKarma?.toLocaleString())}
                         {renderDataItem("Subreddits Active In (recent)", result.data.subredditsPostedIn?.length > 0 ? result.data.subredditsPostedIn.slice(0,3).join(', ') + (result.data.subredditsPostedIn.length > 3 ? '...' : '') : 'None found')}
-                        {renderDataItem("Recent Posts Fetched Overall", result.data.totalPostsFetchedThisRun)}
+                                               {renderDataItem("Recent Posts Fetched Overall", result.data.totalPostsFetchedThisRun)}
                         {renderDataItem("Recent Comments Fetched Overall", result.data.totalCommentsFetchedThisRun)}
                       </CardContent>
                     </Card>
@@ -1528,12 +1575,3 @@ export default function AnalyzeExternalRedditUserPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-

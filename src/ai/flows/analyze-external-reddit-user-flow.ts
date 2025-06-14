@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview A Genkit flow to analyze an external Reddit user's profile and recent activity,
@@ -13,7 +12,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { getRedditAccessToken } from '@/lib/reddit-api-service';
-import type { ExternalRedditUserAnalysis, ExternalRedditUserDataItem, ExternalRedditUserAnalysisInput } from '@/types';
+import type { ExternalRedditUserAnalysisInput } from '@/types';
 import { db } from '@/lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -300,4 +299,32 @@ interface RedditApiListing {
     after: string | null;
     before: string | null;
   };
+}
+
+// Add export to the interface/type definition
+export interface ExternalRedditUserAnalysis {
+  username: string;
+  _placeholder?: boolean;
+  lastRefreshedAt: string | null;
+  accountCreated: string | null;
+  totalPostKarma: number;
+  totalCommentKarma: number;
+  subredditsPostedIn: string[];
+  totalPostsFetchedThisRun: number;
+  totalCommentsFetchedThisRun: number;
+  fetchedPostsDetails: ExternalRedditUserDataItem[];
+  fetchedCommentsDetails: ExternalRedditUserDataItem[];
+  error?: string;
+}
+
+// Make sure ExternalRedditUserDataItem is also exported if it isn't already
+export interface ExternalRedditUserDataItem {
+  id: string;
+  type: 'Post' | 'Comment';
+  timestamp: string;
+  subreddit: string;
+  titleOrContent: string;
+  score: number;
+  numComments?: number;
+  url: string;
 }
