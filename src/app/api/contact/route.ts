@@ -21,8 +21,14 @@ export async function POST(request: NextRequest) {
 
     const { name, email, message } = parsedData.data;
 
-    // IMPORTANT: Configure these environment variables in your .env file
-    const { EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM_ADDRESS } = process.env;
+    const { 
+      EMAIL_HOST, 
+      EMAIL_PORT, 
+      EMAIL_USER, 
+      EMAIL_PASS, 
+      EMAIL_FROM_ADDRESS,
+      CONTACT_FORM_RECIPIENT_EMAIL // New environment variable
+    } = process.env;
 
     if (!EMAIL_HOST || !EMAIL_PORT || !EMAIL_USER || !EMAIL_PASS) {
       console.error("[CONTACT_API] Email server configuration is missing in environment variables. Required: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS.");
@@ -32,18 +38,25 @@ export async function POST(request: NextRequest) {
     const transporter = nodemailer.createTransport({
       host: EMAIL_HOST,
       port: parseInt(EMAIL_PORT, 10),
-      secure: parseInt(EMAIL_PORT, 10) === 465, // true for 465, false for other ports
+      secure: parseInt(EMAIL_PORT, 10) === 465, 
       auth: {
         user: EMAIL_USER,
         pass: EMAIL_PASS,
       },
     });
 
+    const senderEmail = EMAIL_FROM_ADDRESS || EMAIL_USER;
+    const recipientEmail = CONTACT_FORM_RECIPIENT_EMAIL || 'noreply.redditmonitoring@gmail.com';
+
+    if (senderEmail && recipientEmail && senderEmail.toLowerCase() === recipientEmail.toLowerCase()) {
+      console.warn(`[CONTACT_API] WARNING: The sender email ('${senderEmail}') and recipient email ('${recipientEmail}') are the same. Emails might not appear as new in the inbox. Check 'Sent Mail' or 'All Mail' folders, or try a different CONTACT_FORM_RECIPIENT_EMAIL for clearer testing.`);
+    }
+
     const mailOptions = {
-      from: EMAIL_FROM_ADDRESS || EMAIL_USER, 
-      to: 'noreply.redditmonitoring@gmail.com', 
+      from: senderEmail, 
+      to: recipientEmail, 
       replyTo: email, 
-      subject: `New Contact Form Submission from ${name} - Insight Stream`, // Added app name for clarity
+      subject: `New Contact Form Submission from ${name} - Insight Stream`,
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
           <div style="max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9;">
@@ -66,10 +79,18 @@ export async function POST(request: NextRequest) {
     console.log(`[CONTACT_API] Attempting to send email from ${mailOptions.from} to ${mailOptions.to} with subject "${mailOptions.subject}"`);
     try {
       const info = await transporter.sendMail(mailOptions);
-      console.log(`[CONTACT_API] Email sent successfully via Nodemailer. Message ID: ${info.messageId}. Accepted by server: ${info.accepted.join(', ') || 'N/A'}. Rejected by server: ${info.rejected.join(', ') || 'N/A'}. Full server response: ${info.response}`);
+      console.log(`[CONTACT_API] Email sent successfully via Nodemailer. Message ID: ${info.messageId}. Accepted by server: ${info.accepted?.join(', ') || 'N/A'}. Rejected by server: ${info.rejected?.join(', ') || 'N/A'}. Full server response: ${info.response}`);
+      
+      if (info.rejected && info.rejected.length > 0) {
+        console.warn(`[CONTACT_API] Email was rejected by the server for some recipients: ${info.rejected.join(', ')}`);
+        // Still return success to client as per original logic, but log warning.
+      }
+      if (info.accepted && info.accepted.length === 0 && mailOptions.to) {
+         console.warn(`[CONTACT_API] Email was not explicitly accepted by the server for recipient: ${mailOptions.to}, though no direct error was thrown by sendMail.`);
+      }
+
       return NextResponse.json({ success: true, message: "Message sent successfully!" }, { status: 200 });
     } catch (sendMailError) {
-      // This catch is specific to transporter.sendMail errors
       console.error("[CONTACT_API] Nodemailer transporter.sendMail failed:", sendMailError);
       const errorMessage = sendMailError instanceof Error ? sendMailError.message : "Unknown Nodemailer send error.";
       
@@ -85,7 +106,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: clientMessage, details: errorMessage }, { status: 500 });
     }
 
-  } catch (error) { // This is for general errors like body parsing, form validation, etc.
+  } catch (error) { 
     console.error("[CONTACT_API] General error handling contact form submission (e.g., request parsing):", error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while processing the request.";
     return NextResponse.json({ error: "Failed to process request.", details: errorMessage }, { status: 500 });
