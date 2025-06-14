@@ -18,8 +18,8 @@ let accessToken: string | null = null;
 let tokenExpiry: number | null = null;
 
 const FETCH_PERIOD_DAYS = 30; // Fetch data from the last 30 days on refresh
-const COMMENTS_PER_POST_LIMIT = 5; // Max comments to fetch per post
-const COMMENT_FETCH_DEPTH = 1; // Depth of comments to fetch
+const COMMENTS_PER_POST_LIMIT = 100; // Max comments to fetch per post
+const COMMENT_FETCH_DEPTH = 10; // Depth of comments to fetch
 const API_CALL_DELAY_MS = 10000; // Delay in milliseconds between sentiment API calls (10 seconds)
 
 // Utility function to introduce a delay
@@ -261,7 +261,7 @@ export async function refreshUserRedditData(
   console.log(`[Reddit API Service] refreshUserRedditData: Fetched ${storedItemsMap.size} existing stored items for comparison.`);
 
   const queryString = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-  const limit = 1; // Fetch only 1 post to reduce processing time and avoid timeouts
+  const limit = 100; // Fetch only 1 post to reduce processing time and avoid timeouts
   const sort = 'new';
   
   const searchUrl = `https://oauth.reddit.com/search.json?q=${encodeURIComponent(queryString)}&limit=${limit}&sort=${sort}&type=t3&restrict_sr=false&include_over_18=on`;
