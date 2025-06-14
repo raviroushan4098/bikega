@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatDistanceToNow, startOfDay, endOfDay, formatDistanceToNowStrict } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from '@/components/ui/separator';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc as setFirestoreDoc } from 'firebase/firestore'; // Renamed setDoc to avoid conflict with recharts
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getStoredRedditAnalyses, addOrUpdateRedditUserPlaceholder, deleteStoredRedditAnalysis } from '@/lib/reddit-api-service';
@@ -319,15 +319,14 @@ export default function AnalyzeExternalRedditUserPage() {
             ));
 
             // Update Firestore document with suspension status if analysis fails
- try {
- await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
- suspensionStatus: "This account has been suspended"
- }, { merge: true });
- } catch (dbError) {
- console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
- }
-        }
- else {
+            try {
+              await setFirestoreDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
+                suspensionStatus: "This account has been suspended" // Or a more generic error status
+              }, { merge: true });
+            } catch (dbError) {
+              console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
+            }
+        } else {
             setAnalysisResults(prev => prev.map(r =>
                 r.username === usernameToAnalyze ? { username: usernameToAnalyze, data: {...resultFromFlow, _placeholder: false}, isLoading: false, isRefreshing: false, error: undefined } : r
             ));
@@ -346,13 +345,13 @@ export default function AnalyzeExternalRedditUserPage() {
         ));
 
         // Update Firestore document with suspension status if analysis fails
- try {
- await setDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
- suspensionStatus: "An error occurred during analysis" // Or refine based on actual error type
- }, { merge: true });
- } catch (dbError) {
- console.error(`Failed to update Firestore for user ${usernameToAnalyze} with suspension status:`, dbError);
- }
+        try {
+          await setFirestoreDoc(doc(db, `users/${appUserIdForCall}/redditAnalyses`, usernameToAnalyze), {
+            suspensionStatus: "An error occurred during analysis" 
+          }, { merge: true });
+        } catch (dbError) {
+          console.error(`Failed to update Firestore for user ${usernameToAnalyze} with error status:`, dbError);
+        }
     }
   };
   
@@ -401,10 +400,10 @@ export default function AnalyzeExternalRedditUserPage() {
 
     if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
       toast({ variant: "destructive", title: "Invalid File", description: "Please upload a .csv file." });
- event.target.value = '';
- setFileName(null);
- setIsProcessingCsv(false);
- return;
+      event.target.value = '';
+      setFileName(null);
+      setIsProcessingCsv(false);
+      return;
     }
     setFileName(file.name);
     setIsProcessingCsv(true);
@@ -415,10 +414,7 @@ export default function AnalyzeExternalRedditUserPage() {
       if (!text) {
           toast({ variant: "destructive", title: "File Error", description: "CSV file is empty or could not be read." });
           setIsProcessingCsv(false);
- 
- 
- 
- setFileName(null);
+          setFileName(null);
           event.target.value = '';
           return;
       }
@@ -568,19 +564,19 @@ export default function AnalyzeExternalRedditUserPage() {
   };
   
   const currentDisplayResults = useMemo(() => {
-    return analysisResults.filter(r => r.data && !r.data._placeholder && !r.data.error);
+    return analysisResults.filter(r => r.data && !r.data._placeholder && !r.data.error && !r.data.suspensionStatus);
   }, [analysisResults]);
 
 
   const summaryStats = useMemo(() => {
-    let totalUsernames = currentDisplayResults.length;
+    const totalUsernames = currentDisplayResults.length;
     let totalPosts = 0;
     let totalComments = 0;
     let totalScore = 0;
     let totalReplies = 0;
 
     currentDisplayResults.forEach(result => {
-      if (result.data && !result.data._placeholder) {
+      if (result.data) {
         result.data.fetchedPostsDetails.forEach(post => {
           totalPosts++;
           totalScore += post.score;
@@ -592,8 +588,27 @@ export default function AnalyzeExternalRedditUserPage() {
         });
       }
     });
-    return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies };
-  }, [currentDisplayResults]);
+    
+    let totalBlockedUsernames = 0;
+    analysisResults.forEach(result => {
+      let isConsideredBlocked = false;
+      if (result.data) {
+        if (result.data.suspensionStatus === "This account has been suspended") {
+          isConsideredBlocked = true;
+        } else if (result.data.error) {
+          const errorLower = result.data.error.toLowerCase();
+          if (errorLower.includes("suspended") || errorLower.includes("user not found") || errorLower.includes("failed to fetch user details") || errorLower.includes("invalid time value")) {
+            isConsideredBlocked = true;
+          }
+        }
+      }
+      if (isConsideredBlocked) {
+        totalBlockedUsernames++;
+      }
+    });
+
+    return { totalUsernames, totalPosts, totalComments, totalScore, totalReplies, totalBlockedUsernames };
+  }, [currentDisplayResults, analysisResults]);
 
 
   const handleGeneratePdfReport = async () => {
@@ -1038,7 +1053,7 @@ export default function AnalyzeExternalRedditUserPage() {
 
   return (
     <div className="w-full space-y-6 overflow-x-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
         <StatCard
           title="Total Usernames"
           value={formatStatNumber(summaryStats.totalUsernames)}
@@ -1068,6 +1083,12 @@ export default function AnalyzeExternalRedditUserPage() {
           value={formatStatNumber(summaryStats.totalReplies)}
           icon={MessageCircleReply}
           iconBgClass="bg-rose-500"
+        />
+        <StatCard
+          title="Blocked Accounts"
+          value={formatStatNumber(summaryStats.totalBlockedUsernames)}
+          icon={UserXIcon}
+          iconBgClass="bg-slate-600"
         />
       </div>
 
@@ -1485,3 +1506,6 @@ export default function AnalyzeExternalRedditUserPage() {
 
 
 
+
+
+    
