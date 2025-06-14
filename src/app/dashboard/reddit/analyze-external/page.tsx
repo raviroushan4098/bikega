@@ -706,293 +706,248 @@ export default function AnalyzeExternalRedditUserPage() {
   }, [currentDisplayResults, analysisResults]);
 
 
-  const handleGeneratePdfReport = async () => {
-    if (!canGenerateReport) {
-        toast({ title: "No Data", description: "No analyzed profiles with data available to generate a report.", variant: "destructive" });
-        return;
-    }
-    toast({ title: "Generating PDF Report...", description: "This may take a few moments. Please wait." });
-
-    const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
-    doc.setProperties({
-        title: 'Insight Stream - Aggregated Reddit User Analysis Report',
-        author: 'Insight Stream',
-    });
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    const margin = 40;
-    let yPos = margin;
-    let pageNum = 1;
-    const totalPagesPlaceholder = "{totalPages}"; 
-
-    const primaryColor = [41, 171, 226]; 
-    const accentColor = [119, 221, 231]; 
-    const textColor = [40, 40, 40];
-    const mutedTextColor = [100, 100, 100];
-    const lightGrayFill = [240, 240, 240];
-
-    const addPageHeaderFooter = (pdfDoc: jsPDF, currentPage: number, totalPages: string | number) => {
-        pdfDoc.setFontSize(8);
-        pdfDoc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-        pdfDoc.text("Aggregated Reddit User Analysis", margin, margin / 2);
-        pdfDoc.text(`Page ${currentPage} of ${totalPages}`, pageWidth - margin - 50, pageHeight - margin / 2);
-        pdfDoc.text(`Generated: ${format(new Date(), 'PPP p')}`, margin, pageHeight - margin/2);
-    };
+  const prepareDailyChartData = (results: AnalysisResultDisplay[]) => {
+    const dailyActivity: { [key: string]: { posts: number; comments: number } } = {};
     
-    const addPageIfNeeded = (currentY: number, spaceNeeded: number): number => {
-        if (currentY + spaceNeeded > pageHeight - margin - 20) { 
-            doc.addPage();
-            pageNum++;
-            addPageHeaderFooter(doc, pageNum, totalPagesPlaceholder);
-            return margin + 20; 
+    results.forEach(result => {
+      if (!result.data || result.data._placeholder || result.data.error) return;
+
+      // Process posts
+      result.data.fetchedPostsDetails.forEach(post => {
+        const date = format(parseISO(post.timestamp), 'yyyy-MM-dd');
+        if (!dailyActivity[date]) {
+          dailyActivity[date] = { posts: 0, comments: 0 };
         }
-        return currentY;
-    };
+        dailyActivity[date].posts++;
+      });
 
-    const drawSectionSeparator = (currentY: number): number => {
-        currentY += 5; // Small space before line
-        doc.setDrawColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-        doc.setLineWidth(0.5);
-        doc.line(margin, currentY, pageWidth - margin, currentY);
-        currentY += 15; // Space after line
-        return currentY;
-    };
-
-
-    // --- Report Header ---
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(26);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("Insight Stream", margin, yPos);
-    yPos += 35;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(18);
-    doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-    doc.text("Aggregated Reddit User Analysis Report", margin, yPos);
-    yPos += 20;
-    doc.setFontSize(10);
-    doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-    const dateRangeStr = `Date Filters: ${startDate ? format(startDate, 'MMM dd, yyyy') : 'Any'} to ${endDate ? format(endDate, 'MMM dd, yyyy') : 'Any'}`;
-    doc.text(dateRangeStr, margin, yPos);
-    yPos += 15;
-    doc.text(`Report Generated: ${format(new Date(), 'PPP p')}`, margin, yPos);
-    yPos += 15;
-    const analyzedProfilesCount = currentDisplayResults.length;
-    doc.text(`Profiles Analyzed: ${analyzedProfilesCount}`, margin, yPos);
-    yPos += 25;
-
-    addPageHeaderFooter(doc, pageNum, totalPagesPlaceholder);
-
-    // --- Overall Performance Summary Section ---
-    yPos = addPageIfNeeded(yPos, 30);
-    yPos = drawSectionSeparator(yPos);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("Overall Performance Summary", margin, yPos);
-    yPos += 20;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-
-    const allFilteredItems: ExternalRedditUserDataItem[] = currentDisplayResults.flatMap(result => {
-      const userItems = [...(result.data?.fetchedPostsDetails || []), ...(result.data?.fetchedCommentsDetails || [])];
-      return userItems.filter(item => {
-        if (!startDate && !endDate) return true;
-        const itemDate = parseISO(item.timestamp);
-        let inRange = true;
-        if (startDate) inRange = inRange && (itemDate >= startOfDay(startDate));
-        if (endDate) inRange = inRange && (itemDate <= endOfDay(endDate));
-        return inRange;
+      // Process comments
+      result.data.fetchedCommentsDetails.forEach(comment => {
+        const date = format(parseISO(comment.timestamp), 'yyyy-MM-dd');
+        if (!dailyActivity[date]) {
+          dailyActivity[date] = { posts: 0, comments: 0 };
+        }
+        dailyActivity[date].comments++;
       });
     });
 
-    const totalFilteredPosts = allFilteredItems.filter(item => item.type === 'Post').length;
-    const totalFilteredComments = allFilteredItems.filter(item => item.type === 'Comment').length;
-    const totalFilteredScore = allFilteredItems.reduce((sum, item) => sum + item.score, 0);
-    const totalFilteredReplies = allFilteredItems.filter(item => item.type === 'Post').reduce((sum, post) => sum + (post.numComments || 0), 0);
-    
-    const avgPostsPerUser = analyzedProfilesCount > 0 ? (totalFilteredPosts / analyzedProfilesCount).toFixed(1) : '0.0';
-    const avgCommentsPerUser = analyzedProfilesCount > 0 ? (totalFilteredComments / analyzedProfilesCount).toFixed(1) : '0.0';
+    return Object.entries(dailyActivity)
+      .map(([date, data]) => ({
+        date: format(parseISO(date), 'MMM dd'),
+        posts: data.posts,
+        comments: data.comments
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
 
-    const summaryPoints = [
-        `Total Posts (Filtered): ${totalFilteredPosts.toLocaleString()}`,
-        `Total Comments (Filtered): ${totalFilteredComments.toLocaleString()}`,
-        `Total Combined Score (Filtered): ${totalFilteredScore.toLocaleString()}`,
-        `Total Post Replies (Filtered): ${totalFilteredReplies.toLocaleString()}`,
-        `Average Posts per User: ${avgPostsPerUser}`,
-        `Average Comments per User: ${avgCommentsPerUser}`,
-    ];
-    summaryPoints.forEach(line => { yPos = addPageIfNeeded(yPos, 15); doc.text(line, margin, yPos); yPos += 15; });
-    yPos += 10;
+  const handleGeneratePdfReport = async () => {
+    if (!canGenerateReport) {
+      toast({ title: "No Data", description: "No analyzed profiles with data available to generate a report.", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Generating PDF Report...", description: "This may take a few moments. Please wait." });
 
-    // --- Visualizations Section ---
-    yPos = addPageIfNeeded(yPos, 30);
-    yPos = drawSectionSeparator(yPos);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("Aggregated Visualizations", margin, yPos);
-    yPos += 20;
+    // Prepare chart data
+    const dailyChartData = prepareDailyChartData(currentDisplayResults);
 
-    // Overall Daily Activity Chart
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-    doc.text("Overall Daily Activity Trend (All Users, Filtered)", margin, yPos); yPos += 15;
-    const dailyDataMap = new Map<string, { date: string; posts: number; comments: number }>();
-    allFilteredItems.forEach(item => {
-        const itemDateStr = format(parseISO(item.timestamp), 'yyyy-MM-dd');
-        if (!dailyDataMap.has(itemDateStr)) { dailyDataMap.set(itemDateStr, { date: itemDateStr, posts: 0, comments: 0 }); }
-        const dayEntry = dailyDataMap.get(itemDateStr)!;
-        if (item.type === 'Post') dayEntry.posts++; else if (item.type === 'Comment') dayEntry.comments++;
+    // Create PDF in landscape mode with A4 dimensions
+    const doc = new jsPDF({ 
+      orientation: 'landscape', 
+      unit: 'pt', 
+      format: 'a4',
+      compress: true 
     });
-    const dailyChartDataAggregated = Array.from(dailyDataMap.values()).sort((a,b) => a.date.localeCompare(b.date));
-    if (dailyChartDataAggregated.length > 0) {
-      const dailyChartImage = await renderChartToImage(DailyActivityChart, dailyChartDataAggregated, { width: 500, height: 250 });
-      if (dailyChartImage) {
-          yPos = addPageIfNeeded(yPos, 250 * 0.75);
-          doc.addImage(dailyChartImage, 'PNG', margin, yPos, 500 * 0.75, 250 * 0.75); 
-          yPos += (250 * 0.75) + 20;
-      } else {
-          yPos = addPageIfNeeded(yPos, 15); doc.setFontSize(9); doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-          doc.text("Daily activity chart generation failed.", margin, yPos); yPos += 15;
-      }
-    } else {
-       yPos = addPageIfNeeded(yPos, 15); doc.setFontSize(9); doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-       doc.text("No daily activity data for chart in filtered range.", margin, yPos); yPos += 15;
-    }
 
-    // Top Subreddits by Collective Activity
-    yPos = addPageIfNeeded(yPos, 30);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-    doc.text("Top Subreddits by Collective Activity (Filtered, Top 10)", margin, yPos); yPos += 15;
-    const collectiveSubredditCounts: Record<string, {posts: number, comments: number}> = {};
-    allFilteredItems.forEach(item => {
-        const sub = item.subreddit || 'N/A';
-        if(!collectiveSubredditCounts[sub]) collectiveSubredditCounts[sub] = {posts: 0, comments: 0};
-        if(item.type === 'Post') collectiveSubredditCounts[sub].posts++;
-        else collectiveSubredditCounts[sub].comments++;
-    });
-    const collectiveSubredditChartData = Object.entries(collectiveSubredditCounts)
-        .map(([name, counts]) => ({subreddit: name, ...counts}))
-        .sort((a,b) => (b.posts + b.comments) - (a.posts + a.comments)).slice(0,10);
-    if (collectiveSubredditChartData.length > 0) {
-      const subChartImage = await renderChartToImage(SubredditActivityChart, collectiveSubredditChartData, {width: 500, height: 300});
-      if (subChartImage) {
-          yPos = addPageIfNeeded(yPos, 300 * 0.75);
-          doc.addImage(subChartImage, 'PNG', margin, yPos, 500 * 0.75, 300 * 0.75);
-          yPos += (300 * 0.75) + 20;
-      } else {
-          yPos = addPageIfNeeded(yPos, 15); doc.setFontSize(9); doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-          doc.text("Subreddit activity chart generation failed.", margin, yPos); yPos += 15;
-      }
-    } else {
-       yPos = addPageIfNeeded(yPos, 15); doc.setFontSize(9); doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-       doc.text("No subreddit activity data for chart in filtered range.", margin, yPos); yPos += 15;
-    }
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 40;
+    let yPos = margin;
+    let pageNum = 1;
 
-    // Overall Sentiment Pie Chart
-    yPos = addPageIfNeeded(yPos, 30);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-    doc.text("Overall Sentiment Distribution (Placeholder Data)", margin, yPos); yPos += 15;
-    // Placeholder: Sentiment analysis for each item is not yet in ExternalRedditUserDataItem
-    const aggregatedSentimentData: { name: string; value: number }[] = [
-        { name: 'Positive', value: 0 }, { name: 'Negative', value: 0 },
-        { name: 'Neutral', value: 0 }, { name: 'Unknown', value: 0 },
-    ];
-    if(allFilteredItems.length > 0){ // Dummy distribution
-        aggregatedSentimentData.find(s=>s.name === 'Positive')!.value = Math.floor(Math.random()*allFilteredItems.length/2);
-        aggregatedSentimentData.find(s=>s.name === 'Neutral')!.value = Math.floor(Math.random()*allFilteredItems.length/2);
-        aggregatedSentimentData.find(s=>s.name === 'Negative')!.value = allFilteredItems.length - aggregatedSentimentData.find(s=>s.name === 'Positive')!.value - aggregatedSentimentData.find(s=>s.name === 'Neutral')!.value;
-    }
-    const pieChartImage = await renderChartToImage(SentimentPieChart, aggregatedSentimentData.filter(s => s.value > 0), { width: 450, height: 250 });
-    if (pieChartImage) {
-        yPos = addPageIfNeeded(yPos, 250 * 0.75);
-        doc.addImage(pieChartImage, 'PNG', margin, yPos, 450 * 0.75, 250 * 0.75);
-        yPos += (250 * 0.75) + 20;
-    } else {
-        yPos = addPageIfNeeded(yPos, 15); doc.setFontSize(9); doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-        doc.text("Sentiment pie chart generation failed.", margin, yPos); yPos+=15;
-    }
-    yPos += 10;
+    // Updated colors for better visual appeal
+    const primaryColor = [41, 171, 226];    // #29ABE2 - vibrant blue
+    const secondaryColor = [119, 221, 231]; // #77DDE7 - light blue
+    const textColor = [51, 51, 51];         // #333333 - dark gray
+    const mutedTextColor = [128, 128, 128]; // #808080 - medium gray
+    const lightGrayFill = [249, 250, 251];  // #F9FAFB - very light gray
 
-    // --- Engagement Highlights Section ---
-    yPos = addPageIfNeeded(yPos, 30);
-    yPos = drawSectionSeparator(yPos);
+    // Add decorative header bar
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, pageWidth, 80, 'F');
+
+    // White text for header on blue background
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("Overall Engagement Highlights (Filtered Data)", margin, yPos);
-    yPos += 20;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+    doc.setFontSize(32);
+    doc.text("Insight Stream", margin, 50);
+
+    // Subtitle
+    doc.setFontSize(16);
+    doc.text("Aggregated Reddit User Analysis Report", margin, 70);
+
+    yPos = 110; // Start content below header bar
+
+    // Add report metadata with improved styling
     doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+    doc.setFontSize(12);
+    const metadata = [
+      `Report Generated: ${format(new Date(), 'PPP p')}`,
+      `Date Range: ${startDate ? format(startDate, 'MMM dd, yyyy') : 'Any'} to ${endDate ? format(endDate, 'MMM dd, yyyy') : 'Any'}`,
+      `Total Profiles Analyzed: ${currentDisplayResults.length}`,
+      `Blocked/Suspended Accounts: ${analysisResults.length - currentDisplayResults.length}`
+    ];
 
-    // --- Consolidated Activity Log Section ---
-    yPos = addPageIfNeeded(yPos, 30);
-    yPos = drawSectionSeparator(yPos);
+    metadata.forEach(text => {
+      doc.text(text, margin, yPos);
+      yPos += 20;
+    });
+
+    const addNewPage = () => {
+      doc.addPage();
+      pageNum++;
+      yPos = margin;
+      
+      // Add header to new page
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(12);
+      doc.text(`Insight Stream Report - Page ${pageNum}`, margin, 30);
+    };
+
+    const checkPageBreak = (requiredSpace: number) => {
+      if (yPos + requiredSpace > pageHeight - margin) {
+        addNewPage();
+        return true;
+      }
+      return false;
+    };
+
+    // First page content
+    // Add visual charts with increased size for landscape
+    yPos += 20;
+    const chartWidth = 800;
+    const chartHeight = 300;
+
+    // Add Daily Activity Chart
+    checkPageBreak(chartHeight + 60);
+    if (dailyChartData.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+      doc.text("Daily Activity Overview", margin, yPos);
+      yPos += 20;
+
+      const dailyChartImage = await renderChartToImage(DailyActivityChart, dailyChartData, 
+        { width: chartWidth, height: chartHeight });
+      if (dailyChartImage) {
+        doc.addImage(dailyChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
+        yPos += chartHeight + 40;
+      }
+    }
+
+    // Prepare subreddit activity data
+    const subredditActivity = currentDisplayResults.reduce((acc: { [key: string]: { posts: number; comments: number } }, result) => {
+      if (!result.data || result.data._placeholder || result.data.error) return acc;
+
+      result.data.fetchedPostsDetails.forEach(post => {
+        if (!acc[post.subreddit]) {
+          acc[post.subreddit] = { posts: 0, comments: 0 };
+        }
+        acc[post.subreddit].posts++;
+      });
+
+      result.data.fetchedCommentsDetails.forEach(comment => {
+        if (!acc[comment.subreddit]) {
+          acc[comment.subreddit] = { posts: 0, comments: 0 };
+        }
+        acc[comment.subreddit].comments++;
+      });
+
+      return acc;
+    }, {});
+
+    const subredditChartData = Object.entries(subredditActivity)
+      .map(([subreddit, data]) => ({
+        subreddit,
+        posts: data.posts,
+        comments: data.comments
+      }))
+      .sort((a, b) => (b.posts + b.comments) - (a.posts + a.comments))
+      .slice(0, 10); // Top 10 most active subreddits
+
+    // Add Subreddit Activity Chart on new page if needed
+    checkPageBreak(chartHeight + 60);
+    if (subredditChartData.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Subreddits by Collective Activity", margin, yPos);
+      yPos += 20;
+
+      const subredditChartImage = await renderChartToImage(SubredditActivityChart, subredditChartData, 
+        { width: chartWidth, height: chartHeight });
+      if (subredditChartImage) {
+        doc.addImage(subredditChartImage, 'PNG', margin, yPos, chartWidth, chartHeight);
+        yPos += chartHeight + 40;
+      }
+    }
+
+    // Add User Details Table
+    checkPageBreak(100);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("Consolidated Activity Log (Filtered)", margin, yPos); yPos += 5; 
+    doc.text("User Profile Details", margin, yPos);
+    yPos += 20;
 
-    if (allFilteredItems.length > 0) {
-        const tableData = allFilteredItems.map(item => {
-            const itemOwnerUsername = currentDisplayResults.find(result => 
-                result.data?.fetchedPostsDetails.some(p => p.id === item.id) || 
-                result.data?.fetchedCommentsDetails.some(c => c.id === item.id)
-            )?.username || 'N/A';
+    const userDetailsData = currentDisplayResults.map(result => ({
+      Username: `u/${result.data?.username}`,
+      'Account Created': result.data?.accountCreated ? format(parseISO(result.data.accountCreated), 'PPP') : 'N/A',
+      'Post Karma': result.data?.totalPostKarma?.toLocaleString() || '0',
+      'Comment Karma': result.data?.totalCommentKarma?.toLocaleString() || '0',
+      'Posts Fetched': result.data?.totalPostsFetchedThisRun || '0',
+      'Comments Fetched': result.data?.totalCommentsFetchedThisRun || '0'
+    }));
 
-            return [
-                itemOwnerUsername,
-                item.type,
-                format(parseISO(item.timestamp), 'MM/dd/yy HH:mm'),
-                item.subreddit,
-                item.titleOrContent.length > 50 ? item.titleOrContent.substring(0,47) + '...' : item.titleOrContent,
-                item.score,
-                item.type === 'Post' ? item.numComments ?? 0 : '-',
-            ];
-        });
+    autoTable(doc, {
+      head: [Object.keys(userDetailsData[0])],
+      body: userDetailsData.map(obj => Object.values(obj)),
+      startY: yPos,
+      margin: { left: margin, right: margin },
+      headStyles: { fillColor: primaryColor },
+      styles: { fontSize: 10 }
+    });
 
-        autoTable(doc, {
-            startY: yPos,
-            head: [['User', 'Type', 'Date', 'Subreddit', 'Title/Content', 'Score', 'Replies']],
-            body: tableData,
-            theme: 'grid',
-            styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak', font: 'helvetica' },
-            headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-            alternateRowStyles: { fillColor: lightGrayFill },
-            columnStyles: { 
-                0: {cellWidth: 60}, // User
-                1: {cellWidth: 35}, // Type
-                2: {cellWidth: 55}, // Date
-                3: {cellWidth: 65}, // Subreddit
-                4: {cellWidth: 'auto'}, // Title/Content
-                5: {cellWidth: 30, halign: 'right'}, // Score
-                6: {cellWidth: 35, halign: 'right'}  // Replies
-            },
-            didDrawPage: (data) => { 
-                yPos = margin + 20; 
-                pageNum = data.pageNumber; 
-                addPageHeaderFooter(doc, pageNum, totalPagesPlaceholder);
-            } 
-        });
-        yPos = (doc as any).lastAutoTable.finalY ? (doc as any).lastAutoTable.finalY + 20 : yPos + 20;
-    } else {
-        yPos = addPageIfNeeded(yPos, 15);
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-        doc.text("No detailed activity found for the selected filters.", margin, yPos); yPos += 15;
-    }
-    yPos += 20; 
+    yPos = (doc as any).lastAutoTable.finalY + 20;
 
-    // Finalize page numbers
-    const totalPagesActual = doc.internal.getNumberOfPages();
-    for (let j = 1; j <= totalPagesActual; j++) {
-      doc.setPage(j);
-      addPageHeaderFooter(doc, j, totalPagesActual); // Redraw footer with actual total
+    // Add Blocked Accounts Section if any
+    const blockedAccounts = analysisResults.filter(r => 
+      r.data?.suspensionStatus || r.data?.error || r.error
+    );
+
+    if (blockedAccounts.length > 0) {
+      checkPageBreak(100);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Blocked/Suspended Accounts", margin, yPos);
+      yPos += 20;
+
+      autoTable(doc, {
+        head: [['Username', 'Status', 'Last Checked']],
+        body: blockedAccounts.map(account => [
+          `u/${account.username}`,
+          account.data?.suspensionStatus || 'Inaccessible',
+          account.data?.lastErrorAt ? format(parseISO(account.data.lastErrorAt), 'PPP') : 'N/A'
+        ]),
+        startY: yPos,
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [239, 68, 68] }, // red color for blocked accounts
+        styles: { fontSize: 10 }
+      });
     }
 
-    doc.save(`insight_stream_reddit_aggregated_report_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
-    toast({ title: "Aggregated PDF Report Generated", description: "Download should start shortly." });
+    // Save the PDF
+    doc.save(`insight_stream_reddit_report_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
+    toast({ title: "PDF Report Generated", description: "Download should start shortly." });
   };
 
 
