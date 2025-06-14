@@ -316,7 +316,6 @@ export default function LandingPage() {
               priority
               className="transform transition-transform duration-500 group-hover:scale-105"
             />
-             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/5 transition-opacity duration-500 group-hover:opacity-70"></div>
           </div>
         </div>
       </section>
