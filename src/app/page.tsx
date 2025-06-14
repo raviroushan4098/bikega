@@ -6,8 +6,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AppLogo } from '@/components/layout/app-logo';
 import Image from 'next/image';
-import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, LogIn, Users, Lightbulb, Target, Send, Phone, Mail } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, LogIn, Users, Lightbulb, Target, Send, Phone, Mail, CheckCircle2, Star, Zap } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -128,6 +128,93 @@ const contactFormSchema = z.object({
   message: z.string().min(10, { message: "Message must be at least 10 characters." }),
 });
 type ContactFormValues = z.infer<typeof contactFormSchema>;
+
+interface PricingPlan {
+  name: string;
+  priceMonthlyInr: string;
+  priceMonthlyUsd: string;
+  description: string;
+  features: string[];
+  isPopular?: boolean;
+  ctaText: string;
+  ctaLink: string;
+  trialInfo?: string;
+  highlightClass?: string;
+}
+
+const pricingPlans: PricingPlan[] = [
+  {
+    name: "Starter",
+    priceMonthlyInr: "₹799",
+    priceMonthlyUsd: "$10",
+    description: "Perfect for individuals, small creators, or early-stage startups.",
+    features: [
+      "Monitor up to 2 platforms (e.g., Reddit + X)",
+      "2 keywords/mentions",
+      "Daily updates",
+      "Basic sentiment analysis",
+      "7-day data history",
+      "1 user seat",
+    ],
+    ctaText: "Start Free Trial",
+    ctaLink: "#",
+    trialInfo: "Free 7-day trial available",
+  },
+  {
+    name: "Growth",
+    priceMonthlyInr: "₹2,499",
+    priceMonthlyUsd: "$30",
+    description: "Designed for growing teams and personal brands who need deeper insights.",
+    features: [
+      "Monitor up to 4 platforms",
+      "10 keywords/mentions",
+      "Near real-time updates (every 2–3 hours)",
+      "Advanced sentiment & trend analysis",
+      "30-day data history",
+      "3 user seats",
+      "CSV/Excel data export",
+    ],
+    isPopular: true,
+    ctaText: "Choose Growth Plan",
+    ctaLink: "#",
+    highlightClass: "border-primary shadow-primary/20 scale-105",
+  },
+  {
+    name: "Pro",
+    priceMonthlyInr: "₹6,499",
+    priceMonthlyUsd: "$75",
+    description: "Ideal for agencies, marketers, and brand managers.",
+    features: [
+      "Monitor all available platforms",
+      "50+ keywords/mentions",
+      "Real-time updates",
+      "AI-driven insights & competitor monitoring",
+      "90-day data history",
+      "10 user seats",
+      "Team collaboration features",
+      "Email + Slack alerts",
+      "API access",
+    ],
+    ctaText: "Choose Pro Plan",
+    ctaLink: "#",
+  },
+  {
+    name: "Enterprise",
+    priceMonthlyInr: "Custom",
+    priceMonthlyUsd: "Custom",
+    description: "For large-scale teams, enterprises, or niche use-cases.",
+    features: [
+      "Unlimited platforms & keywords",
+      "Dedicated account manager",
+      "Custom dashboards & reporting",
+      "On-premise or private cloud options",
+      "White-labeling available",
+      "SLA & compliance support",
+    ],
+    ctaText: "Schedule a Demo",
+    ctaLink: "#contact",
+  },
+];
 
 export default function LandingPage() {
   const { toast } = useToast();
@@ -251,7 +338,60 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="about" className="py-16 sm:py-20 md:py-28 bg-muted/30">
+      <section id="pricing" className="py-16 sm:py-20 md:py-28 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold font-headline mb-4">Flexible Pricing for Every Need</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Choose the plan that's right for you and start gaining valuable insights today.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+            {pricingPlans.map((plan, idx) => (
+              <Card key={plan.name} className={cn(
+                "shadow-lg flex flex-col relative overflow-hidden",
+                plan.highlightClass,
+                idx === 1 ? "lg:transform lg:scale-105" : "" // Emphasize Growth plan slightly more on large screens
+              )}>
+                {plan.isPopular && (
+                  <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold tracking-wider uppercase transform translate-x-1/3 -translate-y-1/3 rotate-45">
+                     <Star className="w-3 h-3 inline-block -mt-0.5 mr-1" /> Popular
+                  </div>
+                )}
+                <CardHeader className="pb-4 text-center">
+                   <Zap className={cn("w-10 h-10 mx-auto mb-3", plan.isPopular ? "text-primary" : "text-accent")} />
+                  <CardTitle className="text-xl font-headline">{plan.name}</CardTitle>
+                  <div className="text-3xl font-bold text-foreground mt-2">
+                    {plan.priceMonthlyInr} <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">({plan.priceMonthlyUsd}/month USD)</p>
+                  <CardDescription className="text-sm mt-2 h-12 line-clamp-2">{plan.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex-grow pt-2 pb-6">
+                  <ul className="space-y-2.5">
+                    {plan.features.map((feature, fIdx) => (
+                      <li key={fIdx} className="flex items-start text-sm">
+                        <CheckCircle2 className="w-4 h-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                        <span className="text-muted-foreground">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+                <CardFooter className="mt-auto p-6 pt-0">
+                  <Button asChild className={cn("w-full", plan.isPopular ? "bg-primary hover:bg-primary/90" : "bg-accent hover:bg-accent/90 text-accent-foreground")}>
+                    <Link href={plan.ctaLink}>{plan.ctaText}</Link>
+                  </Button>
+                </CardFooter>
+                {plan.trialInfo && !plan.isPopular && (
+                  <p className="text-xs text-center text-muted-foreground pb-4 px-6 -mt-2">{plan.trialInfo}</p>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="about" className="py-16 sm:py-20 md:py-28 bg-background">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12 sm:mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold font-headline mb-4">About Insight Stream</h2>
@@ -297,7 +437,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="contact" className="py-16 sm:py-20 md:py-28 bg-background">
+      <section id="contact" className="py-16 sm:py-20 md:py-28 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12 sm:mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold font-headline mb-4">Get In Touch</h2>
@@ -322,7 +462,7 @@ export default function LandingPage() {
                  <p className="text-muted-foreground">Saturday - Sunday: Closed</p>
               </div>
             </div>
-            <Card className="shadow-xl p-6 sm:p-8 border-primary/20">
+            <Card className="shadow-xl p-6 sm:p-8 border-primary/20 bg-background">
               <CardHeader className="p-0 pb-6">
                 <CardTitle className="text-2xl font-headline">Send us a Message</CardTitle>
                 <CardDescription>Fill out the form and we'll get back to you.</CardDescription>
