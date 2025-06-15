@@ -16,7 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
-import { ThemeToggleButton } from '@/components/layout/ThemeToggleButton'; // Added import
+import { ThemeToggleButton } from '@/components/layout/ThemeToggleButton';
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -64,14 +64,14 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon: Icon, title, descriptio
       ref={cardRef}
       style={delayStyle}
       className={cn(
-        "transform transition-all duration-700 ease-out group", // Added group for icon hover
+        "transform transition-all duration-700 ease-out group",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10 pointer-events-none",
         "h-full"
       )}
     >
       <Card className={cn(
-        "shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center h-full hover:-translate-y-1", 
-        className
+        "shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center h-full hover:-translate-y-1 border-t-4",
+        className // Added border-t-4 here and expect className to provide the color e.g. "border-primary"
       )}>
         <CardHeader className="pb-4">
           <div className="p-3 bg-primary/10 rounded-full inline-block mb-3 transition-transform duration-300 group-hover:scale-110">
@@ -92,37 +92,37 @@ const features = [
     icon: LayoutGrid,
     title: "Unified Analytics Dashboard",
     description: "Aggregate data from YouTube, Reddit, Twitter/X, and global mentions into one seamless dashboard.",
-    className: "border-t-4 border-primary"
+    className: "border-primary"
   },
   {
     icon: Youtube,
     title: "YouTube Analytics",
     description: "Track video performance with metrics like likes, comments, and shares for admin-selected channels.",
-    className: "border-t-4 border-red-500"
+    className: "border-red-500"
   },
   {
     icon: MessageCircle,
     title: "Reddit Post Tracking",
     description: "Monitor Reddit posts based on keywords, with sortable data including title, subreddit, author, and timestamp.",
-    className: "border-t-4 border-orange-500"
+    className: "border-orange-500"
   },
   {
     icon: TwitterIcon,
     title: "X (Twitter) Monitoring",
     description: "View tweets, comments, and replies from X, filtered by keywords, and sortable by author or retweets.",
-    className: "border-t-4 border-sky-500"
+    className: "border-sky-500"
   },
   {
     icon: Globe,
     title: "Global Web Mentions",
     description: "Discover mentions from news, blogs, and forums across the web, based on your defined keywords.",
-    className: "border-t-4 border-green-500"
+    className: "border-green-500"
   },
   {
     icon: ShieldCheck,
     title: "Role-Based Access",
     description: "Simple and effective role-based access control to manage data visibility for admins and users.",
-    className: "border-t-4 border-purple-500"
+    className: "border-purple-500"
   },
 ];
 
@@ -181,7 +181,7 @@ const pricingPlans: PricingPlan[] = [
     isPopular: true,
     ctaText: "Choose Growth Plan",
     ctaLink: "#",
-    highlightClass: "border-primary shadow-primary/20", 
+    highlightClass: "border-primary shadow-primary/20",
   },
   {
     name: "Pro",
@@ -284,7 +284,7 @@ export default function LandingPage() {
             <Link href="#about" passHref>
               <Button variant="ghost" size="sm">About</Button>
             </Link>
-            <ThemeToggleButton /> 
+            <ThemeToggleButton />
             <Link href="/login" passHref>
               <Button variant="default" size="sm" className="ml-2">
                 <LogIn className="mr-2 h-4 w-4" /> Login
@@ -305,16 +305,16 @@ export default function LandingPage() {
           <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10">
              Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
           </p>
-          <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group">
-            <Image
-              src="https://placehold.co/1280x720.png"
-              alt="Analytics Dashboard Preview"
-              fill
-              style={{ objectFit: 'cover' }}
-              data-ai-hint="dashboard analytics"
-              priority
-              className="transform transition-transform duration-500 group-hover:scale-105"
-            />
+          <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20">
+            <iframe
+              className="absolute top-0 left-0 w-full h-full"
+              src="https://www.youtube.com/embed/Rj6FqAJGfa0?autoplay=1&mute=1&loop=1&playlist=Rj6FqAJGfa0&controls=0&playsinline=1&modestbranding=1&showinfo=0&rel=0"
+              title="Insight Stream Product Showcase"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            ></iframe>
           </div>
         </div>
       </section>
@@ -355,7 +355,7 @@ export default function LandingPage() {
               <Card key={plan.name} className={cn(
                 "shadow-lg flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-1",
                 plan.isPopular ? "border-2 border-primary shadow-primary/20 lg:scale-105" : plan.highlightClass,
-                idx === 1 && !plan.isPopular ? "lg:transform lg:scale-105" : "" 
+                idx === 1 && !plan.isPopular ? "lg:transform lg:scale-105" : ""
               )}>
                 {plan.isPopular && (
                   <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold tracking-wider uppercase transform translate-x-1/3 -translate-y-1/3 rotate-45">
@@ -551,4 +551,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
