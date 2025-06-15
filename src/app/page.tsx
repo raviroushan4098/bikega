@@ -308,7 +308,7 @@ export default function LandingPage() {
           </p>
           <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group">
             <video
-              src="/videos/hero-video.mp4"
+              src="/video/insight.mp4"
               autoPlay
               muted
               loop
