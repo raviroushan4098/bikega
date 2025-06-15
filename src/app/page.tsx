@@ -424,13 +424,10 @@ export default function LandingPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  Insight Stream is a powerful web and social media monitoring platform designed to decode your digital presence across major platforms like YouTube, Reddit, X (Twitter), and more. In an age where conversations move fast and attention is currency, we empower businesses, creators, and individuals to track trends, analyze sentiment, and uncover key online mentions in real time.
-                </p>
+                Insight Stream is an all-in-one web and social media monitoring platform that helps you decode your digital presence across YouTube, Reddit, X (Twitter), and more. We empower brands, creators, and businesses to track trends, analyze sentiment, and discover key mentions in real time.                </p>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  Our mission is to democratize digital intelligence — offering an all-in-one solution that’s easy to use, beautifully designed, and packed with deep analytics. Whether you're a growing startup, a personal brand, or a global enterprise, Insight Stream helps you stay ahead of the curve.
-                </p>
+                With AI-powered insights, intuitive dashboards, and seamless integrations, Insight Stream turns digital monitoring into a strategic advantage for everyone  from startups to global enterprises.                </p>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  With actionable dashboards, AI-powered insights, and seamless integrations, we aim to make brand reputation tracking and trend discovery not just a task — but a strategic advantage.
                 </p>
               </CardContent>
             </Card>
