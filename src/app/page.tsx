@@ -71,7 +71,8 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon: Icon, title, descriptio
     >
       <Card className={cn(
         "shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col items-center text-center h-full hover:-translate-y-1 border-t-4",
-        className // Added border-t-4 here and expect className to provide the color e.g. "border-primary"
+        "group-hover:shadow-primary/30",
+        className
       )}>
         <CardHeader className="pb-4">
           <div className="p-3 bg-primary/10 rounded-full inline-block mb-3 transition-transform duration-300 group-hover:scale-110">
@@ -296,7 +297,7 @@ export default function LandingPage() {
 
       <section className="flex-grow flex items-center justify-center py-16 sm:py-20 md:py-28 bg-gradient-to-b from-primary/5 via-transparent to-transparent">
         <div className="container mx-auto text-center px-4">
-          <BarChart3 className="w-16 h-16 sm:w-20 sm:h-20 text-primary mx-auto mb-6 animate-bounce" />
+          <BarChart3 className="w-16 h-16 sm:w-20 sm:h-20 text-primary mx-auto mb-6 animate-hero-icon-bounce" />
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold font-headline tracking-tight mb-6">
             <span className="bg-gradient-to-r from-accent via-primary to-blue-400 bg-clip-text text-transparent">
               Welcome to Insight Stream
@@ -305,9 +306,9 @@ export default function LandingPage() {
           <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10">
              Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
           </p>
-          <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20">
+          <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group">
             <iframe
-              className="absolute top-0 left-0 w-full h-full"
+              className="absolute top-0 left-0 w-[105%] h-[105%] -translate-x-[2.5%] -translate-y-[2.5%]" // Scale iframe slightly larger and offset
               src="https://www.youtube.com/embed/Rj6FqAJGfa0?autoplay=1&mute=1&loop=1&playlist=Rj6FqAJGfa0&controls=0&playsinline=1&modestbranding=1&showinfo=0&rel=0"
               title="Insight Stream Product Showcase"
               frameBorder="0"
@@ -334,7 +335,7 @@ export default function LandingPage() {
                 icon={feature.icon}
                 title={feature.title}
                 description={feature.description}
-                className={feature.className}
+                className={cn(feature.className, "group-hover:shadow-lg")}
                 index={idx}
               />
             ))}
@@ -353,8 +354,8 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
             {pricingPlans.map((plan, idx) => (
               <Card key={plan.name} className={cn(
-                "shadow-lg flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-1",
-                plan.isPopular ? "border-2 border-primary shadow-primary/20 lg:scale-105" : plan.highlightClass,
+                "shadow-lg flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 group",
+                plan.isPopular ? "border-2 border-primary shadow-primary/20 lg:scale-105 hover:shadow-primary/30" : cn("hover:shadow-accent/20", plan.highlightClass),
                 idx === 1 && !plan.isPopular ? "lg:transform lg:scale-105" : ""
               )}>
                 {plan.isPopular && (
@@ -363,7 +364,7 @@ export default function LandingPage() {
                   </div>
                 )}
                 <CardHeader className="pb-4 text-center">
-                   <Zap className={cn("w-10 h-10 mx-auto mb-3", plan.isPopular ? "text-primary" : "text-accent")} />
+                   <Zap className={cn("w-10 h-10 mx-auto mb-3 transition-transform duration-300 group-hover:scale-110", plan.isPopular ? "text-primary" : "text-accent")} />
                   <CardTitle className="text-xl font-headline">{plan.name}</CardTitle>
                   <div className="text-3xl font-bold text-foreground mt-2">
                     {plan.priceMonthlyInr} <span className="text-sm font-normal text-muted-foreground">/mo</span>
@@ -531,15 +532,12 @@ export default function LandingPage() {
         </p>
       </footer>
        <style jsx global>{`
-        .animation-delay-500 {
-          animation-delay: 0.5s;
+        .animate-hero-icon-bounce {
+          animation: hero-icon-bounce 2s infinite;
         }
-        .animate-bounce {
-          animation: bounce 1.5s infinite;
-        }
-        @keyframes bounce {
+        @keyframes hero-icon-bounce {
           0%, 100% {
-            transform: translateY(-10%);
+            transform: translateY(-8%);
             animation-timing-function: cubic-bezier(0.8,0,1,1);
           }
           50% {
