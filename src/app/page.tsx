@@ -314,7 +314,7 @@ export default function LandingPage() {
               loop
               playsInline
               poster="https://placehold.co/1280x720.png"
-              className="absolute top-1/2 left-1/2 w-[105%] h-[105%] object-cover -translate-x-1/2 -translate-y-1/2"
+              className="absolute top-0 left-0 w-full h-full object-cover -translate-x-[2.5%] -translate-y-[2.5%] scale-[1.05]"
               data-ai-hint="product showcase technology"
             >
               Your browser does not support the video tag.
@@ -404,43 +404,51 @@ export default function LandingPage() {
           <div className="text-center mb-12 sm:mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold font-headline mb-4">About Insight Stream</h2>
           </div>
-          <div className="max-w-3xl mx-auto space-y-10">
-            <div className="space-y-3">
-              <h3 className="text-2xl font-semibold font-headline flex items-center">
-                <Users className="w-7 h-7 text-primary mr-3" />
-                Who We Are
-              </h3>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Welcome to Insight Stream. We are a passionate team of developers, analysts, and creatives dedicated to making digital monitoring smarter, simpler, and more accessible.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <h3 className="text-2xl font-semibold font-headline flex items-center">
-                <Target className="w-7 h-7 text-primary mr-3" />
-                Our Mission
-              </h3>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Insight Stream is a powerful web and social media monitoring platform designed to decode your digital presence across major platforms like YouTube, Reddit, X (Twitter), and more. In an age where conversations move fast and attention is currency, we empower businesses, creators, and individuals to track trends, analyze sentiment, and uncover key online mentions in real time.
-              </p>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Our mission is to democratize digital intelligence — offering an all-in-one solution that’s easy to use, beautifully designed, and packed with deep analytics. Whether you're a growing startup, a personal brand, or a global enterprise, Insight Stream helps you stay ahead of the curve.
-              </p>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                With actionable dashboards, AI-powered insights, and seamless integrations, we aim to make brand reputation tracking and trend discovery not just a task — but a strategic advantage.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <h3 className="text-2xl font-semibold font-headline flex items-center">
-                <Lightbulb className="w-7 h-7 text-primary mr-3" />
-                The Team Behind Insight Stream
-              </h3>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                We’re a lean, driven, and remote-friendly team combining expertise in data science, machine learning, digital marketing, and UX design. Together, we are building a platform that continuously evolves — driven by feedback, innovation, and the dynamic nature of the digital world.
-              </p>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Our goal is simple: To be the go-to digital footprint tracker for the modern age.
-              </p>
-            </div>
+          <div className="grid md:grid-cols-1 lg:grid-cols-3 gap-8">
+            <Card className="shadow-lg hover:scale-105 transition-transform duration-300 ease-in-out">
+              <CardHeader>
+                <Users className="w-10 h-10 text-primary mb-3" />
+                <CardTitle className="text-2xl font-semibold font-headline">Who We Are</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Welcome to Insight Stream. We are a passionate team of developers, analysts, and creatives dedicated to making digital monitoring smarter, simpler, and more accessible.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-lg hover:scale-105 transition-transform duration-300 ease-in-out">
+              <CardHeader>
+                <Target className="w-10 h-10 text-primary mb-3" />
+                <CardTitle className="text-2xl font-semibold font-headline">Our Mission</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Insight Stream is a powerful web and social media monitoring platform designed to decode your digital presence across major platforms like YouTube, Reddit, X (Twitter), and more. In an age where conversations move fast and attention is currency, we empower businesses, creators, and individuals to track trends, analyze sentiment, and uncover key online mentions in real time.
+                </p>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Our mission is to democratize digital intelligence — offering an all-in-one solution that’s easy to use, beautifully designed, and packed with deep analytics. Whether you're a growing startup, a personal brand, or a global enterprise, Insight Stream helps you stay ahead of the curve.
+                </p>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  With actionable dashboards, AI-powered insights, and seamless integrations, we aim to make brand reputation tracking and trend discovery not just a task — but a strategic advantage.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-lg hover:scale-105 transition-transform duration-300 ease-in-out">
+              <CardHeader>
+                <Lightbulb className="w-10 h-10 text-primary mb-3" />
+                <CardTitle className="text-2xl font-semibold font-headline">The Team Behind Insight Stream</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  We’re a lean, driven, and remote-friendly team combining expertise in data science, machine learning, digital marketing, and UX design. Together, we are building a platform that continuously evolves — driven by feedback, innovation, and the dynamic nature of the digital world.
+                </p>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Our goal is simple: To be the go-to digital footprint tracker for the modern age.
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
