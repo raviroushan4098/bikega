@@ -307,15 +307,18 @@ export default function LandingPage() {
              Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
           </p>
           <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group">
-            <iframe
-              className="absolute top-0 left-0 w-[105%] h-[105%] -translate-x-[2.5%] -translate-y-[2.5%]" // Scale iframe slightly larger and offset
-              src="https://www.youtube.com/embed/Rj6FqAJGfa0?autoplay=1&mute=1&loop=1&playlist=Rj6FqAJGfa0&controls=0&playsinline=1&modestbranding=1&showinfo=0&rel=0"
-              title="Insight Stream Product Showcase"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            ></iframe>
+            <video
+              src="/videos/hero-video.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              poster="https://placehold.co/1280x720.png"
+              className="absolute top-0 left-0 w-full h-full object-cover"
+              data-ai-hint="product showcase technology"
+            >
+              Your browser does not support the video tag.
+            </video>
           </div>
         </div>
       </section>
