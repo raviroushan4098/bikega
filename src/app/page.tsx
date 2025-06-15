@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AppLogo } from '@/components/layout/app-logo';
-// import Image from 'next/image'; // Not used directly for the video poster, but kept for other images
 import { LayoutGrid, Youtube, MessageCircle, Twitter as TwitterIcon, Globe, ShieldCheck, BarChart3, LogIn, Users, Lightbulb, Target, Send, Phone, Mail, CheckCircle2, Star, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -224,6 +223,17 @@ const pricingPlans: PricingPlan[] = [
 export default function LandingPage() {
   const { toast } = useToast();
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(error => {
+        console.log("Video autoplay failed:", error);
+        // Autoplay was prevented, perhaps due to browser policy or low power mode.
+        // You could show a play button or message here if needed.
+      });
+    }
+  }, []);
 
   const contactForm = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
@@ -306,15 +316,20 @@ export default function LandingPage() {
           <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10">
              Insight Stream empowers you to understand your digital footprint. We provide a unified platform to track, analyze, and act on social media trends and web mentions from YouTube, Reddit, X (Twitter), and beyond. Make data-driven decisions, monitor brand reputation, and discover key conversations effortlessly.
           </p>
-          <div className="relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group transform-gpu transition-transform duration-300 ease-out hover:scale-105 rotate-x-[-2deg] rotate-y-[3deg] hover:rotate-x-0 hover:rotate-y-0">
+          <div className={cn(
+              "relative w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl mb-12 border-4 border-primary/20 group",
+              "transform-gpu transition-transform duration-300 ease-out hover:scale-105 rotate-x-[-2deg] rotate-y-[3deg] hover:rotate-x-0 hover:rotate-y-0"
+            )}
+            >
             <video
+              ref={videoRef}
               src="/video/insight.mp4"
               autoPlay
               muted
               loop
               playsInline
               poster="https://placehold.co/1280x720.png"
-              className="absolute top-0 left-0 w-full h-full object-cover -translate-x-[2.5%] -translate-y-[2.5%] scale-[1.05]"
+              className="absolute top-0 left-0 w-full h-full object-cover"
               data-ai-hint="product showcase technology"
             >
               Your browser does not support the video tag.
