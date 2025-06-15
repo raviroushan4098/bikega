@@ -281,13 +281,12 @@ export default function RedditPage() {
     try {
       const result = await refreshUserRedditData(currentUser.id, currentUser.assignedKeywords);
       if (result.success) {
-        toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} items fetched/updated from Reddit.` });
-        await fetchStoredUserRedditData(); 
-        // After fetching, if date filters are active, re-apply them.
-        // No, this is handled by useEffect on allRedditPosts now.
-        // if (startDate || endDate) {
-        //   handleShowFilteredData();
-        // }
+        if (result.itemsFetchedAndStored > 0) {
+          toast({ title: "Refresh Complete", description: `${result.itemsFetchedAndStored} new or updated items processed from Reddit.` });
+        } else {
+          toast({ title: "Refresh Complete", description: "No new items found, or existing items were already up-to-date." });
+        }
+        await fetchStoredUserRedditData();
       } else {
         toast({ variant: "destructive", title: "Refresh Failed", description: result.error || "Could not refresh Reddit data." });
       }
