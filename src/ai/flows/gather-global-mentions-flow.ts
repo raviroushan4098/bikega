@@ -1,7 +1,8 @@
 
 'use server';
 /**
- * @fileOverview A Genkit flow to gather global mentions for a user, focusing on assigned RSS feeds.
+ * @fileOverview A Genkit flow to gather global mentions for a user,
+ * focusing on assigned RSS feeds. Currently simulates parsing.
  *
  * - gatherGlobalMentionsFlow - Main flow function.
  * - GatherGlobalMentionsInput - Input type for the flow.
@@ -9,30 +10,17 @@
  */
 
 import { ai } from '@/ai/genkit';
-import type { Mention, User } from '@/types'; // Mention type might be less used if not creating mention objects from RSS yet
-// import { getApiKeys } from '@/lib/api-key-service'; // Not needed if GNews is removed for now
-// import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service'; // Not storing mentions from RSS yet
+import type { Mention, User } from '@/types';
 import { getUserById } from '@/lib/user-service';
+import { addGlobalMentionsBatch, getGlobalMentionsForUser } from '@/lib/global-mentions-service';
 import {
   GatherGlobalMentionsInputSchema,
   type GatherGlobalMentionsInput,
   GatherGlobalMentionsOutputSchema,
   type GatherGlobalMentionsOutput
 } from '@/types/global-mentions-schemas';
-// import { analyzeAdvancedSentiment } from './advanced-sentiment-flow'; // Sentiment analysis not applicable yet
-// import { fetchGnewsArticles } from '@/lib/gnews-api-service'; // GNews removed for now
 
-const API_CALL_TIMEOUT_MS = 15000; 
-// const SENTIMENT_ANALYSIS_DELAY_MS = 500; // Not needed for now
-// const MAX_SENTIMENT_ANALYSES_PER_RUN = 10; // Not needed for now
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Hacker News related types and functions are removed as per request to focus on RSS
-// interface HackerNewsHit { ... }
-// interface HackerNewsAlgoliaResponse { ... }
-// async function fetchHackerNewsMentions(keywords: string[]): Promise<Partial<Mention>[]> { ... }
-
+const API_CALL_TIMEOUT_MS = 10000; // Timeout for fetching RSS feed
 
 const gatherGlobalMentionsFlowRunner = ai.defineFlow(
   {
@@ -50,6 +38,7 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
     const userId = input.userId;
     console.log(`[GatherGlobalMentionsFlow] ENTERING FLOW. Input UserID: ${userId}. Timestamp: ${new Date().toISOString()}`);
     const errors: string[] = [];
+    let newMentionsFromRss: Mention[] = [];
 
     const user = await getUserById(userId);
     if (!user || !user.id) {
@@ -58,62 +47,138 @@ const gatherGlobalMentionsFlowRunner = ai.defineFlow(
       return { totalMentionsFetched: 0, newMentionsStored: 0, errors };
     }
     console.log(`[GatherGlobalMentionsFlow] User ${user.name} (ID: ${user.id}) successfully fetched.`);
-
-    // Keywords are still relevant for context, even if not used for fetching HackerNews/GNews
+    
+    // Keywords are useful for context, even if not directly used for RSS item filtering here yet.
     const keywords = user.assignedKeywords;
     if (!keywords || keywords.length === 0) {
-      console.log(`[GatherGlobalMentionsFlow] User ${user.name} (ID: ${user.id}) has no assigned keywords. This is noted but RSS processing will continue if feeds are assigned.`);
+      console.log(`[GatherGlobalMentionsFlow] User ${user.name} (ID: ${user.id}) has no assigned keywords (for other sources).`);
     } else {
       console.log(`[GatherGlobalMentionsFlow] Keywords for user ${user.name} (ID: ${user.id}): ${keywords.join(', ')}`);
     }
-    
-    // Since we are not fetching/storing items from RSS yet, existing mentions logic is less relevant for this iteration.
-    // const existingMentionsList = await getGlobalMentionsForUser(userId);
-    // const storedMentionsMap = new Map<string, Mention>();
-    // existingMentionsList.forEach(m => { if (m.id) storedMentionsMap.set(m.id, m); });
-    // console.log(`[GatherGlobalMentionsFlow] Found ${storedMentionsMap.size} existing mentions in Firestore for user ${userId}.`);
-
-    // Removed Hacker News fetching
-    // const hnMentions = await fetchHackerNewsMentions(keywords);
-    // allPotentialMentionsPartial.push(...hnMentions);
-    // console.log(`[GatherGlobalMentionsFlow] Hacker News fetch complete. Found ${hnMentions.length} mentions.`);
-
-    // Removed GNews API fetching
-    // console.log('[GatherGlobalMentionsFlow] GNews API fetch skipped in this version.');
-    // errors.push("Note: GNews fetching is temporarily disabled to focus on RSS feeds.");
-
 
     if (user.assignedRssFeedUrls && user.assignedRssFeedUrls.length > 0) {
         console.log(`[GatherGlobalMentionsFlow] User ${userId} has ${user.assignedRssFeedUrls.length} RSS feeds assigned. URLs: ${user.assignedRssFeedUrls.join(', ')}`);
-        errors.push(`Found ${user.assignedRssFeedUrls.length} RSS feed(s) assigned. Full parsing and display of content from these feeds is currently under development and will be available in a future update.`);
+        
+        // For demonstration, let's try to fetch and "parse" (simulate) the first feed.
+        const firstFeedUrl = user.assignedRssFeedUrls[0];
+        console.log(`[GatherGlobalMentionsFlow] Attempting to fetch XML content from: ${firstFeedUrl}`);
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), API_CALL_TIMEOUT_MS);
+
+            const response = await fetch(firstFeedUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => `Status: ${response.status}`);
+                const fetchErrorMsg = `Failed to fetch RSS feed ${firstFeedUrl}. Status: ${response.status}. Response: ${errorText.substring(0,100)}`;
+                console.error(`[GatherGlobalMentionsFlow] ${fetchErrorMsg}`);
+                errors.push(fetchErrorMsg);
+            } else {
+                const xmlText = await response.text();
+                console.log(`[GatherGlobalMentionsFlow] Successfully fetched XML content from ${firstFeedUrl}. Length: ${xmlText.length}. Snippet (first 300 chars): ${xmlText.substring(0, 300)}...`);
+                
+                // **** XML PARSING SIMULATION ****
+                // In a real implementation, you would use an XML parsing library here (e.g., xml2js, fast-xml-parser)
+                // to convert xmlText into a JavaScript object and extract items.
+                // For now, we will create mock Mention objects to simulate this.
+                console.warn(`[GatherGlobalMentionsFlow] SIMULATING XML PARSING for ${firstFeedUrl}. Actual XML parsing library needed for real data extraction.`);
+                
+                const feedTitleMatch = xmlText.match(/<title>(.*?)<\/title>/i);
+                const feedSource = feedTitleMatch && feedTitleMatch[1] ? feedTitleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim() : firstFeedUrl;
+
+                // Create 1-2 mock mentions based on the feed
+                const mockMention1: Mention = {
+                    id: `mock-rss-${Date.now()}-1`,
+                    userId: userId,
+                    platform: 'RSS Feed',
+                    source: feedSource.substring(0, 50), // Use feed title as source
+                    title: `Simulated: Alert from ${feedSource.substring(0,30)}...`,
+                    excerpt: "This is a simulated mention from an RSS feed. Actual content would be extracted from the XML item's description.",
+                    url: firstFeedUrl, // Link to the feed itself for now
+                    timestamp: new Date().toISOString(),
+                    sentiment: 'neutral',
+                    matchedKeyword: keywords && keywords.length > 0 ? keywords[0] : "rss_feed",
+                    fetchedAt: new Date().toISOString(),
+                };
+                newMentionsFromRss.push(mockMention1);
+
+                if (user.assignedRssFeedUrls.length > 1) { // Add a second mock if more feeds exist
+                     const mockMention2: Mention = {
+                        id: `mock-rss-${Date.now()}-2`,
+                        userId: userId,
+                        platform: 'RSS Feed',
+                        source: `Another Source from ${feedSource.substring(0,20)}...`,
+                        title: `Simulated: Another item from feed`,
+                        excerpt: "This is another simulated item to show multiple entries. Real parsing would yield actual items.",
+                        url: user.assignedRssFeedUrls[1] || firstFeedUrl, 
+                        timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // An hour ago
+                        sentiment: 'unknown',
+                        matchedKeyword: keywords && keywords.length > 1 ? keywords[1] : (keywords && keywords.length > 0 ? keywords[0] : "rss_item"),
+                        fetchedAt: new Date().toISOString(),
+                    };
+                    newMentionsFromRss.push(mockMention2);
+                }
+                errors.push(`Successfully fetched '${feedSource.substring(0,50)}...' XML. Parsed (simulated) ${newMentionsFromRss.length} item(s). Full XML parsing requires a library.`);
+            }
+        } catch (fetchError) {
+            const castError = fetchError as Error;
+            let errorMessage = castError.message || "An unknown error occurred during RSS fetch.";
+            if (castError.name === 'AbortError') {
+                errorMessage = `RSS feed fetch from ${firstFeedUrl} timed out after ${API_CALL_TIMEOUT_MS / 1000}s.`;
+            }
+            console.error(`[GatherGlobalMentionsFlow] Exception fetching RSS feed ${firstFeedUrl}: ${errorMessage}`, fetchError);
+            errors.push(`Error fetching RSS feed ${firstFeedUrl}: ${errorMessage}`);
+        }
     } else {
         console.log(`[GatherGlobalMentionsFlow] User ${userId} has no RSS feeds assigned.`);
         errors.push("No RSS feeds are assigned to your account. Please contact an admin to add feeds.");
     }
 
-    // Since no mentions are being fetched or processed from RSS yet:
-    const totalFetchedThisRun = 0;
-    const storedThisRun = 0;
+    let storedThisRun = 0;
+    if (newMentionsFromRss.length > 0) {
+      console.log(`[GatherGlobalMentionsFlow] Attempting to store ${newMentionsFromRss.length} (simulated) RSS mentions for user ${userId}.`);
+      const existingMentions = await getGlobalMentionsForUser(userId);
+      const existingMentionIds = new Set(existingMentions.map(m => m.id));
+      
+      const trulyNewMentions = newMentionsFromRss.filter(nm => !existingMentionIds.has(nm.id));
 
-    console.log(`[GatherGlobalMentionsFlow] EXITING FLOW (RSS Focus). UserID: ${user.id}. Fetched: ${totalFetchedThisRun}, Stored: ${storedThisRun}, Messages: ${errors.length}`);
+      if (trulyNewMentions.length > 0) {
+        const batchResult = await addGlobalMentionsBatch(userId, trulyNewMentions);
+        storedThisRun = batchResult.successCount;
+        if (batchResult.errorCount > 0) {
+          errors.push(...batchResult.errors);
+          console.warn(`[GatherGlobalMentionsFlow] Errors storing some RSS mentions: ${batchResult.errors.join('; ')}`);
+        }
+         console.log(`[GatherGlobalMentionsFlow] Stored ${storedThisRun} new (simulated) RSS mentions for user ${userId}.`);
+      } else {
+        console.log(`[GatherGlobalMentionsFlow] All ${newMentionsFromRss.length} (simulated) RSS mentions already exist for user ${userId}. Nothing new to store.`);
+        errors.push("Fetched (simulated) RSS items were already stored previously.");
+      }
+    }
+    
+    const totalFetchedThisRun = newMentionsFromRss.length; // This is simulated count
+
+    console.log(`[GatherGlobalMentionsFlow] EXITING FLOW (RSS SIMULATION). UserID: ${user.id}. Fetched (Simulated): ${totalFetchedThisRun}, Stored: ${storedThisRun}, Messages: ${errors.length}`);
     return {
       totalMentionsFetched: totalFetchedThisRun,
       newMentionsStored: storedThisRun,
-      errors, // This will carry the "under development" message
+      errors,
     };
   }
 );
 
 export async function gatherGlobalMentions(input: GatherGlobalMentionsInput): Promise<GatherGlobalMentionsOutput> {
   try {
-    console.log(`[gatherGlobalMentions EXPORTED WRAPPER] Called for UserID ${input.userId}. Forwarding to flow runner (RSS Focus).`);
+    console.log(`[gatherGlobalMentions EXPORTED WRAPPER] Called for UserID ${input.userId}. Forwarding to flow runner (RSS SIMULATION).`);
     if (!input.userId || typeof input.userId !== 'string' || input.userId.trim() === "") {
         const errorMsg = `[gatherGlobalMentions EXPORTED WRAPPER] Invalid or missing UserID: '${input.userId}'. Aborting.`;
         console.error(errorMsg);
         return { totalMentionsFetched: 0, newMentionsStored: 0, errors: [errorMsg] };
     }
     const result = await gatherGlobalMentionsFlowRunner(input);
-    console.log(`[gatherGlobalMentions EXPORTED WRAPPER] Flow runner completed for UserID ${input.userId} (RSS Focus).`);
+    console.log(`[gatherGlobalMentions EXPORTED WRAPPER] Flow runner completed for UserID ${input.userId} (RSS SIMULATION).`);
     return result;
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : "Unknown error in gatherGlobalMentions flow runner.";

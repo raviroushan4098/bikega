@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import type { User, Mention } from '@/types'; // Mention might not be used directly for display in this iteration
+import type { User, Mention } from '@/types';
 import { getUsers, getUserById, updateUserRssFeedUrls } from '@/lib/user-service';
-import { Globe, Rss, Save, Loader2, Info, FilterX, SearchCheck, SearchX as SearchXIcon, RefreshCw, Users as UsersIcon, Link as LinkIcon } from 'lucide-react'; // Added LinkIcon
+import { Globe, Rss, Save, Loader2, Info, FilterX, SearchCheck, SearchX as SearchXIcon, RefreshCw, Users as UsersIcon, Link as LinkIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,11 +23,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
-// GlobalMentionCard might not be used directly in this iteration if no mentions are displayed
-// import GlobalMentionCard from '@/components/dashboard/GlobalMentionCard';
-// getGlobalMentionsForUser might not be used if we are not displaying parsed mentions yet
-// import { getGlobalMentionsForUser } from '@/lib/global-mentions-service';
-import { triggerGlobalMentionsRefresh } from './actions'; // Server Action
+import GlobalMentionCard from '@/components/dashboard/GlobalMentionCard';
+import { getGlobalMentionsForUser } from '@/lib/global-mentions-service';
+import { triggerGlobalMentionsRefresh } from './actions';
 
 const rssFeedsSchema = z.object({
   rssFeedUrls: z.string().optional(),
@@ -49,9 +47,10 @@ export default function GlobalMentionsPage() {
     defaultValues: { rssFeedUrls: "" },
   });
 
-  // User state for their assigned RSS Feeds
-  const [userAssignedRssFeeds, setUserAssignedRssFeeds] = useState<string[]>([]);
-  const [isCheckingFeeds, setIsCheckingFeeds] = useState(false); // For the refresh button
+  // User state for their mentions (including simulated RSS)
+  const [userMentions, setUserMentions] = useState<Mention[]>([]);
+  const [isLoadingMentions, setIsLoadingMentions] = useState(false);
+  const [isRefreshingMentions, setIsRefreshingMentions] = useState(false);
 
   // Admin: Fetch users list
   useEffect(() => {
@@ -110,9 +109,9 @@ export default function GlobalMentionsPage() {
       if (result.success) {
         toast({ title: "RSS Feeds Updated", description: `RSS feeds for ${selectedUserForFeeds.name} saved.` });
         setSelectedUserForFeeds(prev => prev ? {...prev, assignedRssFeedUrls: urlsArray} : null);
-        // If the updated user is the current user (admin editing their own feeds), update userAssignedRssFeeds
+        // If the updated user is the current user (admin editing their own feeds), update their view if it relies on currentUser directly.
         if (currentUser?.id === selectedUserForFeeds.id) {
-          setUserAssignedRssFeeds(urlsArray);
+          // For now, the user view fetches mentions directly, so this specific update isn't strictly needed for display.
         }
       } else {
         toast({ variant: "destructive", title: "Update Failed", description: result.error || "Could not update." });
@@ -124,33 +123,61 @@ export default function GlobalMentionsPage() {
     }
   }
 
-  // User: Fetch their assigned RSS feeds on load
+  // User: Fetch their stored mentions on load
+  const fetchUserMentions = useCallback(async () => {
+    if (currentUser?.role === 'user' && currentUser.id) {
+      setIsLoadingMentions(true);
+      try {
+        const mentions = await getGlobalMentionsForUser(currentUser.id);
+        setUserMentions(mentions);
+      } catch (error) {
+        toast({ variant: "destructive", title: "Error", description: "Failed to load your mentions." });
+      } finally {
+        setIsLoadingMentions(false);
+      }
+    }
+  }, [currentUser, toast]);
+
   useEffect(() => {
     if (currentUser?.role === 'user' && !authLoading) {
-      setUserAssignedRssFeeds(currentUser.assignedRssFeedUrls || []);
+      fetchUserMentions();
     }
-  }, [currentUser, authLoading]);
+  }, [currentUser, authLoading, fetchUserMentions]);
 
-  // User: Handle "Refresh" button for RSS feeds
-  const handleCheckRssFeeds = async () => {
+  // User: Handle "Refresh RSS Mentions" button
+  const handleRefreshMentionsForUser = async () => {
     if (!currentUser || !currentUser.id) return;
-    setIsCheckingFeeds(true);
-    toast({ title: "Checking RSS Feeds", description: "Connecting to backend... Full parsing coming soon."});
+    setIsRefreshingMentions(true);
+    toast({ title: "Refreshing RSS Mentions...", description: "Fetching latest items from your assigned RSS feeds (simulation). This may take a moment."});
     try {
       const result = await triggerGlobalMentionsRefresh(currentUser.id);
-      // The flow will return an informational message in 'errors' array
+      
       if (result.errors && result.errors.length > 0) {
-        toast({ title: "RSS Feed Status", description: result.errors.join('; ') });
-      } else {
-        toast({ title: "RSS Feed Check Complete", description: "Parsing and display of feed content is under development." });
+        const errorMessages = result.errors.filter(e => !e.toLowerCase().includes("under development") && !e.toLowerCase().includes("simulated"));
+        const infoMessages = result.errors.filter(e => e.toLowerCase().includes("under development") || e.toLowerCase().includes("simulated"));
+
+        if (errorMessages.length > 0) {
+          toast({ variant: "destructive", title: "Refresh Issues", description: errorMessages.join('; '), duration: 7000 });
+        }
+        if (infoMessages.length > 0) {
+          toast({ title: "Refresh Status", description: infoMessages.join('; '), duration: 7000 });
+        }
       }
-      // No need to re-fetch from Firestore here, as we are not yet storing parsed items from RSS.
+      
+      if (result.newMentionsStored > 0) {
+        toast({ title: "Mentions Updated", description: `${result.newMentionsStored} new (simulated) RSS items found and stored.` });
+      } else if (result.totalMentionsFetched > 0 && result.newMentionsStored === 0) {
+        toast({ title: "Mentions Checked", description: "No new (simulated) RSS items to store. Mentions might already be up-to-date." });
+      }
+      
+      await fetchUserMentions(); // Re-fetch all mentions to include new ones
     } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred while checking feeds." });
+      toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred while refreshing mentions." });
     } finally {
-      setIsCheckingFeeds(false);
+      setIsRefreshingMentions(false);
     }
   };
+
 
   if (authLoading) {
     return (
@@ -160,7 +187,6 @@ export default function GlobalMentionsPage() {
     );
   }
 
-  // Admin View for assigning RSS Feeds (remains the same)
   if (currentUser?.role === 'admin') {
     return (
       <div className="space-y-6">
@@ -171,7 +197,8 @@ export default function GlobalMentionsPage() {
               Manage User RSS Feeds for Global Mentions
             </CardTitle>
             <CardDescription>
-              Assign or update RSS feed URLs for users. These feeds will be used to populate their Global Mentions page once parsing is implemented.
+              Assign or update RSS feed URLs for users. These feeds will be used to populate their Global Mentions page. 
+              Currently, parsing is simulated for demonstration.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -251,7 +278,7 @@ export default function GlobalMentionsPage() {
     );
   }
 
-  // User View: Display Assigned RSS Feeds and "Coming Soon" message
+  // User View: Display Mentions from RSS (simulated)
   if (currentUser?.role === 'user') {
     return (
       <div className="space-y-6">
@@ -259,62 +286,69 @@ export default function GlobalMentionsPage() {
           <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <CardTitle className="text-xl font-headline flex items-center">
-                <Rss className="mr-3 h-6 w-6 text-primary" />
-                Your Assigned RSS Feeds
+                <Globe className="mr-3 h-6 w-6 text-primary" /> {/* Changed Icon */}
+                Your Global Mentions (from RSS Feeds)
               </CardTitle>
               <CardDescription>
-                Content from these feeds will be displayed here soon.
-                Assigned keywords for other sources: {currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 ? 
-                  `"${currentUser.assignedKeywords.slice(0,3).join('", "')}${currentUser.assignedKeywords.length > 3 ? '"...' : '"'}` 
-                  : " (None)"
+                Mentions fetched from your assigned RSS feeds. Parsing is currently simulated.
+                {currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && 
+                  ` Assigned keywords for other potential sources: "${currentUser.assignedKeywords.slice(0,2).join('", "')}${currentUser.assignedKeywords.length > 2 ? '"...' : '"'}`
                 }
               </CardDescription>
             </div>
-            <Button onClick={handleCheckRssFeeds} disabled={isCheckingFeeds} className="w-full sm:w-auto mt-2 sm:mt-0">
-              {isCheckingFeeds ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              Check Feeds Status
+            <Button onClick={handleRefreshMentionsForUser} disabled={isRefreshingMentions || isLoadingMentions || !currentUser.assignedRssFeedUrls || currentUser.assignedRssFeedUrls.length === 0} className="w-full sm:w-auto mt-2 sm:mt-0">
+              {isRefreshingMentions ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Refresh RSS Mentions
             </Button>
           </CardHeader>
           <CardContent>
-            {isCheckingFeeds && !userAssignedRssFeeds.length && ( // Show loader only if checking and no feeds loaded yet
+            {isLoadingMentions && (
               <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                <p className="ml-3 text-muted-foreground">Checking feed status...</p>
+                <p className="ml-3 text-muted-foreground">Loading your mentions...</p>
               </div>
             )}
-            {!isCheckingFeeds && userAssignedRssFeeds.length === 0 && (
-              <div className="text-center py-10 text-muted-foreground">
+            {!isLoadingMentions && (!currentUser.assignedRssFeedUrls || currentUser.assignedRssFeedUrls.length === 0) && (
+               <div className="text-center py-10 text-muted-foreground">
                 <SearchXIcon className="mx-auto h-12 w-12 mb-3" />
                 <p className="text-lg font-semibold">No RSS Feeds Assigned</p>
                 <p>Please contact an administrator to assign RSS feeds to your account.</p>
               </div>
             )}
-            {!isCheckingFeeds && userAssignedRssFeeds.length > 0 && (
-              <div className="space-y-3">
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700 flex items-start gap-2">
+            {!isLoadingMentions && currentUser.assignedRssFeedUrls && currentUser.assignedRssFeedUrls.length > 0 && userMentions.length === 0 && !isRefreshingMentions && (
+              <div className="text-center py-10 text-muted-foreground">
+                <Info className="mx-auto h-12 w-12 mb-3" />
+                <p className="text-lg font-semibold">No Mentions Found Yet</p>
+                <p>Try clicking "Refresh RSS Mentions" to fetch items from your feeds. Note: Parsing is simulated.</p>
+                <div className="mt-4">
+                  <h3 className="text-md font-semibold mb-2">Your Assigned Feeds:</h3>
+                  <ul className="list-none space-y-1 text-xs text-left max-w-md mx-auto">
+                    {(currentUser.assignedRssFeedUrls || []).map((feedUrl, index) => (
+                      <li key={index} className="flex items-center gap-2 p-1 border rounded-md bg-muted/30">
+                        <LinkIcon className="h-3 w-3 text-primary flex-shrink-0" />
+                        <a href={feedUrl} target="_blank" rel="noopener noreferrer" className="hover:underline truncate" title={feedUrl}>
+                          {feedUrl}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {!isLoadingMentions && userMentions.length > 0 && (
+              <div className="space-y-4">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700 flex items-start gap-2">
                     <Info className="h-5 w-5 shrink-0 mt-0.5 text-amber-600"/>
                     <div>
-                        <strong>Feature Update:</strong> Displaying content from these RSS feeds is currently under development and will be available soon.
-                        Below are the RSS feed URLs assigned to your account.
+                        <strong>Developer Note:</strong> The RSS items below are currently <strong>simulated</strong> for demonstration. 
+                        Actual parsing of XML content from your feeds requires an XML parsing library, which needs to be added to the project.
                     </div>
                 </div>
-                <h3 className="text-md font-semibold text-muted-foreground pt-2">Your Feeds:</h3>
-                <ul className="list-none space-y-2 pl-0">
-                  {userAssignedRssFeeds.map((feedUrl, index) => (
-                    <li key={index} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30 hover:bg-muted/50">
-                      <LinkIcon className="h-4 w-4 text-primary flex-shrink-0" />
-                      <a 
-                        href={feedUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-sm text-foreground hover:underline truncate"
-                        title={feedUrl}
-                      >
-                        {feedUrl}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {userMentions.map((mention) => (
+                        <GlobalMentionCard key={mention.id} mention={mention} />
+                    ))}
+                </div>
               </div>
             )}
           </CardContent>
@@ -323,11 +357,9 @@ export default function GlobalMentionsPage() {
     );
   }
 
-  // Fallback for unexpected roles
   return (
     <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
       <p className="text-muted-foreground">Content not available for your role.</p>
     </div>
   );
 }
-
