@@ -8,6 +8,7 @@ export interface User {
   profilePictureUrl?: string;
   assignedKeywords?: string[]; 
   assignedYoutubeUrls?: string[]; 
+  assignedRssFeedUrls?: string[]; // New field for RSS feed URLs
   createdAt?: string; 
   passwordLastResetAt?: string; 
 }
@@ -80,7 +81,7 @@ export interface Tweet {
 export interface Mention {
   id: string; 
   userId: string; 
-  platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Web Mention' | 'Other';
+  platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Web Mention' | 'RSS Feed' | 'Other'; // Added 'RSS Feed'
   source: string; 
   title: string;
   excerpt: string;
@@ -123,6 +124,7 @@ export interface NewUserDetails {
   password?: string; 
   role: 'admin' | 'user';
   assignedKeywords?: string; 
+  assignedRssFeedUrls?: string; // New field for form input
 }
 
 // Types for External Reddit User Analysis

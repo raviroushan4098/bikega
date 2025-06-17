@@ -60,7 +60,12 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
         : [];
     }
 
-    const newUser: Omit<User, 'id' | 'createdAt'> & { createdAt: Timestamp } = { // Ensure createdAt is a Firestore Timestamp
+    let rssUrlsArray: string[] = [];
+    if (userData.assignedRssFeedUrls && userData.assignedRssFeedUrls.trim() !== "") {
+      rssUrlsArray = userData.assignedRssFeedUrls.split(',').map(url => url.trim()).filter(url => url !== "");
+    }
+
+    const newUser: Omit<User, 'id' | 'createdAt'> & { createdAt: Timestamp } = { 
       email: userData.email,
       password: userData.password,
       name: userData.name,
@@ -68,11 +73,12 @@ export const addUser = async (userData: NewUserDetails): Promise<User | { error:
       profilePictureUrl: `https://placehold.co/100x100.png?text=${userData.name.substring(0,2)}`,
       assignedKeywords: keywordsArray,
       assignedYoutubeUrls: [],
-      createdAt: Timestamp.now(), // Use Firestore Timestamp
+      assignedRssFeedUrls: rssUrlsArray, // Initialize with parsed or empty array
+      createdAt: Timestamp.now(), 
     };
 
     await setDoc(newUserDocRef, newUser);
-    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}, CreatedAt: ${newUser.createdAt.toDate().toISOString()}`);
+    console.log(`[user-service] Added user with ID: ${newUserDocRef.id}, Email: ${userData.email}, Keywords: ${keywordsArray.join(', ')}, RSS Feeds: ${rssUrlsArray.join(', ')}, CreatedAt: ${newUser.createdAt.toDate().toISOString()}`);
     return { id: newUserDocRef.id, ...newUser, createdAt: newUser.createdAt.toDate().toISOString() };
 
   } catch (error) {
@@ -140,6 +146,23 @@ export const updateUserKeywords = async (userId: string, keywords: string[]): Pr
       return { success: false, error: `Failed to update keywords: ${error.message}` };
     }
     return { success: false, error: "An unknown error occurred while updating keywords." };
+  }
+};
+
+export const updateUserRssFeedUrls = async (userId: string, urls: string[]): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    await updateDoc(userDocRef, {
+      assignedRssFeedUrls: urls
+    });
+    console.log(`[user-service] Successfully updated RSS feed URLs for user ${userId} to: ${urls.join(', ')}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`[user-service] Error updating RSS feed URLs for user ${userId}:`, error);
+    if (error instanceof Error) {
+      return { success: false, error: `Failed to update RSS feed URLs: ${error.message}` };
+    }
+    return { success: false, error: "An unknown error occurred while updating RSS feed URLs." };
   }
 };
 
