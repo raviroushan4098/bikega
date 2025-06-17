@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   email: string;
@@ -78,9 +77,20 @@ export interface Tweet {
   url: string;
 }
 
+export interface RssEntry {
+  id: string;
+  title: string;
+  link: string;
+  published: string;
+  updated: string;
+  content: string;
+  author?: string;
+}
+
 export interface Mention {
-  id: string; 
-  userId: string; 
+  id: string;
+  xmlContent: string; // The raw XML entry content
+  createdAt: Date;
   platform: 'Reddit' | 'Hacker News' | 'Twitter/X' | 'Google News' | 'Web Mention' | 'RSS Feed' | 'Other'; // Added 'RSS Feed'
   source: string; 
   title: string;
@@ -90,6 +100,7 @@ export interface Mention {
   sentiment?: 'positive' | 'neutral' | 'negative' | 'unknown'; 
   matchedKeyword: string; 
   fetchedAt?: string; 
+  rssEntry?: RssEntry; // Add this field
 }
 
 // For table column definitions

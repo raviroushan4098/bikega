@@ -1,11 +1,14 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import type { User, Mention } from '@/types';
 import { getUsers, getUserById, updateUserRssFeedUrls } from '@/lib/user-service';
-import { Globe, Rss, Save, Loader2, Info, FilterX, SearchCheck, SearchX as SearchXIcon, RefreshCw, Users as UsersIcon, Link as LinkIcon } from 'lucide-react';
+import { Globe, Rss, Save, Loader2, Info, FilterX, SearchCheck, SearchX, RefreshCw, Users, Link } from 'lucide-react';
+import GlobalMentionCard from '@/components/dashboard/GlobalMentionCard';
+import RssMentionCard from '@/components/dashboard/RssMentionCard';
+import { getGlobalMentionsForUser } from '@/lib/global-mentions-service';
+import { triggerGlobalMentionsRefresh } from './actions';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,9 +26,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
-import GlobalMentionCard from '@/components/dashboard/GlobalMentionCard';
-import { getGlobalMentionsForUser } from '@/lib/global-mentions-service';
-import { triggerGlobalMentionsRefresh } from './actions';
 
 const rssFeedsSchema = z.object({
   rssFeedUrls: z.string().optional(),
@@ -178,6 +178,14 @@ export default function GlobalMentionsPage() {
     }
   };
 
+  const formatFeedTitle = (url: string): string => {
+    try {
+      const urlObj = new URL(url);
+      return `${urlObj.hostname.replace('www.', '')} Feed`;
+    } catch {
+      return 'RSS Feed';
+    }
+  };
 
   if (authLoading) {
     return (
@@ -268,7 +276,7 @@ export default function GlobalMentionsPage() {
             )}
              {!selectedUserForFeeds && !isLoadingUsers && (
                 <div className="text-center py-10 text-muted-foreground">
-                    <UsersIcon className="mx-auto h-12 w-12 mb-3" />
+                    <Users className="mx-auto h-12 w-12 mb-3" />
                     <p>Please select a user to manage their RSS feeds.</p>
                 </div>
             )}
@@ -310,7 +318,7 @@ export default function GlobalMentionsPage() {
             )}
             {!isLoadingMentions && (!currentUser.assignedRssFeedUrls || currentUser.assignedRssFeedUrls.length === 0) && (
                <div className="text-center py-10 text-muted-foreground">
-                <SearchXIcon className="mx-auto h-12 w-12 mb-3" />
+                <SearchX className="mx-auto h-12 w-12 mb-3" />
                 <p className="text-lg font-semibold">No RSS Feeds Assigned</p>
                 <p>Please contact an administrator to assign RSS feeds to your account.</p>
               </div>
@@ -325,7 +333,7 @@ export default function GlobalMentionsPage() {
                   <ul className="list-none space-y-1 text-xs text-left max-w-md mx-auto">
                     {(currentUser.assignedRssFeedUrls || []).map((feedUrl, index) => (
                       <li key={index} className="flex items-center gap-2 p-1 border rounded-md bg-muted/30">
-                        <LinkIcon className="h-3 w-3 text-primary flex-shrink-0" />
+                        <Link className="h-3 w-3 text-primary flex-shrink-0" />
                         <a href={feedUrl} target="_blank" rel="noopener noreferrer" className="hover:underline truncate" title={feedUrl}>
                           {feedUrl}
                         </a>
@@ -337,17 +345,37 @@ export default function GlobalMentionsPage() {
             )}
             {!isLoadingMentions && userMentions.length > 0 && (
               <div className="space-y-4">
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700 flex items-start gap-2">
+                {currentUser?.assignedRssFeedUrls && currentUser.assignedRssFeedUrls.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700 flex items-start gap-2">
                     <Info className="h-5 w-5 shrink-0 mt-0.5 text-amber-600"/>
                     <div>
-                        <strong>Developer Note:</strong> The RSS items below are currently <strong>simulated</strong> for demonstration. 
-                        Actual parsing of XML content from your feeds requires an XML parsing library, which needs to be added to the project.
+                      <strong>Developer Note:</strong> Monitoring {currentUser.assignedRssFeedUrls.length} RSS feed{currentUser.assignedRssFeedUrls.length > 1 ? 's' : ''}.
+                      Assigned keywords: {currentUser.assignedKeywords?.join(', ') || 'none'}
                     </div>
-                </div>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {userMentions.map((mention) => (
-                        <GlobalMentionCard key={mention.id} mention={mention} />
-                    ))}
+                  {userMentions.map((mention) => {
+                    // Debug logging
+                    console.log('Rendering mention:', {
+                      id: mention.id,
+                      platform: mention.platform,
+                      hasXmlContent: !!mention.xmlContent
+                    });
+
+                    return mention.platform === 'RSS Feed' ? (
+                      <RssMentionCard 
+                        key={mention.id} 
+                        mention={mention} 
+                      />
+                    ) : (
+                      <GlobalMentionCard 
+                        key={mention.id} 
+                        mention={mention} 
+                      />
+                    );
+                  })}
                 </div>
               </div>
             )}

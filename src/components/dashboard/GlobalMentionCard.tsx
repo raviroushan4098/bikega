@@ -1,4 +1,3 @@
-
 "use client";
 
 import React from 'react';
@@ -9,9 +8,14 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ExternalLink, Globe, MessageSquare, Rss, Smile, TrendingDown, TrendingUp, UserCircle } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { parseRssXmlEntry } from '@/lib/xml-parser';
 
 interface GlobalMentionCardProps {
-  mention: Mention;
+  mention: {
+    id: string;
+    xmlContent: string;
+    createdAt: Date;
+  };
 }
 
 const PlatformIcon: React.FC<{ platform: Mention['platform'] }> = ({ platform }) => {
@@ -63,7 +67,14 @@ const renderSentimentBadge = (sentiment?: Mention['sentiment']) => {
   );
 };
 
-const GlobalMentionCard: React.FC<GlobalMentionCardProps> = ({ mention }) => {
+export default function GlobalMentionCard({ mention }: GlobalMentionCardProps) {
+  const parsedEntry = parseRssXmlEntry(mention.xmlContent);
+  
+  if (!parsedEntry) return null;
+
+  const decodedTitle = new DOMParser().parseFromString(parsedEntry.title, 'text/html').body.textContent;
+  const decodedContent = new DOMParser().parseFromString(parsedEntry.content, 'text/html').body.textContent;
+
   let displayTimestamp = "Invalid Date";
   try {
     const parsedDate = parseISO(mention.timestamp);
@@ -122,5 +133,3 @@ const GlobalMentionCard: React.FC<GlobalMentionCardProps> = ({ mention }) => {
     </Card>
   );
 };
-
-export default GlobalMentionCard;
