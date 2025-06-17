@@ -76,7 +76,10 @@ export default function RssMentionCard({ mention: rawMention }: RssMentionCardPr
     [rawMention]
   );
 
-  const { data: alerts, error, isLoading } = useAlertFeed(mention.url);
+  const { data: alerts, error, isLoading, message } = useAlertFeed(
+    mention.url,
+    mention.matchedKeyword
+  );
 
   if (isLoading) {
     return (
@@ -84,27 +87,27 @@ export default function RssMentionCard({ mention: rawMention }: RssMentionCardPr
         <CardContent className="p-4">
           <div className="flex items-center gap-2">
             <span className="loading loading-spinner loading-sm" />
-            <span>Loading feed...</span>
+            <span>Checking for new alerts...</span>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (error || !alerts?.length) {
+  if (error || !alerts || alerts.length === 0) {
     return (
       <Card className="hover:shadow-md transition-shadow">
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-red-500">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <AlertCircle className="h-4 w-4" />
-            <span>{error?.message || 'No entries found'}</span>
+            <span>{message || error?.message || 'No alerts found'}</span>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  // Display all alerts
+  // Display all alerts in a stack
   return (
     <div className="space-y-4">
       {alerts.map((alert) => (
@@ -121,7 +124,7 @@ export default function RssMentionCard({ mention: rawMention }: RssMentionCardPr
                 </>
               )}
             </div>
-            <a 
+            <a
               href={alert.link}
               target="_blank"
               rel="noopener noreferrer"
