@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import type { User } from '@/types';
+import type { User, Mention } from '@/types';
 import { getUsers, getUserById, updateUserRssFeedUrls } from '@/lib/user-service';
-import { Globe, Sparkles, Settings2, Users as UsersIcon, Rss, Save, Loader2, Info } from 'lucide-react';
+import { Globe, Sparkles, Settings2, Users as UsersIcon, Rss, Save, Loader2, Info, FilterX, SearchCheck, SearchX as SearchXIcon, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,6 +24,9 @@ import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import GlobalMentionCard from '@/components/dashboard/GlobalMentionCard';
+import { getGlobalMentionsForUser } from '@/lib/global-mentions-service';
+import { triggerGlobalMentionsRefresh } from './actions'; // Server Action
 
 const rssFeedsSchema = z.object({
   rssFeedUrls: z.string().optional(),
@@ -34,6 +37,7 @@ export default function GlobalMentionsPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
+  // Admin state
   const [allUsersForAdmin, setAllUsersForAdmin] = useState<User[]>([]);
   const [selectedUserForFeeds, setSelectedUserForFeeds] = useState<User | null>(null);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
@@ -44,6 +48,12 @@ export default function GlobalMentionsPage() {
     defaultValues: { rssFeedUrls: "" },
   });
 
+  // User state for mentions
+  const [userMentions, setUserMentions] = useState<Mention[]>([]);
+  const [isLoadingMentions, setIsLoadingMentions] = useState(false);
+  const [isRefreshingMentions, setIsRefreshingMentions] = useState(false);
+
+  // Admin: Fetch users list
   useEffect(() => {
     if (currentUser?.role === 'admin' && !authLoading) {
       setIsLoadingUsers(true);
@@ -54,13 +64,14 @@ export default function GlobalMentionsPage() {
     }
   }, [currentUser, authLoading, toast]);
 
+  // Admin: Handle user selection for RSS feeds
   const handleUserSelectionChange = async (userId: string) => {
     if (!userId) {
       setSelectedUserForFeeds(null);
       rssFeedsForm.reset({ rssFeedUrls: "" });
       return;
     }
-    setIsLoadingUsers(true); // Indicate loading for selected user's data
+    setIsLoadingUsers(true);
     try {
       const userDetails = await getUserById(userId);
       if (userDetails) {
@@ -78,6 +89,7 @@ export default function GlobalMentionsPage() {
     }
   };
   
+  // Admin: Save RSS feeds
   async function onSaveRssFeeds(data: RssFeedsFormValues) {
     if (!selectedUserForFeeds) {
       toast({ variant: "destructive", title: "No User Selected", description: "Please select a user to assign RSS feeds." });
@@ -86,10 +98,9 @@ export default function GlobalMentionsPage() {
     setIsSavingRssFeeds(true);
     const urlsArray = data.rssFeedUrls ? data.rssFeedUrls.split(/[\n,]+/).map(url => url.trim()).filter(url => url !== "" && /^https?:\/\/.+/.test(url)) : [];
     
-    // Validate URLs (basic check for http/https)
     const invalidUrls = data.rssFeedUrls ? data.rssFeedUrls.split(/[\n,]+/).map(url => url.trim()).filter(url => url !== "" && !/^https?:\/\/.+/.test(url)) : [];
     if (invalidUrls.length > 0) {
-        toast({ variant: "destructive", title: "Invalid URLs", description: `Some URLs are invalid: ${invalidUrls.join(', ')}. Please ensure they start with http:// or https://.` });
+        toast({ variant: "destructive", title: "Invalid URLs", description: `Some URLs are invalid: ${invalidUrls.join(', ')}. Ensure http(s)://.` });
         setIsSavingRssFeeds(false);
         return;
     }
@@ -97,11 +108,10 @@ export default function GlobalMentionsPage() {
     try {
       const result = await updateUserRssFeedUrls(selectedUserForFeeds.id, urlsArray);
       if (result.success) {
-        toast({ title: "RSS Feeds Updated", description: `RSS feeds for ${selectedUserForFeeds.name} have been saved.` });
-        // Optionally, update the local selectedUserForFeeds state if needed
+        toast({ title: "RSS Feeds Updated", description: `RSS feeds for ${selectedUserForFeeds.name} saved.` });
         setSelectedUserForFeeds(prev => prev ? {...prev, assignedRssFeedUrls: urlsArray} : null);
       } else {
-        toast({ variant: "destructive", title: "Update Failed", description: result.error || "Could not update RSS feeds." });
+        toast({ variant: "destructive", title: "Update Failed", description: result.error || "Could not update." });
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred." });
@@ -109,6 +119,47 @@ export default function GlobalMentionsPage() {
       setIsSavingRssFeeds(false);
     }
   }
+
+  // User: Fetch stored mentions on load
+  const fetchUserMentions = useCallback(async () => {
+    if (currentUser?.role === 'user' && currentUser.id) {
+      setIsLoadingMentions(true);
+      try {
+        const mentions = await getGlobalMentionsForUser(currentUser.id);
+        setUserMentions(mentions);
+      } catch (error) {
+        toast({ variant: "destructive", title: "Error", description: "Failed to load your mentions." });
+      } finally {
+        setIsLoadingMentions(false);
+      }
+    }
+  }, [currentUser, toast]);
+
+  useEffect(() => {
+    if (currentUser?.role === 'user' && !authLoading) {
+      fetchUserMentions();
+    }
+  }, [currentUser, authLoading, fetchUserMentions]);
+
+  // User: Handle refresh mentions
+  const handleRefreshMentions = async () => {
+    if (!currentUser || !currentUser.id) return;
+    setIsRefreshingMentions(true);
+    toast({ title: "Refreshing Mentions", description: "Fetching latest data from all sources..."});
+    try {
+      const result = await triggerGlobalMentionsRefresh(currentUser.id);
+      if (result.errors && result.errors.length > 0) {
+        toast({ variant: "destructive", title: "Refresh Partially Failed", description: result.errors.join('; ') });
+      } else {
+        toast({ title: "Refresh Complete", description: `${result.newMentionsStored} new mentions stored.` });
+      }
+      await fetchUserMentions(); // Re-fetch from Firestore
+    } catch (error) {
+      toast({ variant: "destructive", title: "Refresh Error", description: "An unexpected error occurred while refreshing." });
+    } finally {
+      setIsRefreshingMentions(false);
+    }
+  };
 
   if (authLoading) {
     return (
@@ -209,46 +260,69 @@ export default function GlobalMentionsPage() {
     );
   }
 
-  // User View (Coming Soon)
+  // User View: Display Global Mentions
+  if (currentUser?.role === 'user') {
+    return (
+      <div className="space-y-6">
+        <Card className="shadow-lg">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="text-xl font-headline flex items-center">
+                <Globe className="mr-3 h-6 w-6 text-primary" />
+                Your Global Mentions
+              </CardTitle>
+              <CardDescription>
+                Mentions from Hacker News, GNews, and other web sources based on your keywords.
+                {currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 ? 
+                  ` Keywords: "${currentUser.assignedKeywords.slice(0,3).join('", "')}${currentUser.assignedKeywords.length > 3 ? '"...' : '"'}` 
+                  : " (No keywords assigned)"
+                }
+              </CardDescription>
+            </div>
+            <Button onClick={handleRefreshMentions} disabled={isLoadingMentions || isRefreshingMentions} className="w-full sm:w-auto mt-2 sm:mt-0">
+              {isRefreshingMentions ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Refresh Mentions
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isLoadingMentions && !isRefreshingMentions && (
+              <div className="flex justify-center items-center py-10">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="ml-3 text-muted-foreground">Loading your mentions...</p>
+              </div>
+            )}
+            {!isLoadingMentions && userMentions.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                <SearchXIcon className="mx-auto h-12 w-12 mb-3" />
+                <p className="text-lg font-semibold">No Mentions Found</p>
+                <p>
+                  {currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 ? 
+                    "We couldn't find any mentions for your keywords yet." :
+                    "You don't have any keywords assigned. Please contact an admin."
+                  }
+                </p>
+                 {currentUser.assignedKeywords && currentUser.assignedKeywords.length > 0 && (
+                    <p className="text-sm mt-1">Try the "Refresh Mentions" button to fetch the latest data.</p>
+                 )}
+              </div>
+            )}
+            {!isLoadingMentions && userMentions.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {userMentions.map(mention => (
+                  <GlobalMentionCard key={mention.id} mention={mention} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Fallback for unexpected roles or if somehow currentUser is null after auth check
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-12rem)] p-4 sm:p-6 md:p-8 text-center">
-      <Card className="w-full max-w-2xl shadow-2xl overflow-hidden border-primary/20">
-        <CardHeader className="bg-gradient-to-br from-primary/5 via-background to-background p-8">
-          <div className="flex justify-center items-center mb-6">
-            <Globe className="h-16 w-16 text-primary animate-pulse" />
-            <Sparkles className={cn("h-10 w-10 text-accent ml-2 opacity-75 animate-ping", "animation-delay-500")} />
-          </div>
-          <CardTitle className="text-3xl sm:text-4xl font-headline tracking-tight text-primary">
-            Global Mentions Tracker - Coming Soon!
-          </CardTitle>
-          <CardDescription className="text-lg text-muted-foreground mt-2">
-            We're refining our Global Mentions feature to bring you even more comprehensive insights, including your assigned RSS feeds.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-6 sm:p-8 space-y-6">
-          <div className="flex flex-col items-center space-y-3 text-muted-foreground">
-            <Settings2 className="h-12 w-12 text-accent/80 mb-2 animate-spin animation-duration-3000" />
-            <p className="text-base">
-              Our enhanced Global Mentions Tracker is currently under development. Soon, you'll be able to monitor your keywords and RSS feeds across a wider range of news outlets, blogs, forums, and general web content.
-            </p>
-            <p className="text-sm">
-              Thank you for your patience. We're excited to launch this upgrade!
-            </p>
-          </div>
-          <Separator className="my-6" />
-          <div className="text-xs text-muted-foreground/70">
-            The current mock data and Hacker News integration will be supplemented with RSS feed integration.
-          </div>
-        </CardContent>
-      </Card>
-       <style jsx global>{`
-        .animation-delay-500 {
-          animation-delay: 0.5s;
-        }
-        .animation-duration-3000 {
-            animation-duration: 3000ms;
-        }
-      `}</style>
+    <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
+      <p className="text-muted-foreground">Content not available for your role.</p>
     </div>
   );
 }
